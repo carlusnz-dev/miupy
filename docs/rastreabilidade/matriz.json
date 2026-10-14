@@ -468,7 +468,7 @@
         "src-tauri/src/metadata.rs:249",
         "src-tauri/src/metadata.rs:311",
         "src/lib/ipc/api.ts:52",
-        "src/lib/ipc/mock.ts:422",
+        "src/lib/ipc/mock.ts:424",
         "src/lib/ipc/tauri.ts:66",
         "src/routes/Artist.svelte:2",
         "src/routes/NowPlaying.svelte:4",
@@ -778,7 +778,7 @@
         "src-tauri/src/metadata.rs:143",
         "src/lib/ipc/api.ts:52",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:422",
+        "src/lib/ipc/mock.ts:424",
         "src/lib/ipc/tauri.ts:66",
         "src/lib/ipc/types.ts:1",
         "src/lib/ipc/types.ts:28",
@@ -808,7 +808,7 @@
       "implementation": [
         "src/lib/components/Avatar.svelte:2",
         "src/lib/ipc/api.ts:68",
-        "src/lib/ipc/mock.ts:520",
+        "src/lib/ipc/mock.ts:522",
         "src/lib/ipc/tauri.ts:82",
         "src/lib/ipc/types.ts:162",
         "src/lib/stores/profile.svelte.ts:8",
@@ -893,8 +893,8 @@
       "implementation": [
         "src/lib/components/TrackRow.svelte:14",
         "src/lib/ipc/api.ts:60",
-        "src/lib/ipc/mock.ts:499",
-        "src/lib/ipc/mock.ts:503",
+        "src/lib/ipc/mock.ts:501",
+        "src/lib/ipc/mock.ts:505",
         "src/lib/ipc/tauri.ts:74",
         "src/lib/ipc/types.ts:162",
         "src/lib/stores/dna.svelte.ts:1",
@@ -903,7 +903,8 @@
       ],
       "tests": [
         "src/lib/stores/newStores.test.ts:40",
-        "src/lib/stores/newStores.test.ts:56"
+        "src/lib/stores/newStores.test.ts:56",
+        "src/lib/stores/newStores.test.ts:94"
       ],
       "status": "verificado"
     },
@@ -915,7 +916,7 @@
       "implementation": [
         "src/lib/ipc/api.ts:42",
         "src/lib/ipc/mock.ts:125",
-        "src/lib/ipc/mock.ts:378",
+        "src/lib/ipc/mock.ts:380",
         "src/lib/ipc/tauri.ts:55",
         "src/lib/ipc/types.ts:162",
         "src/routes/Settings.svelte:23"
