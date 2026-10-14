@@ -30,6 +30,13 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-18 | Tocar sem baixar | S | Tocar uma faixa do YouTube que ainda não foi baixada, por streaming, quando há rede. Sem rede, o erro é claro e a discoteca baixada continua funcionando. |
 | RF-19 | Recomendações | S | Sugerir faixas para adicionar à discoteca ou a uma playlist a partir do que o usuário ouviu: tempo ouvido, conclusões, pulos, favoritos, artistas e gêneros. A pontuação é calculada localmente, no SQLite. |
 | RF-20 | Metadados da faixa no banco | S | Gêneros, ano de lançamento e identificadores externos ficam gravados na tabela de faixas, para alimentar as recomendações sem rede. |
+| RF-21 | Foto do perfil | S | Escolher, trocar e remover a foto do usuário no perfil. |
+| RF-22 | Capa da playlist | S | Escolher uma capa para a playlist; sem capa escolhida, a playlist mostra um mosaico dos 4 artistas com mais faixas nela. |
+| RF-23 | Sugestões de busca | C | Sugerir o texto da busca no YouTube enquanto o usuário digita. |
+| RF-24 | Aleatório e *smart random* | S | Tocar a fila em ordem aleatória, ou em sorteio ponderado que puxa para as faixas mais bem pontuadas e próximas da que está tocando. |
+| RF-25 | Pontuação e DNA | S | Mostrar a pontuação de cada faixa e uma tela "DNA" com o estilo atual do usuário: artistas, gêneros, taxa de pulos, o que subiu e o que caiu. |
+| RF-26 | yt-dlp gerenciado pelo app | S | O app baixa, confere e atualiza o yt-dlp sozinho, sem depender de instalação no sistema. |
+| RF-27 | Foto de artista | S | Mostrar a foto do artista, vinda do Wikimedia Commons pelo Wikidata, com o crédito de autor e licença. |
 
 ## Requisitos não funcionais
 
@@ -44,10 +51,11 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RNF-07 | Integrações externas | C | Núcleo desacoplado da UI para permitir integrar serviços externos do usuário no futuro. |
 | RNF-08 | Animações | S | Movimento com física de mola (*spring*): entrada, saída, bounce, hover e fade-in/out, sempre respeitando `prefers-reduced-motion`. |
 | RNF-09 | Aceleração de hardware | S | A interface é composta pela GPU quando o sistema permite, com recuo automático para renderização por software onde a GPU derruba o app. |
+| RNF-10 | Transições com elementos compartilhados | S | Na troca de tela, elementos presentes nas duas (capa, título, player) animam da posição antiga para a nova (*layout presence*); modais abrem centralizados com animação de pop-up. Respeita `prefers-reduced-motion`. |
 
 ## Fora de escopo (por enquanto)
 
-- Contas online, sincronização entre dispositivos e streaming sem download.
+- Contas online e sincronização entre dispositivos.
 - iOS.
 - Qualquer DRM ou distribuição de conteúdo: o app é de uso pessoal.
 

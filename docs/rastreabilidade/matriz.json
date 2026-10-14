@@ -1,10 +1,10 @@
 {
   "summary": {
-    "total": 29,
+    "total": 37,
     "verificado": 22,
     "implementado": 4,
     "soTeste": 0,
-    "pendente": 3
+    "pendente": 11
   },
   "unknownIds": [],
   "requirements": [
@@ -792,6 +792,69 @@
       "status": "verificado"
     },
     {
+      "id": "RF-21",
+      "title": "Foto do perfil",
+      "priority": "S",
+      "description": "Escolher, trocar e remover a foto do usuário no perfil.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-22",
+      "title": "Capa da playlist",
+      "priority": "S",
+      "description": "Escolher uma capa para a playlist; sem capa escolhida, a playlist mostra um mosaico dos 4 artistas com mais faixas nela.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-23",
+      "title": "Sugestões de busca",
+      "priority": "C",
+      "description": "Sugerir o texto da busca no YouTube enquanto o usuário digita.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-24",
+      "title": "Aleatório e *smart random*",
+      "priority": "S",
+      "description": "Tocar a fila em ordem aleatória, ou em sorteio ponderado que puxa para as faixas mais bem pontuadas e próximas da que está tocando.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-25",
+      "title": "Pontuação e DNA",
+      "priority": "S",
+      "description": "Mostrar a pontuação de cada faixa e uma tela \"DNA\" com o estilo atual do usuário: artistas, gêneros, taxa de pulos, o que subiu e o que caiu.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-26",
+      "title": "yt-dlp gerenciado pelo app",
+      "priority": "S",
+      "description": "O app baixa, confere e atualiza o yt-dlp sozinho, sem depender de instalação no sistema.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-27",
+      "title": "Foto de artista",
+      "priority": "S",
+      "description": "Mostrar a foto do artista, vinda do Wikimedia Commons pelo Wikidata, com o crédito de autor e licença.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
       "id": "RNF-01",
       "title": "Banco local SQLite",
       "priority": "M",
@@ -913,6 +976,15 @@
         "src-tauri/src/gpu.rs:54"
       ],
       "status": "verificado"
+    },
+    {
+      "id": "RNF-10",
+      "title": "Transições com elementos compartilhados",
+      "priority": "S",
+      "description": "Na troca de tela, elementos presentes nas duas (capa, título, player) animam da posição antiga para a nova (*layout presence*); modais abrem centralizados com animação de pop-up. Respeita `prefers-reduced-motion`.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
     }
   ]
 }
