@@ -373,7 +373,9 @@ export function createMockApi(): MiupyApi {
       const q = query.trim().toLocaleLowerCase('pt-BR');
       if (!q) return [];
       return [...new Set([...tracks.map((t) => t.title), ...ARTISTS.map((a) => a.name), ...YT_POOL.map((t) => t.title)])]
-        .filter((x) => x.toLocaleLowerCase('pt-BR').includes(q)).slice(0, 6);
+        .filter((x) => x.toLocaleLowerCase('pt-BR').includes(q))
+        .concat(['', ' ao vivo', ' acústico', ' letra', ' álbum completo'].map((s) => query.trim() + s))
+        .filter((x, i, all) => all.indexOf(x) === i).slice(0, 8);
     },
     async ytdlpStatus() { return { ...ytdlp }; }, // @req RF-26
     async ytdlpUpdate() {
@@ -505,7 +507,7 @@ export function createMockApi(): MiupyApi {
       const scale = windowDays / 30;
       const trends = taste.topArtists.slice(0, 5).map((a, i) => ({ kind: 'artist' as const, id: a.artistId, label: a.name, current: Math.round(a.score * scale), previous: Math.round(a.score * scale * (i % 2 ? 1.25 : 0.7)), delta: 0 }));
       trends.forEach((t) => { t.delta = t.current - t.previous; });
-      return { windowDays, topArtists: taste.topArtists.map((a) => ({ ...a, score: Math.round(a.score * scale) })), topGenres: taste.topGenres.map((g) => ({ ...g, score: Math.round(g.score * scale) })), skipRate: 0.12, previousSkipRate: 0.16, listenedMs: Math.round(taste.totalListenedMs * scale / 6), previousListenedMs: Math.round(taste.totalListenedMs * scale / 7), rising: trends.filter((t) => t.delta > 0).sort((a, b) => b.delta - a.delta), falling: trends.filter((t) => t.delta < 0).sort((a, b) => a.delta - b.delta) } satisfies Dna;
+      return { windowDays, topArtists: taste.topArtists.map((a) => ({ ...a, score: Math.round(a.score * scale) })), topGenres: taste.topGenres.map((g) => ({ ...g, score: Math.round(g.score * scale) })), skipRate: Math.min(0.4, 0.08 + 0.01 * Math.log2(windowDays)), previousSkipRate: Math.min(0.4, 0.1 + 0.012 * Math.log2(windowDays)), listenedMs: Math.round(taste.totalListenedMs * scale / 6), previousListenedMs: Math.round(taste.totalListenedMs * scale / 7), rising: trends.filter((t) => t.delta > 0).sort((a, b) => b.delta - a.delta), falling: trends.filter((t) => t.delta < 0).sort((a, b) => a.delta - b.delta) } satisfies Dna;
     },
     async recommendationsList(a) { return recommendations(a?.playlistId, a?.limit); },
     async recommendationsRefresh(a) { await wait(400); const out = recommendations(a?.playlistId); emit('recommendations://changed', { count: out.length }); return out; },

@@ -14,7 +14,7 @@
   import Seek from '../lib/components/Seek.svelte';
   import Volume from '../lib/components/Volume.svelte';
   import ShuffleButton from '../lib/components/ShuffleButton.svelte';
-  import { scores, fmtScore } from '../lib/stores/scores.svelte';
+  import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
 
   const t = $derived(player.track);
@@ -75,7 +75,7 @@
               {#each t.genres as genre}<span class="chip">{genre}</span>{/each}
               <span class="chip">{t.source === 'youtube' ? 'YouTube' : 'Local'}</span>
               <span class="chip">{fmtTime(t.durationMs)}</span>
-              {#if scores.get(t.id)}<span class="chip" title={`Pontuação: ${scores.get(t.id).plays} plays, ${scores.get(t.id).skips} pulos, última vez: ${scores.get(t.id).lastPlayedAt ? new Date(scores.get(t.id).lastPlayedAt!).toLocaleDateString('pt-BR') : 'nunca'}`}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
+              {#if scores.get(t.id)}<span class="chip" title={scoreTooltip(scores.get(t.id))}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
             </p>
           </div>
           <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
