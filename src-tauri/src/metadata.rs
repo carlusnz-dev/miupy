@@ -99,12 +99,28 @@ impl MetadataService {
     }
 
     // @req RF-12 RF-27
+    /// Falha temporária (rede, 503/429, tempo esgotado): permite nova tentativa em
+    /// `TEMPORARY_RETRY_AFTER` em vez de `RETRY_AFTER`.
     fn retry_soon(&self, key: &str) {
+        let now = Instant::now();
+        // `checked_sub`: logo depois do boot o `Instant` pode ser menor que o intervalo.
+        let Some(at) = now.checked_sub(RETRY_AFTER - TEMPORARY_RETRY_AFTER) else {
+            self.attempts
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(key);
+            return;
+        };
         let mut attempts = self.attempts.lock().unwrap_or_else(|e| e.into_inner());
-        attempts.insert(
-            key.to_owned(),
-            Instant::now() - (RETRY_AFTER - TEMPORARY_RETRY_AFTER),
-        );
+        attempts.insert(key.to_owned(), at);
+    }
+
+    /// Só erro de rede (inclui 503/429) é temporário; "não encontrado", entrada inválida e
+    /// erros locais mantêm o intervalo longo marcado por `should_try`.
+    fn retry_soon_if_temporary(&self, key: &str, code: &str) {
+        if code == "network" {
+            self.retry_soon(key);
+        }
     }
 
     // @req RF-12
@@ -337,7 +353,7 @@ impl MetadataService {
                 Ok(Ok(None)) => {}
                 Ok(Err(e)) => {
                     log::info!("sem enriquecimento para o artista {}: {e}", info.name);
-                    self.retry_soon(&format!("artist:{}", info.id));
+                    self.retry_soon_if_temporary(&format!("artist:{}", info.id), e.code());
                 }
                 Err(_) => {
                     log::info!("tempo esgotado ao enriquecer o artista {}", info.name);
@@ -358,7 +374,7 @@ impl MetadataService {
                 Ok(Ok(found)) => found,
                 Ok(Err(e)) => {
                     log::info!("sem foto para o artista {}: {e}", info.name);
-                    self.retry_soon(&format!("artist-photo:{}", info.id));
+                    self.retry_soon_if_temporary(&format!("artist-photo:{}", info.id), e.code());
                     None
                 }
                 Err(_) => {
@@ -468,7 +484,7 @@ impl MetadataService {
             Ok(Ok(_)) => return Ok(stored),
             Ok(Err(e)) => {
                 log::info!("sem letra para {}: {e}", track.id);
-                self.retry_soon(&format!("lyrics:{}", track.id));
+                self.retry_soon_if_temporary(&format!("lyrics:{}", track.id), e.code());
                 return Ok(stored);
             }
             Err(_) => {
@@ -833,6 +849,34 @@ mod tests {
             .unwrap()
             .elapsed();
         assert!(age >= RETRY_AFTER - TEMPORARY_RETRY_AFTER);
+    }
+
+    // @test RF-27
+    #[tokio::test]
+    async fn erro_definitivo_da_foto_mantem_intervalo_longo() {
+        let f = fx();
+        let t = track(&f);
+        let aid = t.artist_id.unwrap();
+        f.db.with(|db| {
+            db.update_artist(
+                &aid,
+                &ArtistPatch {
+                    mbid: Some(Some("art-1".into())),
+                    country: Some(Some("FR".into())),
+                    genres: Some(vec!["electronic".into()]),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::NotFound("artista".into()));
+        f.svc.get_artist(&aid).await.unwrap();
+        let attempts = f.svc.attempts.lock().unwrap();
+        let age = attempts
+            .get(&format!("artist-photo:{aid}"))
+            .unwrap()
+            .elapsed();
+        assert!(age < TEMPORARY_RETRY_AFTER);
     }
 
     // @test RF-12

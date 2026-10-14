@@ -400,9 +400,11 @@ interface YtDlpStatus {
   LRCLIB tem fila própria, com intervalo mínimo de 2 s. Respostas 503/429 e falhas de transporte
   recebem até três tentativas, com espera crescente e respeito a `Retry-After`. Uma indicação de
   espera acima de 8 s encerra a consulta sem antecipar nova chamada; cada operação de API tem
-  limite total de 15 s. O lote avança para a faixa seguinte quando uma consulta falha.
-- Letra e foto não encontradas são consultadas de novo após 5 min. Falhas temporárias permitem
-  nova tentativa após 10 s e preservam os dados locais.
+  limite total de 15 s no provedor, e a casca corta antes as leituras de letra, artista e foto
+  (12 s). O lote avança para a faixa seguinte quando uma consulta falha.
+- Letra e foto não encontradas (e erros definitivos, como MBID inválido) são consultadas de novo
+  após 5 min. Só falhas temporárias — rede, 503/429 e tempo esgotado — permitem nova tentativa
+  após 10 s; os dados locais são preservados.
 
 ### Busca no YouTube (RF-09, RF-23)
 
