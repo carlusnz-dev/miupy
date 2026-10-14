@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "miupy"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2345,7 +2345,7 @@ dependencies = [
 
 [[package]]
 name = "miupy-audio"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crossbeam-channel",
  "hound",
@@ -2357,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "miupy-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rusqlite",
  "rusqlite_migration",
@@ -2369,7 +2369,7 @@ dependencies = [
 
 [[package]]
 name = "miupy-media"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
