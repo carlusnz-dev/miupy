@@ -102,7 +102,7 @@ ler queue[i].id.
 ## Pull requests
 
 1. Branch a partir de `develop` (ou de `main`, se for `hotfix/*`).
-2. Antes de abrir: `cargo fmt --all`, `cargo clippy --workspace --all-targets`,
+2. Antes de abrir: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
    `cargo test --workspace`; se tocou no frontend, `npm run check`, `npm test` e `npm run build`.
    A matriz de rastreabilidade não precisa ser gerada à mão: o CI faz isso (ver "Integração
    contínua").
@@ -151,7 +151,9 @@ Em PR para `develop` cujo branch é do próprio repositório, o workflow gera a 
 - Push feito com o `GITHUB_TOKEN` não dispara outros workflows. Por isso o `matriz.yml` não entra
   em laço, mas também por isso o commit do bot não receberia checks: o `matriz.yml` dispara o
   `ci.yml` por `workflow_dispatch` (exceção à regra) no branch, e os checks obrigatórios aparecem
-  no commit novo. `regras-do-fluxo` fica "skipped", o que conta como aprovado.
+  no commit novo. `regras-do-fluxo` fica "skipped", o que conta como aprovado. O GitHub ainda
+  cria execuções de `pull_request` em "action_required" para o commit do bot (ele não é
+  colaborador); o `matriz.yml` as apaga logo depois, porque elas não geram checks.
 - No PR de branch do repositório para `develop`, o job `docs` não cobra a matriz em dia (o bot
   cuida); em todo o resto (PR de fork, PR para `main`, push) cobra.
 - Se o PR fica atrás da `develop` e a matriz conflita, atualize o branch (`git merge
@@ -184,7 +186,7 @@ notarização no macOS; o sistema avisa na instalação) e o Android não é con
 
 O ruleset do GitHub está descrito em [`protecao-de-branches.json`](protecao-de-branches.json):
 `develop` e `main` sem push direto nem force-push, PR obrigatório, checks `rust`, `frontend`,
-`docs` e `regras-do-fluxo`, squash só em `develop` e merge commit só em `main`.
+`docs` e `regras-do-fluxo`, merge commit e squash nas duas: squash nos PRs de trabalho para `develop`, merge commit no PR de versão para `main` e no retorno de hotfix para `develop`.
 
 ## Versões
 

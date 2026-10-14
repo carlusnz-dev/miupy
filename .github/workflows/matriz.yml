@@ -31,6 +31,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          # O npm run docs:matriz roda código do branch; o token de escrita só entra no push.
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -46,9 +48,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/rastreabilidade
           git commit -m "docs: regenera a matriz de rastreabilidade"
-          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
           # Push com GITHUB_TOKEN não dispara outros workflows (isso também impede laço aqui),
           # mas workflow_dispatch é exceção: roda o ci.yml no commit novo para ele ter os
           # checks obrigatórios (rust, frontend, docs; regras-do-fluxo fica "skipped", que conta
           # como aprovado).
           gh workflow run ci.yml --ref "$HEAD_REF"
+          # O GitHub ainda cria, para o commit do bot, execuções de pull_request presas em
+          # "action_required" (o bot não é colaborador). Elas não geram checks, mas deixam o PR
+          # como UNSTABLE; apaga-as depois que aparecem.
+          sha="$(git rev-parse HEAD)"
+          sleep 15
+          gh run list --repo "$GITHUB_REPOSITORY" --commit "$sha" --status action_required \
+            --json databaseId -q '.[].databaseId' | xargs -r -n1 gh run delete --repo "$GITHUB_REPOSITORY"

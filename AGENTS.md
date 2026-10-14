@@ -23,7 +23,7 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
   Nos PRs para `develop` o CI gera e commita a matriz; você não precisa rodar `npm run docs:matriz`
   (o `node scripts/rastreabilidade.mjs --check` local continua útil para achar ID inexistente).
 - Interface e documentação em pt-BR. Identificadores de código em inglês.
-- Antes de encerrar: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`.
+- Antes de encerrar: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (o CI roda os mesmos, com `--locked`).
 
 ## Git
 
