@@ -92,6 +92,8 @@
     </select>
   </label>
   {#if gpuStatus}<p class="mt-3 text-sm text-muted">{gpuStatus.hardware ? 'hardware' : 'software'} · {gpuStatus.reason}</p>{/if}
+  <!-- @req RNF-09 -->
+  {#if gpuMode === 'on'}<p class="mt-2 text-sm text-muted">Em Wayland com NVIDIA, esta opção pode impedir o app de abrir.</p>{/if}
   {#if gpuStatus?.restartRequired}<p class="mt-1 text-sm">Reinicie o app para aplicar.</p>{/if}
 </section>
 <section class="mb-8 card p-5" aria-labelledby="h-metadata">

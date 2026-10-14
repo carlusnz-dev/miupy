@@ -118,7 +118,7 @@ interface GpuStatus {
   mode: GpuMode;                // modo salvo
   envOverride: GpuMode | null;  // MIUPY_GPU, quando definida, manda sobre o salvo
   hardware: boolean;            // a sessão atual está compondo pela GPU
-  reason: string;               // ex.: "software (Wayland com driver NVIDIA detectado)"
+  reason: string;               // motivo da sessão, inclusive recuo após queda anterior
   restartRequired: boolean;     // o modo salvo difere do que está valendo agora
 }
 
@@ -283,6 +283,7 @@ interface YtDlpStatus {
 | `settings_get` | — | `Settings` | RF-17 |
 | `settings_update` | `{ settings: Partial<Settings> }` | `Settings` | RF-17, RNF-09 |
 | `system_gpu_status` | — | `GpuStatus` | RNF-09 |
+| `system_gpu_startup_confirmed` | — | `void` | RNF-09 |
 
 ## Eventos (Rust → frontend)
 
@@ -374,7 +375,13 @@ interface YtDlpStatus {
 - `MIUPY_GPU=on|off|auto` continua funcionando e, quando definida, manda sobre o modo salvo
   (`envOverride`).
 - `auto` mantém o recuo para software onde a GPU derruba o app (Wayland + NVIDIA). `on` força a
-  GPU mesmo assim; se o app cair, o usuário volta com `MIUPY_GPU=off`.
+  GPU mesmo assim. Quando `on` veio das configurações nessa combinação, a casca grava
+  `gpu-startup-pending` no diretório de dados antes da janela. O frontend chama
+  `system_gpu_startup_confirmed` cinco segundos após montar para apagar a sentinela; uma saída
+  normal também a apaga. Se a próxima abertura encontrar a sentinela com modo salvo `on`, a casca
+  abre em software, restaura `auto` no banco e informa o recuo em `GpuStatus.reason`.
+  `MIUPY_GPU` explícita mantém precedência e não arma sentinela. Uma nova escolha na tela de
+  Configurações descarta uma sentinela antiga, permitindo outra tentativa voluntária.
 
 ### Capas guardadas no disco (RF-05, RF-12)
 
@@ -394,6 +401,21 @@ interface YtDlpStatus {
 - A casca busca a foto em segundo plano depois de um download ou de `metadata_get_artist`, grava
   em `covers/artistas/<artistId>.jpg` e guarda `imageCredit` (autor e licença do arquivo no
   Commons), que a interface mostra junto da foto.
+- Se o artista ainda não tiver MBID, `metadata_get_artist` tenta obtê-lo antes da foto, na mesma
+  consulta. Falhas temporárias de rede ou tempo esgotado permitem nova tentativa após 10 s;
+  ausência real de dados mantém o intervalo de 5 min.
+
+### Ritmo das APIs de metadados (RF-12)
+
+- MusicBrainz compartilha um limite de uma chamada por segundo em toda a instância da casca.
+  LRCLIB tem fila própria, com intervalo mínimo de 2 s. Respostas 503/429 e falhas de transporte
+  recebem até três tentativas, com espera crescente e respeito a `Retry-After`. Uma indicação de
+  espera acima de 8 s encerra a consulta sem antecipar nova chamada; cada operação de API tem
+  limite total de 15 s no provedor, e a casca corta antes as leituras de letra, artista e foto
+  (12 s). O lote avança para a faixa seguinte quando uma consulta falha.
+- Letra e foto não encontradas (e erros definitivos, como MBID inválido) são consultadas de novo
+  após 5 min. Só falhas temporárias — rede, 503/429 e tempo esgotado — permitem nova tentativa
+  após 10 s; os dados locais são preservados.
 
 ### Busca no YouTube (RF-09, RF-23)
 
