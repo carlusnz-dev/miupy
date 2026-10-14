@@ -10,6 +10,7 @@ mod lyrics;
 mod model;
 mod playlists;
 mod profile;
+mod recommendations;
 mod stats;
 mod text;
 mod time;

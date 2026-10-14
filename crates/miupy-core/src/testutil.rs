@@ -26,6 +26,10 @@ fn new_local(title: &str, artist: &str, album: Option<&str>, duration_ms: i64) -
         codec: None,
         bitrate: None,
         thumbnail_url: None,
+        genres: Vec::new(),
+        release_year: None,
+        mbid: None,
+        isrc: None,
     }
 }
 
