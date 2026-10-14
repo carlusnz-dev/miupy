@@ -82,9 +82,12 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // @req RNF-09: a sentinela e o renderizador são resolvidos antes da janela.
     #[cfg(target_os = "linux")]
-    let saved_gpu_mode = gpu::load_saved_mode();
-    let gpu_decision = gpu::configure_mode(saved_gpu_mode.as_deref());
+    let gpu_root = gpu::data_root();
+    #[cfg(target_os = "linux")]
+    let saved_gpu_mode = gpu::load_saved_mode(gpu_root.as_deref());
+    let gpu_decision = gpu::configure_mode(saved_gpu_mode.as_deref(), gpu_root.as_deref());
 
     let app = tauri::Builder::default()
         .plugin(
@@ -156,16 +159,22 @@ pub fn run() {
             profile::settings_get,
             profile::settings_update,
             profile::system_gpu_status,
+            profile::system_gpu_startup_confirmed,
         ])
         .build(tauri::generate_context!())
         .expect("falha ao montar o app Tauri");
 
     app.run(|handle, event| {
         // @req RF-13: ao fechar o app, a reprodução em curso é registrada como `Stopped`.
-        if let RunEvent::Exit = event
-            && let Some(state) = handle.try_state::<AppState>()
-        {
-            state.player.shutdown();
+        if let RunEvent::Exit = event {
+            if let Some(state) = handle.try_state::<AppState>() {
+                state.player.shutdown();
+            }
+            // @req RNF-09: uma saída normal durante a espera também conclui a abertura, mesmo
+            // se o estado do app não chegou a ser montado.
+            if let Err(error) = gpu::confirm_startup() {
+                log::warn!("Falha ao remover a sentinela da GPU: {error}");
+            }
         }
     });
 }

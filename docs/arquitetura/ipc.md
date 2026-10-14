@@ -118,7 +118,7 @@ interface GpuStatus {
   mode: GpuMode;                // modo salvo
   envOverride: GpuMode | null;  // MIUPY_GPU, quando definida, manda sobre o salvo
   hardware: boolean;            // a sessão atual está compondo pela GPU
-  reason: string;               // ex.: "software (Wayland com driver NVIDIA detectado)"
+  reason: string;               // motivo da sessão, inclusive recuo após queda anterior
   restartRequired: boolean;     // o modo salvo difere do que está valendo agora
 }
 
@@ -283,6 +283,7 @@ interface YtDlpStatus {
 | `settings_get` | — | `Settings` | RF-17 |
 | `settings_update` | `{ settings: Partial<Settings> }` | `Settings` | RF-17, RNF-09 |
 | `system_gpu_status` | — | `GpuStatus` | RNF-09 |
+| `system_gpu_startup_confirmed` | — | `void` | RNF-09 |
 
 ## Eventos (Rust → frontend)
 
@@ -308,6 +309,10 @@ interface YtDlpStatus {
   resolução terminar, o resultado da anterior é descartado. Faixa `local` sem arquivo devolve
   `unavailable` na hora. Streaming não grava arquivo nem muda `downloadStatus`; o registro de
   atividade conta igual. `player_seek` funciona em streaming.
+- `player_pause` durante a resolução guarda o pedido e mantém `status = loading` até a faixa estar
+  carregada; quando pronta, emite `player://state` com `status = paused` e posição 0, sem iniciar o
+  áudio. `player_resume` durante a resolução cancela esse pedido e mantém `loading`; a faixa toca
+  quando estiver pronta. `player_resume` depois de pronta e pausada inicia a reprodução.
 - `coverPath`, `mosaicPaths`, `imagePath` e `avatarPath` são caminhos locais. O frontend converte
   com `convertFileSrc`, então `src-tauri` habilita o protocolo `asset` com escopo no diretório de
   dados (`audio/`, `covers/`, `avatars/`, `playlists/`).
@@ -325,14 +330,18 @@ interface YtDlpStatus {
 
 ### Aleatório e *smart random* (RF-24)
 
-- `player_set_shuffle` muda só a ordem do que vem **depois** da faixa atual; a faixa atual continua
-  tocando. `PlayerState.queue` sempre traz a ordem em que as faixas vão tocar.
+- `player_set_shuffle` preserva as faixas antes da posição atual na fila em vigor, na mesma ordem,
+  e mantém a ocorrência atual tocando na mesma posição. Só reordena as ocorrências depois dela:
+  são exatamente as faixas ainda não tocadas nessa fila, sem entradas ou perdas, mesmo com IDs
+  repetidos. A regra vale também após várias trocas seguidas de modo. `PlayerState.queue` sempre
+  traz a ordem em que as faixas vão tocar.
 - `random`: embaralhamento uniforme do restante da fila.
 - `smart`: sorteio ponderado, uma faixa por vez. O peso de cada faixa restante combina a pontuação
   dela (`TrackScore.score`, normalizada) com a proximidade da faixa escolhida antes (mesmo artista
   pesa mais que gênero em comum). Toda faixa tem peso mínimo positivo, então todas tocam; faixas
   puladas muitas vezes só ficam mais para o fim. Fórmula em [`recomendacao.md`](recomendacao.md).
-- Voltar para `off` restaura a ordem original do restante, a partir da faixa atual.
+- Voltar para `off` põe somente as ocorrências restantes na ordem original de `player_play`;
+  o prefixo já tocado e a ocorrência atual continuam onde estão.
 - Um `player_play { trackId, queue }` novo com `shuffle` ligado embaralha a fila nova da mesma
   forma, mantendo `trackId` primeiro. O modo fica salvo entre aberturas do app.
 
@@ -366,7 +375,13 @@ interface YtDlpStatus {
 - `MIUPY_GPU=on|off|auto` continua funcionando e, quando definida, manda sobre o modo salvo
   (`envOverride`).
 - `auto` mantém o recuo para software onde a GPU derruba o app (Wayland + NVIDIA). `on` força a
-  GPU mesmo assim; se o app cair, o usuário volta com `MIUPY_GPU=off`.
+  GPU mesmo assim. Quando `on` veio das configurações nessa combinação, a casca grava
+  `gpu-startup-pending` no diretório de dados antes da janela. O frontend chama
+  `system_gpu_startup_confirmed` cinco segundos após montar para apagar a sentinela; uma saída
+  normal também a apaga. Se a próxima abertura encontrar a sentinela com modo salvo `on`, a casca
+  abre em software, restaura `auto` no banco e informa o recuo em `GpuStatus.reason`.
+  `MIUPY_GPU` explícita mantém precedência e não arma sentinela. Uma nova escolha na tela de
+  Configurações descarta uma sentinela antiga, permitindo outra tentativa voluntária.
 
 ### Capas guardadas no disco (RF-05, RF-12)
 
@@ -386,6 +401,21 @@ interface YtDlpStatus {
 - A casca busca a foto em segundo plano depois de um download ou de `metadata_get_artist`, grava
   em `covers/artistas/<artistId>.jpg` e guarda `imageCredit` (autor e licença do arquivo no
   Commons), que a interface mostra junto da foto.
+- Se o artista ainda não tiver MBID, `metadata_get_artist` tenta obtê-lo antes da foto, na mesma
+  consulta. Falhas temporárias de rede ou tempo esgotado permitem nova tentativa após 10 s;
+  ausência real de dados mantém o intervalo de 5 min.
+
+### Ritmo das APIs de metadados (RF-12)
+
+- MusicBrainz compartilha um limite de uma chamada por segundo em toda a instância da casca.
+  LRCLIB tem fila própria, com intervalo mínimo de 2 s. Respostas 503/429 e falhas de transporte
+  recebem até três tentativas, com espera crescente e respeito a `Retry-After`. Uma indicação de
+  espera acima de 8 s encerra a consulta sem antecipar nova chamada; cada operação de API tem
+  limite total de 15 s no provedor, e a casca corta antes as leituras de letra, artista e foto
+  (12 s). O lote avança para a faixa seguinte quando uma consulta falha.
+- Letra e foto não encontradas (e erros definitivos, como MBID inválido) são consultadas de novo
+  após 5 min. Só falhas temporárias — rede, 503/429 e tempo esgotado — permitem nova tentativa
+  após 10 s; os dados locais são preservados.
 
 ### Busca no YouTube (RF-09, RF-23)
 

@@ -5,7 +5,7 @@
   import { onMount } from 'svelte';
   import { springTransition } from './lib/motion';
   import { captureSharedLayout } from './lib/layoutPresence';
-  import { isMock } from './lib/ipc';
+  import { api, isMock } from './lib/ipc';
   import { router } from './lib/stores/router.svelte';
   import { player } from './lib/stores/player.svelte';
   import { library } from './lib/stores/library.svelte';
@@ -33,11 +33,14 @@
   import SettingsPage from './routes/Settings.svelte';
 
   onMount(() => {
+    // @req RNF-09: só confirma quando a interface montou e permaneceu aberta por cinco segundos.
+    const gpuTimer = window.setTimeout(() => { void api.systemGpuStartupConfirmed().catch(console.error); }, 5000);
     void settings.init();
     void profile.load();
     void player.start();
     void library.start();
     void downloads.start();
+    return () => window.clearTimeout(gpuTimer);
   });
 
   let main: HTMLElement;

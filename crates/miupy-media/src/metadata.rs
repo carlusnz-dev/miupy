@@ -22,6 +22,9 @@ const MAX_IMAGE_BYTES: usize = 15 * 1024 * 1024;
 const MIN_MATCH_SCORE: u64 = 70;
 const WIKIDATA_ENDPOINT: &str = "https://www.wikidata.org/w/api.php";
 const COMMONS_ENDPOINT: &str = "https://commons.wikimedia.org/w/api.php";
+const MAX_API_ATTEMPTS: usize = 3;
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(8);
+const MAX_REQUEST_WINDOW: Duration = Duration::from_secs(15);
 
 /// Gravação encontrada no MusicBrainz.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -206,6 +209,8 @@ pub struct MetadataConfig {
     pub timeout: Duration,
     /// Intervalo mínimo entre requisições ao MusicBrainz.
     pub musicbrainz_interval: Duration,
+    /// Intervalo mínimo entre requisições ao LRCLIB.
+    pub lrclib_interval: Duration,
 }
 
 impl MetadataConfig {
@@ -217,6 +222,7 @@ impl MetadataConfig {
             lrclib_url: "https://lrclib.net/api".into(),
             timeout: Duration::from_secs(20),
             musicbrainz_interval: Duration::from_secs(1),
+            lrclib_interval: Duration::from_secs(2),
         }
     }
 }
@@ -226,6 +232,7 @@ pub struct OnlineMetadata {
     http: reqwest::Client,
     cfg: MetadataConfig,
     mb_limiter: RateLimiter,
+    lrclib_limiter: RateLimiter,
     user_agent: String,
 }
 
@@ -317,6 +324,7 @@ impl OnlineMetadata {
         Ok(Self {
             http,
             mb_limiter: RateLimiter::new(cfg.musicbrainz_interval),
+            lrclib_limiter: RateLimiter::new(cfg.lrclib_interval),
             cfg,
             user_agent,
         })
@@ -353,8 +361,9 @@ impl OnlineMetadata {
 
     async fn mb_get(&self, path: &str, params: &[(&str, &str)]) -> Result<Value> {
         let url = Self::url(&self.cfg.musicbrainz_url, path, params)?;
-        self.mb_limiter.acquire().await;
-        let resp = self.http.get(url).send().await?;
+        let resp = self
+            .request_limited(url, &self.mb_limiter, "MusicBrainz")
+            .await?;
         Self::check(resp, "MusicBrainz")
             .await?
             .json()
@@ -368,13 +377,90 @@ impl OnlineMetadata {
         params: &[(&str, &str)],
     ) -> Result<T> {
         let url = Self::url(&self.cfg.lrclib_url, path, params)?;
-        let resp = self.http.get(url).send().await?;
+        let resp = self
+            .request_limited(url, &self.lrclib_limiter, "LRCLIB")
+            .await?;
         Self::check(resp, "LRCLIB")
             .await?
             .json()
             .await
             .map_err(Into::into)
     }
+
+    // @req RF-12
+    /// Cada tentativa reserva uma vaga nova; uma espera excessiva do servidor encerra a busca.
+    async fn request_limited(
+        &self,
+        url: reqwest::Url,
+        limiter: &RateLimiter,
+        what: &str,
+    ) -> Result<reqwest::Response> {
+        tokio::time::timeout(
+            MAX_REQUEST_WINDOW,
+            self.request_limited_inner(url, limiter, what),
+        )
+        .await
+        .map_err(|_| {
+            MediaError::Network(format!("{what}: tempo esgotado após várias tentativas"))
+        })?
+    }
+
+    async fn request_limited_inner(
+        &self,
+        url: reqwest::Url,
+        limiter: &RateLimiter,
+        what: &str,
+    ) -> Result<reqwest::Response> {
+        for attempt in 0..MAX_API_ATTEMPTS {
+            limiter.acquire().await;
+            let response = self.http.get(url.clone()).send().await;
+            let retry_after = match response {
+                Ok(resp) if !matches!(resp.status().as_u16(), 429 | 503) => return Ok(resp),
+                Ok(resp) => {
+                    if attempt + 1 == MAX_API_ATTEMPTS {
+                        return Ok(resp);
+                    }
+                    let wait = retry_after(&resp);
+                    if wait.is_some_and(|d| d > MAX_RETRY_WAIT) {
+                        return Self::check(resp, what).await;
+                    }
+                    wait
+                }
+                Err(e) => {
+                    if attempt + 1 == MAX_API_ATTEMPTS {
+                        return Err(e.into());
+                    }
+                    None
+                }
+            };
+            let backoff = Duration::from_secs(1 << attempt);
+            tokio::time::sleep(backoff.max(retry_after.unwrap_or_default())).await;
+        }
+        unreachable!("o laço sempre devolve na última tentativa")
+    }
+}
+
+// @req RF-12
+fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
+    let raw = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?;
+    retry_after_value(raw)
+}
+
+fn retry_after_value(raw: &str) -> Option<Duration> {
+    if let Ok(seconds) = raw.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let date = chrono::DateTime::parse_from_rfc2822(raw).ok()?;
+    let seconds = u64::try_from(date.timestamp()).ok()?;
+    Some(
+        (std::time::UNIX_EPOCH + Duration::from_secs(seconds))
+            .duration_since(std::time::SystemTime::now())
+            .unwrap_or_default(),
+    )
 }
 
 #[async_trait]
@@ -1009,6 +1095,111 @@ mod tests {
             seen
         });
         (format!("http://{addr}"), h)
+    }
+
+    /// Servidor com cabeçalhos opcionais e horário virtual de cada chamada.
+    async fn timed_server(
+        responses: Vec<(u16, &'static str, &'static str)>,
+    ) -> (String, tokio::task::JoinHandle<Vec<tokio::time::Instant>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let h = tokio::spawn(async move {
+            let mut times = Vec::new();
+            for (status, headers, body) in responses {
+                let (mut s, _) = listener.accept().await.unwrap();
+                times.push(tokio::time::Instant::now());
+                let mut buf = [0u8; 8192];
+                let n = s.read(&mut buf).await.unwrap();
+                assert!(n > 0);
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\n{headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                s.write_all(head.as_bytes()).await.unwrap();
+                s.write_all(body.as_bytes()).await.unwrap();
+            }
+            times
+        });
+        (format!("http://{addr}"), h)
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn musicbrainz_repete_503_respeitando_retry_after_e_limite() {
+        let (base, h) =
+            timed_server(vec![(503, "Retry-After: 2\r\n", "{}"), (200, "", MB_ART)]).await;
+        let p = provider(&base);
+        let result = p
+            .artist_details("056e4f3e-d505-4dad-8ec1-d04f521cbb56")
+            .await;
+        assert_eq!(result.unwrap().name, "Daft Punk");
+        let times = h.await.unwrap();
+        assert!(times[1].duration_since(times[0]) >= Duration::from_secs(2));
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn lrclib_repete_429_e_respeita_intervalo_proprio() {
+        let (base, h) = timed_server(vec![
+            (429, "Retry-After: 2\r\n", "{}"),
+            (200, "", LRC_SEARCH),
+            (200, "", LRC_SEARCH),
+        ])
+        .await;
+        let p = provider(&base);
+        assert!(
+            p.lyrics("Song", "A", None, Some(181_000))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            p.lyrics("Song", "A", None, Some(181_000))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let times = h.await.unwrap();
+        assert!(times[1].duration_since(times[0]) >= Duration::from_secs(2));
+        assert!(times[2].duration_since(times[1]) >= Duration::from_secs(2));
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn lrclib_para_apos_tres_tentativas() {
+        let (base, h) = timed_server(vec![(503, "", "{}"), (503, "", "{}"), (503, "", "{}")]).await;
+        let err = provider(&base)
+            .lyrics("Song", "A", None, None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "network");
+        assert_eq!(h.await.unwrap().len(), 3);
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn retry_after_longo_encerra_sem_desrespeitar_o_servidor() {
+        let (base, h) = timed_server(vec![(503, "Retry-After: 60\r\n", "{}")]).await;
+        let err = provider(&base)
+            .lyrics("Song", "A", None, None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "network");
+        assert_eq!(h.await.unwrap().len(), 1);
+    }
+
+    // @test RF-12
+    #[test]
+    fn retry_after_aceita_segundos_e_data_http() {
+        assert_eq!(retry_after_value("3"), Some(Duration::from_secs(3)));
+        assert!(
+            retry_after_value("Wed, 14 Oct 2037 12:00:00 GMT").unwrap() > Duration::from_secs(8)
+        );
+        assert_eq!(
+            retry_after_value("Wed, 14 Oct 2020 12:00:00 GMT"),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(retry_after_value("inválido"), None);
     }
 
     fn provider(base: &str) -> OnlineMetadata {
