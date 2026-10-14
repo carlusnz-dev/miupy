@@ -1,6 +1,6 @@
 {
   "projeto": "miupy",
-  "versao": "0.2.0",
+  "versao": "0.2.1",
   "atualizadoEm": "2026-10-14",
   "sessao": "2026-10-14_sessao-04",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
