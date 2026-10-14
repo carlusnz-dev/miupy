@@ -24,11 +24,11 @@ src/lib/stores/       router, player, library, downloads, recommendations, setti
 src/lib/components/   Icon, MeshGradient, Cover, TrackRow, Nav, PlayerBar, MiniPlayer, Modal, ...
 src/lib/actions.ts    ações compartilhadas (favoritar, baixar) com aviso por toast
 src/routes/           uma tela por rota (Home, Library, Playlists, PlaylistDetail, YouTube, Downloads,
-                      NowPlaying, Artist, Stats, Wrapped, Profile, Settings)
+                      NowPlaying, Artist, Stats, Dna, Wrapped, Profile, Settings)
 ```
 
 Rotas (hash): `#/`, Discoteca (`#/biblioteca`), `#/playlists`, `#/playlists/:id`, `#/youtube`, `#/downloads`,
-`#/tocando`, `#/artista/:id`, `#/estatisticas`, `#/retrospectiva`, `#/perfil`, `#/configuracoes`.
+`#/tocando`, `#/artista/:id`, `#/estatisticas`, `#/dna`, `#/retrospectiva`, `#/perfil`, `#/configuracoes`.
 
 ## Cliente IPC e mock
 
@@ -61,6 +61,13 @@ fora da tela (`IntersectionObserver`) e com a aba oculta; `prefers-reduced-motio
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 
+## Movimento entre telas
+
+`lib/layoutPresence.ts` registra apenas nós marcados com `use:useShared` ou a propriedade `shared` de
+`Cover`. Chaves iguais produzem FLIP por `transform` entre telas; ao trocar de rota no meio do
+movimento, a captura mais nova substitui a anterior. A animação reduzida usa apenas fade. O modal
+nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
+
 ## Layout
 
 `md` (>= 768 px): barra lateral + conteúdo + barra do player. Abaixo: conteúdo + mini player + navegação
@@ -69,4 +76,4 @@ cheia `#/tocando`. Atalhos: espaço, setas (seek/volume), `M`; ignorados em camp
 
 ## Rastreabilidade
 
-Componentes e stores levam `@req RF-NN` / `RNF-NN`. Não há testes automatizados no frontend ainda.
+Componentes e stores levam `@req RF-NN` / `RNF-NN`. Testes de stores e utilitários: `npm test` (Vitest).

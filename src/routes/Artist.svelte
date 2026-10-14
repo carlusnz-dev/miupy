@@ -9,6 +9,7 @@
   import MeshGradient from '../lib/components/MeshGradient.svelte';
   import State from '../lib/components/State.svelte';
   import Icon from '../lib/components/Icon.svelte';
+  import { useShared } from '../lib/layoutPresence';
 
   let { id }: { id: string } = $props();
   let info = $state<ArtistInfo | null>(null);
@@ -38,10 +39,10 @@
 {:else}
   <MeshGradient class="mb-6 rounded-2xl border border-line" intensity={0.85}>
     <div class="flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-end md:p-8">
-      <Cover path={info.imagePath} seed={info.id} size={128} rounded="999px" />
+      <div><Cover path={info.imagePath} seed={info.id} size={128} rounded="999px" shared={`artist-cover-${info.id}`} />{#if info.imagePath && info.imageCredit}<p class="mt-1 max-w-32 text-center text-xs text-faint">{info.imageCredit}</p>{/if}</div>
       <div class="min-w-0">
         <p class="eyebrow !text-fg/70">Artista</p>
-        <h1 class="text-3xl font-bold tracking-tight md:text-5xl">{info.name}</h1>
+        <h1 class="text-3xl font-bold tracking-tight md:text-5xl" use:useShared={`artist-title-${info.id}`}>{info.name}</h1>
         <p class="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-fg/80">
           <span>{info.trackCount} {info.trackCount === 1 ? 'faixa' : 'faixas'}</span>
           {#if info.country}<span class="chip">{info.country}</span>{/if}

@@ -13,7 +13,10 @@
   import Transport from '../lib/components/Transport.svelte';
   import Seek from '../lib/components/Seek.svelte';
   import Volume from '../lib/components/Volume.svelte';
+  import ShuffleButton from '../lib/components/ShuffleButton.svelte';
+  import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
+  import { useShared } from '../lib/layoutPresence';
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
@@ -24,6 +27,7 @@
   $effect(() => {
     const id = t?.id;
     lyrics = null; lyricsErr = false;
+    if (id) void scores.load([id]);
     if (!id) return;
     lyricsLoading = true;
     let cancelled = false;
@@ -57,12 +61,12 @@
   <MeshGradient class="min-h-full">
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <Cover path={t.coverPath} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" />
+        <Cover path={t.coverPath} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <h1 class="text-2xl font-bold leading-tight">{t.title}</h1>
+            <h1 class="text-2xl font-bold leading-tight" use:useShared={`track-title-${t.id}`}>{t.title}</h1>
             <p class="mt-1 text-muted">
-              {#if t.artistId}<a class="hover:underline" href={href(paths.artist(t.artistId))}>{t.artistName}</a>{:else}{t.artistName ?? 'Artista desconhecido'}{/if}
+              {#if t.artistId}<a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>{:else}<span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>{/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>
             <p class="mt-2 flex flex-wrap gap-1.5">
@@ -72,6 +76,7 @@
               {#each t.genres as genre}<span class="chip">{genre}</span>{/each}
               <span class="chip">{t.source === 'youtube' ? 'YouTube' : 'Local'}</span>
               <span class="chip">{fmtTime(t.durationMs)}</span>
+              {#if scores.get(t.id)}<span class="chip" title={scoreTooltip(scores.get(t.id))}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
             </p>
           </div>
           <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
@@ -80,7 +85,7 @@
         </div>
         <Seek />
         <div class="flex items-center justify-between">
-          <span class="w-24"></span>
+          <div class="w-24"><ShuffleButton /></div>
           <Transport big />
           <div class="hidden w-24 md:block"></div><div class="md:hidden"><Volume /></div>
         </div>

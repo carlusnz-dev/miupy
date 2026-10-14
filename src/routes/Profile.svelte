@@ -5,7 +5,27 @@
   import { notify } from '../lib/stores/toast.svelte';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import State from '../lib/components/State.svelte';
+  import Avatar from '../lib/components/Avatar.svelte';
+  import { readImageUpload, previewImage } from '../lib/util/imageUpload';
+  import { notifyError } from '../lib/stores/toast.svelte';
 
+  let avatarInput = $state<HTMLInputElement>();
+  let preview = $state<string | null>(null);
+  let upload = $state<import('../lib/ipc').ImageUpload | null>(null);
+  async function choose(file: File | null) { // @req RF-21
+    if (!file) return;
+    try { upload = await readImageUpload(file); preview = previewImage(upload); }
+    catch (e) { notifyError(e); }
+  }
+  async function saveAvatar() {
+    if (!upload) return;
+    try { await profile.setAvatar(upload); preview = null; upload = null; notify('Foto atualizada.'); }
+    catch (e) { notifyError(e); }
+  }
+  async function removeAvatar() {
+    try { await profile.setAvatar(null); preview = null; upload = null; notify('Foto removida.'); }
+    catch (e) { notifyError(e); }
+  }
   let form = $state<Profile | null>(null);
   let errors = $state<Partial<Record<'displayName' | 'username' | 'email' | 'phone', string>>>({});
   let saving = $state(false);
@@ -65,7 +85,11 @@
 {:else}
   <div class="grid max-w-3xl gap-6 md:grid-cols-[auto_1fr]">
     <div class="flex flex-col items-center gap-2">
-      <div class="grid h-28 w-28 place-items-center rounded-full text-4xl font-black" style="background:var(--grad-lava);color:var(--lava-ink)" role="img" aria-label="Avatar com as iniciais {profile.initials}">{profile.initials}</div>
+      <Avatar path={preview ?? profile.data?.avatarPath ?? null} initials={profile.initials} size={112} />
+      <input bind:this={avatarInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher foto" onchange={(e) => { void choose(e.currentTarget.files?.[0] ?? null); e.currentTarget.value = ''; }} />
+      <button class="btn btn-sm" onclick={() => avatarInput?.click()}>Escolher foto</button>
+      {#if upload}<button class="btn btn-sm btn-primary" onclick={saveAvatar}>Salvar foto</button>{/if}
+      {#if preview || profile.data?.avatarPath}<button class="btn btn-sm" onclick={removeAvatar}>Remover foto</button>{/if}
       <p class="text-sm font-medium">{form.displayName || '—'}</p>
       <p class="text-xs text-muted">@{form.username || 'usuario'}</p>
     </div>

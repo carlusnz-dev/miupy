@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MiupyApi, PlayerState, Track } from '../ipc';
 
 const track: Track = { id: 'one', title: 'Uma faixa', artistId: null, artistName: 'Artista', album: null, durationMs: 120000, filePath: null, coverPath: null, source: 'youtube', sourceId: 'yt1', codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: 1, genres: [], releaseYear: null };
-const state: PlayerState = { status: 'playing', track, positionMs: 0, durationMs: track.durationMs, volume: .8, muted: false, queue: ['one'], queueIndex: 0, streaming: true };
+const state: PlayerState = { status: 'playing', track, positionMs: 0, durationMs: track.durationMs, volume: .8, muted: false, queue: ['one'], queueIndex: 0, streaming: true, shuffle: 'off' };
 let handlers: Record<string, (value: unknown) => void>;
 let fake: MiupyApi;
 
@@ -70,7 +70,7 @@ describe('library', () => {
     vi.useFakeTimers();
     const { library } = await import('./library.svelte');
     await library.start();
-    fake.playlistList = vi.fn(async () => [{ id: 'pl', name: 'Lista', description: null, coverPath: null, trackCount: 0, totalDurationMs: 0, createdAt: 0, updatedAt: 0 }]) as MiupyApi['playlistList'];
+    fake.playlistList = vi.fn(async () => [{ id: 'pl', name: 'Lista', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: 0, updatedAt: 0 }]) as MiupyApi['playlistList'];
     handlers['library://changed']({ reason: 'playlist' });
     await vi.advanceTimersByTimeAsync(120);
     expect(library.version).toBe(1);

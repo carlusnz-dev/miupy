@@ -4,6 +4,7 @@
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
   import { springTransition } from './lib/motion';
+  import { captureSharedLayout } from './lib/layoutPresence';
   import { isMock } from './lib/ipc';
   import { router } from './lib/stores/router.svelte';
   import { player } from './lib/stores/player.svelte';
@@ -26,6 +27,7 @@
   import NowPlaying from './routes/NowPlaying.svelte';
   import Artist from './routes/Artist.svelte';
   import Stats from './routes/Stats.svelte';
+  import Dna from './routes/Dna.svelte';
   import Wrapped from './routes/Wrapped.svelte';
   import Profile from './routes/Profile.svelte';
   import SettingsPage from './routes/Settings.svelte';
@@ -65,6 +67,14 @@
     }
   }
   const name = $derived(router.current.name);
+  let routeKey = $state('');
+  $effect.pre(() => {
+    const next = `${router.current.name}:${router.current.params.id ?? ''}`;
+    if (routeKey && routeKey !== next) {
+      captureSharedLayout(name !== 'now-playing' && routeKey.startsWith('now-playing:'));
+    }
+    routeKey = next;
+  });
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -89,6 +99,7 @@
           {:else if name === 'downloads'}<Downloads />
           {:else if name === 'artist'}{#key router.current.params.id}<Artist id={router.current.params.id} />{/key}
           {:else if name === 'stats'}<Stats />
+          {:else if name === 'dna'}<Dna />
           {:else if name === 'wrapped'}<Wrapped />
           {:else if name === 'profile'}<Profile />
           {:else if name === 'settings'}<SettingsPage />

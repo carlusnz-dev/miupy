@@ -1,10 +1,10 @@
 {
   "summary": {
     "total": 37,
-    "verificado": 29,
+    "verificado": 30,
     "implementado": 4,
     "soTeste": 0,
-    "pendente": 4
+    "pendente": 3
   },
   "unknownIds": [],
   "requirements": [
@@ -128,7 +128,7 @@
         "src/lib/components/Seek.svelte:2",
         "src/lib/components/Transport.svelte:3",
         "src/lib/ipc/api.ts:1",
-        "src/lib/ipc/api.ts:21",
+        "src/lib/ipc/api.ts:22",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/stores/player.svelte.ts:1",
         "src/routes/NowPlaying.svelte:4"
@@ -475,8 +475,12 @@
         "src-tauri/src/metadata.rs:61",
         "src-tauri/src/metadata.rs:249",
         "src-tauri/src/metadata.rs:311",
+        "src/lib/ipc/api.ts:52",
+        "src/lib/ipc/mock.ts:424",
+        "src/lib/ipc/tauri.ts:66",
         "src/routes/Artist.svelte:2",
-        "src/routes/NowPlaying.svelte:4"
+        "src/routes/NowPlaying.svelte:4",
+        "src/routes/Settings.svelte:23"
       ],
       "tests": [
         "crates/miupy-core/src/artists.rs:190",
@@ -679,8 +683,10 @@
         "src/lib/components/PlayerBar.svelte:2",
         "src/lib/components/TrackRow.svelte:2",
         "src/lib/ipc/mock.ts:1",
+        "src/lib/ipc/mock.ts:211",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:57",
+        "src/lib/ipc/types.ts:60",
+        "src/lib/stores/player.svelte.ts:31",
         "src/routes/NowPlaying.svelte:2"
       ],
       "tests": [
@@ -734,12 +740,12 @@
         "src-tauri/src/youtube.rs:182",
         "src/lib/components/Recommendations.svelte:2",
         "src/lib/ipc/api.ts:1",
-        "src/lib/ipc/api.ts:54",
+        "src/lib/ipc/api.ts:62",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:120",
+        "src/lib/ipc/mock.ts:127",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:60",
+        "src/lib/ipc/types.ts:64",
         "src/lib/stores/recommendations.svelte.ts:1",
         "src/routes/Home.svelte:2",
         "src/routes/PlaylistDetail.svelte:2",
@@ -786,9 +792,12 @@
         "src-tauri/src/downloads.rs:245",
         "src-tauri/src/metadata.rs:75",
         "src-tauri/src/metadata.rs:143",
+        "src/lib/ipc/api.ts:52",
         "src/lib/ipc/mock.ts:1",
+        "src/lib/ipc/mock.ts:424",
+        "src/lib/ipc/tauri.ts:66",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:26",
+        "src/lib/ipc/types.ts:28",
         "src/routes/NowPlaying.svelte:2"
       ],
       "tests": [
@@ -815,10 +824,20 @@
       "priority": "S",
       "description": "Escolher, trocar e remover a foto do usuário no perfil.",
       "implementation": [
-        "crates/miupy-core/src/profile.rs:101"
+        "crates/miupy-core/src/profile.rs:101",
+        "src/lib/components/Avatar.svelte:2",
+        "src/lib/ipc/api.ts:68",
+        "src/lib/ipc/mock.ts:522",
+        "src/lib/ipc/tauri.ts:82",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/stores/profile.svelte.ts:8",
+        "src/lib/util/imageUpload.ts:1",
+        "src/routes/Profile.svelte:15"
       ],
       "tests": [
-        "crates/miupy-core/src/profile.rs:300"
+        "crates/miupy-core/src/profile.rs:300",
+        "src/lib/util/features.test.ts:25",
+        "src/lib/util/features.test.ts:31"
       ],
       "status": "verificado"
     },
@@ -830,11 +849,25 @@
       "implementation": [
         "crates/miupy-core/src/model.rs:454",
         "crates/miupy-core/src/playlists.rs:95",
-        "crates/miupy-core/src/playlists.rs:136"
+        "crates/miupy-core/src/playlists.rs:136",
+        "src/lib/components/PlaylistCover.svelte:2",
+        "src/lib/ipc/api.ts:37",
+        "src/lib/ipc/mock.ts:12",
+        "src/lib/ipc/mock.ts:139",
+        "src/lib/ipc/mock.ts:346",
+        "src/lib/ipc/tauri.ts:51",
+        "src/lib/ipc/types.ts:37",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/util/imageUpload.ts:1",
+        "src/lib/util/mosaic.ts:1",
+        "src/routes/PlaylistDetail.svelte:69"
       ],
       "tests": [
         "crates/miupy-core/src/playlists.rs:575",
-        "crates/miupy-core/src/playlists.rs:623"
+        "crates/miupy-core/src/playlists.rs:623",
+        "src/lib/util/features.test.ts:15",
+        "src/lib/util/features.test.ts:25",
+        "src/lib/util/features.test.ts:31"
       ],
       "status": "verificado"
     },
@@ -845,12 +878,20 @@
       "description": "Sugerir o texto da busca no YouTube enquanto o usuário digita.",
       "implementation": [
         "crates/miupy-media/src/suggest.rs:8",
-        "crates/miupy-media/src/suggest.rs:14"
+        "crates/miupy-media/src/suggest.rs:14",
+        "src/lib/ipc/api.ts:41",
+        "src/lib/ipc/mock.ts:371",
+        "src/lib/ipc/tauri.ts:54",
+        "src/lib/stores/suggestions.svelte.ts:1",
+        "src/routes/YouTube.svelte:16"
       ],
       "tests": [
         "crates/miupy-media/src/suggest.rs:62",
         "crates/miupy-media/src/suggest.rs:79",
-        "crates/miupy-media/tests/network.rs:63"
+        "crates/miupy-media/tests/network.rs:63",
+        "src/lib/stores/newStores.test.ts:11",
+        "src/lib/stores/newStores.test.ts:26",
+        "src/lib/stores/newStores.test.ts:75"
       ],
       "status": "verificado"
     },
@@ -869,14 +910,23 @@
         "crates/miupy-core/src/shuffle.rs:5",
         "crates/miupy-core/src/shuffle.rs:33",
         "crates/miupy-core/src/shuffle.rs:45",
-        "crates/miupy-core/src/shuffle.rs:63"
+        "crates/miupy-core/src/shuffle.rs:63",
+        "src/lib/components/ShuffleButton.svelte:2",
+        "src/lib/ipc/api.ts:21",
+        "src/lib/ipc/mock.ts:287",
+        "src/lib/ipc/tauri.ts:35",
+        "src/lib/ipc/types.ts:8",
+        "src/lib/ipc/types.ts:61",
+        "src/lib/stores/player.svelte.ts:66",
+        "src/lib/util/shuffle.ts:1"
       ],
       "tests": [
         "crates/miupy-core/src/db.rs:228",
         "crates/miupy-core/src/profile.rs:300",
         "crates/miupy-core/src/shuffle.rs:115",
         "crates/miupy-core/src/shuffle.rs:131",
-        "crates/miupy-core/src/shuffle.rs:147"
+        "crates/miupy-core/src/shuffle.rs:147",
+        "src/lib/util/features.test.ts:7"
       ],
       "status": "verificado"
     },
@@ -892,12 +942,24 @@
         "crates/miupy-core/src/model.rs:354",
         "crates/miupy-core/src/recommendations.rs:58",
         "crates/miupy-core/src/recommendations.rs:169",
-        "crates/miupy-core/src/recommendations.rs:210"
+        "crates/miupy-core/src/recommendations.rs:210",
+        "src/lib/components/TrackRow.svelte:14",
+        "src/lib/ipc/api.ts:60",
+        "src/lib/ipc/mock.ts:501",
+        "src/lib/ipc/mock.ts:505",
+        "src/lib/ipc/tauri.ts:74",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/stores/dna.svelte.ts:1",
+        "src/lib/stores/scores.svelte.ts:1",
+        "src/routes/Dna.svelte:2"
       ],
       "tests": [
         "crates/miupy-core/src/recommendations.rs:711",
         "crates/miupy-core/src/recommendations.rs:744",
-        "crates/miupy-core/src/recommendations.rs:777"
+        "crates/miupy-core/src/recommendations.rs:777",
+        "src/lib/stores/newStores.test.ts:40",
+        "src/lib/stores/newStores.test.ts:56",
+        "src/lib/stores/newStores.test.ts:94"
       ],
       "status": "verificado"
     },
@@ -911,7 +973,13 @@
         "crates/miupy-media/src/ytdlp_manager.rs:24",
         "crates/miupy-media/src/ytdlp_manager.rs:36",
         "crates/miupy-media/src/ytdlp_manager.rs:57",
-        "crates/miupy-media/src/ytdlp_manager.rs:65"
+        "crates/miupy-media/src/ytdlp_manager.rs:65",
+        "src/lib/ipc/api.ts:42",
+        "src/lib/ipc/mock.ts:125",
+        "src/lib/ipc/mock.ts:380",
+        "src/lib/ipc/tauri.ts:55",
+        "src/lib/ipc/types.ts:162",
+        "src/routes/Settings.svelte:23"
       ],
       "tests": [
         "crates/miupy-media/src/ytdlp_manager.rs:402",
@@ -934,7 +1002,9 @@
         "crates/miupy-media/src/metadata.rs:84",
         "crates/miupy-media/src/metadata.rs:93",
         "crates/miupy-media/src/metadata.rs:126",
-        "crates/miupy-media/src/metadata.rs:230"
+        "crates/miupy-media/src/metadata.rs:230",
+        "src/lib/ipc/mock.ts:12",
+        "src/lib/ipc/types.ts:102"
       ],
       "tests": [
         "crates/miupy-core/src/artists.rs:247",
@@ -999,7 +1069,8 @@
       "description": "Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca.",
       "implementation": [
         "src/App.svelte:4",
-        "src/app.css:7"
+        "src/app.css:7",
+        "src/routes/Dna.svelte:2"
       ],
       "tests": [],
       "status": "implementado"
@@ -1044,7 +1115,7 @@
       "implementation": [
         "src/App.svelte:2",
         "src/app.css:189",
-        "src/app.css:227",
+        "src/app.css:231",
         "src/lib/components/Cover.svelte:2",
         "src/lib/components/Toasts.svelte:2",
         "src/lib/components/Transport.svelte:2",
@@ -1078,9 +1149,20 @@
       "title": "Transições com elementos compartilhados",
       "priority": "S",
       "description": "Na troca de tela, elementos presentes nas duas (capa, título, player) animam da posição antiga para a nova (*layout presence*); modais abrem centralizados com animação de pop-up. Respeita `prefers-reduced-motion`.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/TrackRow.svelte:2",
+        "src/lib/layoutPresence.ts:1",
+        "src/lib/motion.ts:20",
+        "src/lib/motion.ts:30",
+        "src/lib/motion.ts:41"
+      ],
+      "tests": [
+        "src/lib/layoutPresence.ts:63",
+        "src/lib/motion.test.ts:5",
+        "src/lib/motion.test.ts:13",
+        "src/lib/motion.test.ts:27"
+      ],
+      "status": "verificado"
     }
   ]
 }

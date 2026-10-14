@@ -5,6 +5,8 @@ export type LavaTheme = 'orange' | 'purple' | 'blue';
 export type SortDir = 'asc' | 'desc';
 export type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
 export type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
+// @req RF-24
+export type ShuffleMode = 'off' | 'random' | 'smart';
 export type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
 
 export interface Track {
@@ -32,6 +34,7 @@ export interface Playlist {
   name: string;
   description: string | null;
   coverPath: string | null;
+  mosaicPaths: string[]; // @req RF-22
   trackCount: number;
   totalDurationMs: number;
   createdAt: number;
@@ -55,6 +58,7 @@ export interface PlayerState {
   queue: string[];
   queueIndex: number;
   streaming: boolean; // @req RF-18
+  shuffle: ShuffleMode; // @req RF-24
 }
 
 // @req RF-19
@@ -95,6 +99,7 @@ export interface ArtistInfo {
   genres: string[];
   bio: string | null;
   imagePath: string | null;
+  imageCredit: string | null; // @req RF-27
   trackCount: number;
 }
 
@@ -154,6 +159,21 @@ export interface Wrapped {
   busiestDay: { date: string; listenedMs: number } | null;
 }
 
+// @req RF-21 RF-22 RF-25 RF-26
+export interface ImageUpload { dataBase64: string; mimeType: string; }
+export interface TrackScore { trackId: string; score: number; plays: number; skips: number; lastPlayedAt: number | null; }
+export interface DnaTrend { kind: 'artist' | 'genre'; id: string | null; label: string; current: number; previous: number; delta: number; }
+export interface Dna {
+  windowDays: number;
+  topArtists: { artistId: string; name: string; score: number }[];
+  topGenres: { genre: string; score: number }[];
+  skipRate: number; previousSkipRate: number;
+  listenedMs: number; previousListenedMs: number;
+  rising: DnaTrend[]; falling: DnaTrend[];
+}
+export type YtDlpState = 'missing' | 'downloading' | 'ready' | 'error';
+export interface YtDlpStatus { state: YtDlpState; version: string | null; path: string | null; checkedAt: number | null; progress: number; error: string | null; }
+
 export type IpcErrorCode =
   | 'not_found'
   | 'invalid_input'
@@ -179,5 +199,8 @@ export interface EventMap {
   'download://progress': DownloadJob;
   'library://changed': { reason: string };
   'recommendations://changed': { count: number };
+  'player://error': { trackId: string; code: string; message: string };
+  'metadata://progress': { done: number; total: number };
+  'ytdlp://status': YtDlpStatus;
 }
 export type EventName = keyof EventMap;
