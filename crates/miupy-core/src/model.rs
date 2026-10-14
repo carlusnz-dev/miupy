@@ -111,6 +111,9 @@ pub struct Track {
     pub is_favorite: bool,
     pub download_status: DownloadStatus,
     pub added_at: i64,
+    // @req RF-20
+    pub genres: Vec<String>,
+    pub release_year: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -139,6 +142,11 @@ pub struct NewTrack {
     pub bitrate: Option<i64>,
     /// Miniatura remota (resultado do YouTube); serve para baixar a capa depois.
     pub thumbnail_url: Option<String>,
+    // @req RF-20
+    pub genres: Vec<String>,
+    pub release_year: Option<i32>,
+    pub mbid: Option<String>,
+    pub isrc: Option<String>,
 }
 
 impl NewTrack {
@@ -162,6 +170,10 @@ impl NewTrack {
             codec: None,
             bitrate: None,
             thumbnail_url,
+            genres: Vec::new(),
+            release_year: None,
+            mbid: None,
+            isrc: None,
         }
     }
 
@@ -179,6 +191,10 @@ impl NewTrack {
             codec: None,
             bitrate: None,
             thumbnail_url: None,
+            genres: Vec::new(),
+            release_year: None,
+            mbid: None,
+            isrc: None,
         }
     }
 }
@@ -205,6 +221,93 @@ pub struct TrackPatch {
     pub duration_ms: Option<i64>,
     #[serde(deserialize_with = "double_option")]
     pub cover_path: Option<Option<String>>,
+    // @req RF-20
+    pub genres: Option<Vec<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub release_year: Option<Option<i32>>,
+    #[serde(deserialize_with = "double_option")]
+    pub mbid: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub isrc: Option<Option<String>>,
+}
+
+// @req RF-19
+text_enum!(
+    /// Origem de uma candidata encontrada pela casca.
+    RecommendationReasonKind {
+        SimilarTrack => "similarTrack",
+        Artist => "artist",
+        Genre => "genre",
+    }
+);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationReason {
+    pub kind: RecommendationReasonKind,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recommendation {
+    pub source_id: String,
+    pub title: String,
+    pub artist: String,
+    pub duration_ms: i64,
+    pub thumbnail_url: Option<String>,
+    pub score: f64,
+    pub reasons: Vec<RecommendationReason>,
+}
+
+/// Resultado externo que a casca obteve para uma semente de `recommendation_seeds`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationCandidate {
+    pub source_id: String,
+    pub title: String,
+    pub artist: String,
+    pub duration_ms: i64,
+    pub thumbnail_url: Option<String>,
+    pub genres: Vec<String>,
+    pub seed_kind: RecommendationReasonKind,
+    pub seed_label: String,
+    pub seed_track_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationSeed {
+    pub kind: RecommendationReasonKind,
+    pub label: String,
+    /// `sourceId` só existe em sementes de faixa.
+    pub source_id: Option<String>,
+    pub track_id: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasteArtist {
+    pub artist_id: String,
+    pub name: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasteGenre {
+    pub genre: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasteProfile {
+    pub top_artists: Vec<TasteArtist>,
+    pub top_genres: Vec<TasteGenre>,
+    pub total_listened_ms: i64,
+    pub skip_rate: f64,
 }
 
 /// Dados do arquivo ao fim de um download.

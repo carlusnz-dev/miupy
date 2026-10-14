@@ -18,7 +18,7 @@ use crate::text::{clean_opt, fts_query};
 /// Colunas lidas por [`track_from_row`], nesta ordem.
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.title, t.artist_id, a.name, t.album, \
      t.duration_ms, t.file_path, t.cover_path, t.source, t.source_id, t.codec, t.bitrate, \
-     (f.track_id IS NOT NULL), t.download_status, t.added_at";
+     (f.track_id IS NOT NULL), t.download_status, t.added_at, t.genres, t.release_year";
 
 pub(crate) const TRACK_FROM: &str = "tracks t \
      LEFT JOIN artists a ON a.id = t.artist_id \
@@ -41,7 +41,33 @@ pub(crate) fn track_from_row(r: &Row<'_>) -> rusqlite::Result<Track> {
         is_favorite: r.get(12)?,
         download_status: r.get(13)?,
         added_at: r.get(14)?,
+        genres: serde_json::from_str(&r.get::<_, String>(15)?).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(15, rusqlite::types::Type::Text, Box::new(e))
+        })?,
+        release_year: r.get(16)?,
     })
+}
+
+// @req RF-20
+pub(crate) fn normalized_genres(genres: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = genres
+        .iter()
+        .map(|g| g.trim().to_lowercase())
+        .filter(|g| !g.is_empty())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn valid_year(year: Option<i32>) -> Result<Option<i32>> {
+    if year.is_some_and(|y| !(1..=9999).contains(&y)) {
+        Err(Error::invalid(
+            "ano de lançamento fora do intervalo 1..=9999",
+        ))
+    } else {
+        Ok(year)
+    }
 }
 
 fn require_title(title: &str) -> Result<String> {
@@ -69,13 +95,35 @@ impl Database {
     /// Biblioteca inteira, filtrada e ordenada por `query`. Sem `sortBy`: mais recentes
     /// primeiro. `sortBy = position` não tem sentido fora de uma playlist e vira `addedAt`.
     pub fn list_tracks(&self, query: &TrackQuery) -> Result<Vec<Track>> {
-        self.select_tracks(None, query)
+        self.select_tracks(None, None, query)
+    }
+
+    // @req RF-05 RF-08
+    /// Faixas do artista com a mesma busca, ordenação e filtro de favoritas da biblioteca.
+    pub fn list_tracks_by_artist(&self, artist_id: &str, query: &TrackQuery) -> Result<Vec<Track>> {
+        self.get_artist_info(artist_id)?;
+        self.select_tracks(None, Some(artist_id), query)
+    }
+
+    // @req RF-03
+    /// Resolve a fila na ordem recebida; IDs inexistentes são ignorados.
+    pub fn get_tracks_by_ids(&self, track_ids: &[String]) -> Result<Vec<Track>> {
+        let mut out = Vec::with_capacity(track_ids.len());
+        for id in track_ids {
+            match self.get_track(id) {
+                Ok(track) => out.push(track),
+                Err(Error::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
     }
 
     /// Consulta comum à biblioteca (`playlist_id = None`) e às playlists.
     pub(crate) fn select_tracks(
         &self,
         playlist_id: Option<&str>,
+        artist_id: Option<&str>,
         q: &TrackQuery,
     ) -> Result<Vec<Track>> {
         let mut sql = format!("SELECT {TRACK_COLUMNS} FROM {TRACK_FROM}");
@@ -85,6 +133,10 @@ impl Database {
         if let Some(pid) = playlist_id {
             sql.push_str(" JOIN playlist_tracks pt ON pt.track_id = t.id AND pt.playlist_id = ?");
             args.push(pid.to_owned().into());
+        }
+        if let Some(aid) = artist_id {
+            wheres.push("t.artist_id = ?");
+            args.push(aid.to_owned().into());
         }
         if let Some(text) = q.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
             // só pontuação: nada pesquisável, nenhum resultado
@@ -143,6 +195,9 @@ impl Database {
     /// (miniatura, duração zerada): nunca sobrescreve o que o usuário editou.
     pub fn upsert_track(&self, new: &NewTrack) -> Result<Upserted> {
         let title = require_title(&new.title)?;
+        let genres = serde_json::to_string(&normalized_genres(&new.genres))
+            .map_err(|e| Error::Internal(e.to_string()))?;
+        let release_year = valid_year(new.release_year)?;
         if new.duration_ms < 0 {
             return Err(Error::invalid("a duração não pode ser negativa"));
         }
@@ -181,9 +236,13 @@ impl Database {
                 self.conn.execute(
                     "UPDATE tracks SET
                         thumbnail_url = COALESCE(thumbnail_url, ?2),
-                        duration_ms = CASE WHEN duration_ms = 0 THEN ?3 ELSE duration_ms END
+                        duration_ms = CASE WHEN duration_ms = 0 THEN ?3 ELSE duration_ms END,
+                        genres = CASE WHEN genres = '[]' THEN ?4 ELSE genres END,
+                        release_year = COALESCE(release_year, ?5),
+                        mbid = COALESCE(mbid, ?6), isrc = COALESCE(isrc, ?7)
                      WHERE id = ?1",
-                    params![id, clean_opt(new.thumbnail_url.as_deref()), new.duration_ms],
+                    params![id, clean_opt(new.thumbnail_url.as_deref()), new.duration_ms,
+                        genres, release_year, clean_opt(new.mbid.as_deref()), clean_opt(new.isrc.as_deref())],
                 )?;
                 return Ok(Upserted {
                     track: self.get_track(&id)?,
@@ -204,8 +263,8 @@ impl Database {
             self.conn.execute(
                 "INSERT INTO tracks (id, title, artist_id, album, duration_ms, file_path,
                         cover_path, source, source_id, codec, bitrate, thumbnail_url,
-                        download_status, added_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                        download_status, added_at, genres, release_year, mbid, isrc)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
                 params![
                     id,
                     title,
@@ -221,6 +280,10 @@ impl Database {
                     clean_opt(new.thumbnail_url.as_deref()),
                     status,
                     self.now_ms(),
+                    genres,
+                    release_year,
+                    clean_opt(new.mbid.as_deref()),
+                    clean_opt(new.isrc.as_deref()),
                 ],
             )?;
             self.record_action(
@@ -321,13 +384,35 @@ impl Database {
                 None => cur.cover_path.clone(),
             };
             let duration = patch.duration_ms.unwrap_or(cur.duration_ms);
+            let genres = match &patch.genres {
+                Some(v) => serde_json::to_string(&normalized_genres(v))
+                    .map_err(|e| Error::Internal(e.to_string()))?,
+                None => serde_json::to_string(&cur.genres)
+                    .map_err(|e| Error::Internal(e.to_string()))?,
+            };
+            let release_year = valid_year(patch.release_year.unwrap_or(cur.release_year))?;
             if duration < 0 {
                 return Err(Error::invalid("a duração não pode ser negativa"));
             }
             self.conn.execute(
                 "UPDATE tracks SET title = ?2, artist_id = ?3, album = ?4, duration_ms = ?5,
-                        cover_path = ?6 WHERE id = ?1",
-                params![track_id, title, artist_id, album, duration, cover],
+                        cover_path = ?6, genres = ?7, release_year = ?8,
+                        mbid = CASE WHEN ?9 THEN ?10 ELSE mbid END,
+                        isrc = CASE WHEN ?11 THEN ?12 ELSE isrc END WHERE id = ?1",
+                params![
+                    track_id,
+                    title,
+                    artist_id,
+                    album,
+                    duration,
+                    cover,
+                    genres,
+                    release_year,
+                    patch.mbid.is_some(),
+                    patch.mbid.as_ref().and_then(|v| v.as_deref()),
+                    patch.isrc.is_some(),
+                    patch.isrc.as_ref().and_then(|v| v.as_deref())
+                ],
             )?;
             self.get_track(track_id)
         })
@@ -376,6 +461,75 @@ impl Database {
 mod tests {
     use super::*;
     use crate::testutil::*;
+
+    // @test RF-05 RF-08 RF-03 RF-20
+    #[test]
+    fn metadados_artista_e_fila_preservam_contrato() {
+        let db = db();
+        let mut n = NewTrack::youtube("metadata", "Árvore", Some("Ana".into()), 30_000, None);
+        n.genres = vec![" ROCK ".into(), "rock".into(), "Jazz".into()];
+        n.release_year = Some(2020);
+        n.mbid = Some("mbid-1".into());
+        n.isrc = Some("isrc-1".into());
+        let a = db.upsert_track(&n).unwrap().track;
+        assert_eq!(a.genres, ["jazz", "rock"]);
+        assert_eq!(a.release_year, Some(2020));
+        let serialized = serde_json::to_value(&a).unwrap();
+        assert_eq!(serialized["releaseYear"], 2020);
+        assert_eq!(serialized["genres"], serde_json::json!(["jazz", "rock"]));
+        let b = add_track(&db, "Outra", "Ana", 10_000);
+        let c = add_track(&db, "Fora", "Bia", 10_000);
+        db.set_favorite(&a.id, true).unwrap();
+        db.set_favorite(&c.id, true).unwrap();
+        let q = TrackQuery {
+            search: Some("arv".into()),
+            favorites_only: Some(true),
+            sort_by: Some(TrackSort::Title),
+            ..Default::default()
+        };
+        assert_eq!(
+            titles(
+                &db.list_tracks_by_artist(a.artist_id.as_deref().unwrap(), &q)
+                    .unwrap()
+            ),
+            ["Árvore"]
+        );
+        assert_eq!(
+            db.list_tracks_by_artist("nope", &q).unwrap_err().code(),
+            "not_found"
+        );
+        db.delete_track(&c.id).unwrap();
+        assert_eq!(
+            titles(
+                &db.get_tracks_by_ids(&[b.id.clone(), c.id.clone(), a.id.clone(), b.id.clone()])
+                    .unwrap()
+            ),
+            ["Outra", "Árvore", "Outra"]
+        );
+        let patched = db
+            .update_track(
+                &a.id,
+                &TrackPatch {
+                    genres: Some(vec!["POP".into(), "pop".into()]),
+                    release_year: Some(None),
+                    mbid: Some(None),
+                    isrc: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(patched.genres, ["pop"]);
+        assert_eq!(patched.release_year, None);
+        let meta: (Option<String>, Option<String>) = db
+            .conn
+            .query_row(
+                "SELECT mbid, isrc FROM tracks WHERE id = ?1",
+                [&a.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(meta, (None, None));
+    }
 
     fn q(search: &str) -> TrackQuery {
         TrackQuery {
@@ -603,6 +757,7 @@ mod tests {
                     album: Some(Some("Disco".into())),
                     duration_ms: Some(5000),
                     cover_path: Some(Some("/c.jpg".into())),
+                    ..Default::default()
                 },
             )
             .unwrap();

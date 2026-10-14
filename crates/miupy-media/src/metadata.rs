@@ -37,6 +37,10 @@ pub struct RecordingMatch {
     pub duration_ms: Option<u64>,
     /// Pontuação do MusicBrainz, 0..=100.
     pub score: u32,
+    /// Gêneros/tags por votos, em minúsculas, sem repetição (até 8).
+    pub genres: Vec<String>,
+    pub release_year: Option<u32>,
+    pub isrc: Option<String>,
 }
 
 /// Dados de artista. `bio` e `image_url` ficam `None` com o MusicBrainz.
@@ -215,7 +219,7 @@ impl OnlineMetadata {
 
 #[async_trait]
 impl MetadataProvider for OnlineMetadata {
-    // @req RF-12
+    // @req RF-12 RF-20
     async fn find_recording(
         &self,
         title: &str,
@@ -229,7 +233,23 @@ impl MetadataProvider for OnlineMetadata {
                 &[("query", &query), ("fmt", "json"), ("limit", "10")],
             )
             .await?;
-        Ok(parse_recordings(&json, duration_ms))
+        let Some(mut recording) = parse_recordings(&json, duration_ms) else {
+            return Ok(None);
+        };
+        let details = self
+            .mb_get(
+                &format!("recording/{}", recording.mbid),
+                &[("inc", "genres tags isrcs"), ("fmt", "json")],
+            )
+            .await?;
+        recording.genres = ranked_genres(&details);
+        recording.release_year = release_year(&details).or(recording.release_year);
+        recording.isrc = details
+            .get("isrcs")
+            .and_then(Value::as_array)
+            .and_then(|items| items.iter().filter_map(Value::as_str).next())
+            .map(String::from);
+        Ok(Some(recording))
     }
 
     // @req RF-12
@@ -456,6 +476,13 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
                 release_mbids,
                 duration_ms: r.get("length").and_then(Value::as_u64),
                 score: score as u32,
+                genres: ranked_genres(r),
+                release_year: release_year(r),
+                isrc: r
+                    .get("isrcs")
+                    .and_then(Value::as_array)
+                    .and_then(|items| items.iter().filter_map(Value::as_str).next())
+                    .map(String::from),
             })
         })
         .collect();
@@ -466,9 +493,13 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
             .filter(|(diff, _)| *diff <= 10_000)
             .min_by_key(|(diff, _)| *diff)
             .map(|(_, c)| c.clone());
-        if close.is_some() {
-            return close;
-        }
+        return close.or_else(|| {
+            candidates
+                .iter()
+                .all(|candidate| candidate.duration_ms.is_none())
+                .then(|| candidates.first().cloned())
+                .flatten()
+        });
     }
     candidates.into_iter().next()
 }
@@ -487,28 +518,7 @@ pub(crate) fn parse_artist(json: &Value) -> Result<ArtistDetails> {
         .ok_or_else(|| MediaError::Internal("artista sem id na resposta".into()))?
         .to_string();
     let name = str_of(json, "name").unwrap_or_default().to_string();
-    let top = |key: &str| -> Vec<String> {
-        let mut items: Vec<(u64, String)> = json
-            .get(key)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|g| {
-                        Some((
-                            g.get("count").and_then(Value::as_u64).unwrap_or(0),
-                            str_of(g, "name")?.to_string(),
-                        ))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        items.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        items.into_iter().map(|(_, n)| n).take(5).collect()
-    };
-    let mut genres = top("genres");
-    if genres.is_empty() {
-        genres = top("tags");
-    }
+    let genres = ranked_genres(json);
     Ok(ArtistDetails {
         mbid,
         name,
@@ -517,6 +527,42 @@ pub(crate) fn parse_artist(json: &Value) -> Result<ArtistDetails> {
         bio: None,
         image_url: None,
     })
+}
+
+// @req RF-20
+fn ranked_genres(json: &Value) -> Vec<String> {
+    let mut items: Vec<(u64, String)> = ["genres", "tags"]
+        .into_iter()
+        .flat_map(|key| {
+            json.get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|item| {
+            Some((
+                item.get("count").and_then(Value::as_u64).unwrap_or(0),
+                str_of(item, "name")?.trim().to_lowercase(),
+            ))
+        })
+        .filter(|(_, name)| !name.is_empty())
+        .collect();
+    items.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .map(|(_, name)| name)
+        .filter(|name| seen.insert(name.clone()))
+        .take(8)
+        .collect()
+}
+
+fn release_year(json: &Value) -> Option<u32> {
+    str_of(json, "first-release-date")
+        .or_else(|| str_of(json, "date"))
+        .and_then(|date| date.get(..4))
+        .and_then(|year| year.parse::<u32>().ok())
+        .filter(|year| (1000..=3000).contains(year))
 }
 
 #[derive(Debug, Deserialize)]
@@ -650,13 +696,22 @@ mod tests {
         assert_eq!(m.release_mbids[2], "a0b5b3c2-1111-4c2a-9b5e-0000000000ff");
         assert_eq!(m.duration_ms, Some(369_000));
         assert_eq!(m.score, 100);
-        // duração distante: cai no primeiro; resultado de pontuação baixa nunca é escolhido
-        let m2 = parse_recordings(&fixture(MB_REC), Some(10_000)).unwrap();
-        assert_eq!(m2.mbid, m.mbid);
+        // duração distante não atribui o lançamento de outra gravação à faixa.
+        assert!(parse_recordings(&fixture(MB_REC), Some(10_000)).is_none());
         assert!(parse_recordings(&fixture(r#"{"recordings":[]}"#), None).is_none());
         assert!(parse_recordings(&fixture(r#"{"x":1}"#), None).is_none());
         let baixa = fixture(r#"{"recordings":[{"id":"a","title":"t","score":10}]}"#);
         assert!(parse_recordings(&baixa, None).is_none());
+    }
+
+    // @test RF-20
+    #[test]
+    fn generos_ordenados_sem_repeticao_e_ano() {
+        let value = fixture(
+            r#"{"first-release-date":"2007-04-02","genres":[{"name":"Rock","count":3},{"name":"JAZZ","count":8}],"tags":[{"name":"rock","count":2},{"name":"Funk","count":5}]}"#,
+        );
+        assert_eq!(ranked_genres(&value), ["jazz", "funk", "rock"]);
+        assert_eq!(release_year(&value), Some(2007));
     }
 
     // @test RF-12
@@ -666,7 +721,7 @@ mod tests {
         assert_eq!(a.mbid, "056e4f3e-d505-4dad-8ec1-d04f521cbb56");
         assert_eq!(a.name, "Daft Punk");
         assert_eq!(a.country.as_deref(), Some("FR"));
-        assert_eq!(a.genres, vec!["house", "electronic", "funk"]);
+        assert_eq!(a.genres, vec!["house", "electronic", "french", "funk"]);
         assert_eq!(a.bio, None);
         assert_eq!(a.image_url, None);
         // sem genres, usa tags
@@ -782,18 +837,25 @@ mod tests {
         OnlineMetadata::new(cfg).unwrap()
     }
 
-    // @test RF-12
+    // @test RF-12 RF-20
     #[tokio::test]
     async fn http_envia_user_agent_e_le_resposta() {
-        let (base, h) =
-            mock_server(vec![(200, "application/json", MB_REC.as_bytes().to_vec())]).await;
+        let detail = include_str!("../tests/fixtures/musicbrainz_recording_detail.json");
+        let (base, h) = mock_server(vec![
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+            (200, "application/json", detail.as_bytes().to_vec()),
+        ])
+        .await;
         let m = provider(&base)
             .find_recording("Get Lucky", Some("Daft Punk"), Some(369_000))
             .await
             .unwrap()
             .unwrap();
         assert_eq!(m.title, "Get Lucky");
-        let req = h.await.unwrap().remove(0).to_lowercase();
+        assert_eq!(m.release_year, Some(2015));
+        let requests = h.await.unwrap();
+        assert!(requests[1].contains("inc=genres+tags+isrcs"));
+        let req = requests[0].to_lowercase();
         assert!(req.contains("user-agent: miupy/"), "{req}");
         assert!(req.contains("teste@example.com"));
         assert!(

@@ -1,5 +1,75 @@
-{"id": "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf", "title": "Minha playlist", "_type": "playlist", "entries": [
- {"_type": "url", "ie_key": "Youtube", "id": "dQw4w9WgXcQ", "title": "Never Gonna Give You Up", "duration": 213, "channel": "Rick Astley", "thumbnails": [{"url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "height": 188, "width": 336}]},
- {"_type": "url", "ie_key": "Youtube", "id": "9bZkp7q19f0", "title": "PSY - GANGNAM STYLE", "duration": 253, "uploader": "officialpsy"},
- null
-]}
+{
+  "_type": "playlist",
+  "id": "PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj",
+  "title": "Pop Music Playlist - Timeless Pop Songs (Updated Weekly 2026)",
+  "entries": [
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "ekr2nIex040",
+      "title": "ROSÉ & Bruno Mars - APT. (Official Music Video)",
+      "duration": 174,
+      "channel": "ROSÉ",
+      "uploader": "ROSÉ",
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg"
+        },
+        {
+          "url": "https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg"
+        }
+      ]
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "kPa7bsKwL-c",
+      "title": "Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)",
+      "duration": 253,
+      "channel": "Lady Gaga",
+      "uploader": "Lady Gaga",
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/kPa7bsKwL-c/hqdefault.jpg"
+        },
+        {
+          "url": "https://i.ytimg.com/vi/kPa7bsKwL-c/hqdefault.jpg"
+        }
+      ]
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "euCqAq6BRa4",
+      "title": "DJ Snake - Let Me Love You (Official Music Video) ft. Justin Bieber",
+      "duration": 206,
+      "channel": "DJ Snake",
+      "uploader": "DJ Snake",
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/euCqAq6BRa4/hqdefault.jpg"
+        },
+        {
+          "url": "https://i.ytimg.com/vi/euCqAq6BRa4/hqdefault.jpg"
+        }
+      ]
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "V9PVRfjEBTI",
+      "title": "Billie Eilish - BIRDS OF A FEATHER (Official Music Video)",
+      "duration": 231,
+      "channel": "Billie Eilish",
+      "uploader": "Billie Eilish",
+      "thumbnails": [
+        {
+          "url": "https://i.ytimg.com/vi/V9PVRfjEBTI/hqdefault.jpg"
+        },
+        {
+          "url": "https://i.ytimg.com/vi/V9PVRfjEBTI/hqdefault.jpg"
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+// @req RF-18 RF-19 RF-20
 // Tipos do contrato docs/arquitetura/ipc.md (manter em sincronia).
 
 export type LavaTheme = 'orange' | 'purple' | 'blue';
@@ -22,6 +23,8 @@ export interface Track {
   isFavorite: boolean;
   downloadStatus: DownloadStatus;
   addedAt: number;
+  genres: string[]; // @req RF-20
+  releaseYear: number | null;
 }
 
 export interface Playlist {
@@ -51,6 +54,20 @@ export interface PlayerState {
   muted: boolean;
   queue: string[];
   queueIndex: number;
+  streaming: boolean; // @req RF-18
+}
+
+// @req RF-19
+export type RecommendationReasonKind = 'similarTrack' | 'artist' | 'genre';
+export interface RecommendationReason { kind: RecommendationReasonKind; label: string; }
+export interface Recommendation {
+  sourceId: string; title: string; artist: string; durationMs: number;
+  thumbnailUrl: string | null; score: number; reasons: RecommendationReason[];
+}
+export interface TasteProfile {
+  topArtists: { artistId: string; name: string; score: number }[];
+  topGenres: { genre: string; score: number }[];
+  totalListenedMs: number; skipRate: number;
 }
 
 export interface SearchResult {
@@ -161,5 +178,6 @@ export interface EventMap {
   'player://progress': ProgressPayload;
   'download://progress': DownloadJob;
   'library://changed': { reason: string };
+  'recommendations://changed': { count: number };
 }
 export type EventName = keyof EventMap;

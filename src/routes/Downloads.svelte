@@ -21,6 +21,9 @@
   async function cancel(j: DownloadJob) {
     try { await api.downloadCancel({ jobId: j.id }); } catch (e) { notifyError(e); }
   }
+  async function clearFinished() {
+    try { await downloads.clearFinished(); } catch (e) { notifyError(e); }
+  }
   const label: Record<string, string> = { queued: 'Na fila', downloading: 'Baixando', done: 'Concluído', error: 'Falhou', none: '' };
 </script>
 
@@ -35,7 +38,7 @@
       </p>
       {#if j.status === 'downloading' || j.status === 'queued'}
         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-s3" role="progressbar" aria-label="Progresso do download de {t?.title ?? 'faixa'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(j.progress * 100)}>
-          <div class="h-full rounded-full transition-[width] duration-300" style="width:{Math.max(2, j.progress * 100)}%;background:var(--grad-lava)"></div>
+          <div class="h-full w-full origin-left rounded-full transition-transform duration-300" style="transform:scaleX({Math.max(0.02, j.progress)});background:var(--grad-lava)"></div>
         </div>
       {/if}
     </div>
@@ -57,14 +60,14 @@
 {:else if downloads.error}
   <State kind="error" text={downloads.error} onretry={() => downloads.reload()} />
 {:else if downloads.jobs.length === 0}
-  <State kind="empty" icon="download" title="Nenhum download" text="Baixe faixas pela biblioteca, por uma playlist ou pela busca do YouTube." />
+  <State kind="empty" icon="download" title="Nenhum download" text="Baixe faixas pela discoteca, por uma playlist ou pela busca do YouTube." />
 {:else}
   {#if active.length}
     <h2 class="eyebrow mb-2">Em andamento</h2>
     <ul class="mb-6 flex flex-col gap-2">{#each active as j (j.id)}{@render item(j)}{/each}</ul>
   {/if}
   {#if finished.length}
-    <h2 class="eyebrow mb-2">Finalizados</h2>
+    <div class="mb-2 flex items-center justify-between"><h2 class="eyebrow">Finalizados</h2><button class="btn btn-sm" onclick={clearFinished}>Limpar concluídos</button></div>
     <ul class="flex flex-col gap-2">{#each finished as j (j.id)}{@render item(j)}{/each}</ul>
   {/if}
 {/if}

@@ -133,7 +133,7 @@ impl Database {
     /// Faixas da playlist, filtradas e ordenadas. Sem `sortBy`: por posição.
     pub fn playlist_tracks(&self, playlist_id: &str, query: &TrackQuery) -> Result<Vec<Track>> {
         self.get_playlist(playlist_id)?;
-        self.select_tracks(Some(playlist_id), query)
+        self.select_tracks(Some(playlist_id), None, query)
     }
 
     // @req RF-06

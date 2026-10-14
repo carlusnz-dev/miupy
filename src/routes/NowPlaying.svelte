@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @req RF-18 RF-20
   // Tela cheia "tocando agora": capa, metadados, controles, seek, volume, favorito, fila e letra.
   // @req RF-01 RF-02 RF-03 RF-04 RF-05 RF-12
   import { api, type Lyrics } from '../lib/ipc';
@@ -49,8 +50,8 @@
 </script>
 
 {#if !t}
-  <State kind="empty" icon="music" title="Nada tocando" text="Escolha uma faixa na biblioteca ou numa playlist para começar.">
-    <a class="btn btn-primary" href={href(paths.library)}>Ir para a biblioteca</a>
+  <State kind="empty" icon="music" title="Nada tocando" text="Escolha uma faixa na discoteca ou numa playlist para começar.">
+    <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
   </State>
 {:else}
   <MeshGradient class="min-h-full">
@@ -66,11 +67,14 @@
             </p>
             <p class="mt-2 flex flex-wrap gap-1.5">
               {#if t.codec}<span class="chip">{t.codec.toUpperCase()}{t.bitrate ? ` ${t.bitrate} kbps` : ''}</span>{/if}
+              {#if player.state.streaming}<span class="chip text-lava-text">{player.isLoading ? 'Conectando…' : 'Streaming'}</span>{/if}
+              {#if t.releaseYear}<span class="chip">{t.releaseYear}</span>{/if}
+              {#each t.genres as genre}<span class="chip">{genre}</span>{/each}
               <span class="chip">{t.source === 'youtube' ? 'YouTube' : 'Local'}</span>
               <span class="chip">{fmtTime(t.durationMs)}</span>
             </p>
           </div>
-          <button class="icon-btn {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+          <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
             <Icon name="heart" size={24} fill={t.isFavorite} />
           </button>
         </div>
@@ -117,7 +121,7 @@
           {:else if lines.length}
             <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
               {#each lines as l, i}
-                <button data-i={i} class="border-0 bg-transparent px-2 transition-colors {i === activeLine ? 'text-lava-text' : 'text-faint hover:text-muted'}" onclick={() => player.seek(l.timeMs)}>{l.text || '♪'}</button>
+                <button data-i={i} class="border-0 bg-transparent px-2 {i === activeLine ? 'text-lava-text' : 'text-faint hover:text-muted'}" onclick={() => player.seek(l.timeMs)}>{l.text || '♪'}</button>
               {/each}
             </div>
           {:else if lyrics?.plain}
