@@ -7,6 +7,10 @@ quadro em 60 Hz, o medidor conta como "rápido" o quadro abaixo de 16,7 ms + 1 m
 
 ## O medidor
 
+> **Atenção no app real:** o roteiro toca de verdade a primeira faixa da discoteca (troca a fila
+> e a posição do player) e emite um `library://changed` real. Baixe o volume antes e espere
+> perder a fila atual.
+
 `src/lib/dev/perf.ts` existe só em desenvolvimento: `main.ts` o importa sob `import.meta.env.DEV`,
 então ele (e o mock) ficam fora do `dist/`. Ele mede o intervalo entre quadros por
 `requestAnimationFrame` durante todo o roteiro e, quando o motor suporta (Chromium; não o Firefox nem o
