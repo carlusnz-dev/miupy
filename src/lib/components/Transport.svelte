@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @req RNF-08
   // Botões de transporte reutilizados no player de barra e no "tocando agora". @req RF-01 RF-03
   import { player } from '../stores/player.svelte';
   import Icon from './Icon.svelte';
@@ -10,7 +11,7 @@
     <Icon name="prev" size={big ? 26 : 20} />
   </button>
   <button
-    class="grid shrink-0 place-items-center rounded-full border-0 {big ? 'h-16 w-16' : 'h-10 w-10'}"
+    class="motion-bounce grid shrink-0 place-items-center rounded-full border-0 {big ? 'h-16 w-16' : 'h-10 w-10'}"
     style="background:var(--grad-lava);color:var(--lava-ink)"
     aria-label={player.isPlaying ? 'Pausar' : 'Tocar'} disabled={!player.active} onclick={() => player.toggle()}
   >

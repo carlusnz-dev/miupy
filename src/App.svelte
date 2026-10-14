@@ -1,7 +1,9 @@
 <script lang="ts">
+  // @req RNF-08
   // Casca da aplicação: layout responsivo, inicialização das stores, atalhos de teclado.
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
+  import { springTransition } from './lib/motion';
   import { isMock } from './lib/ipc';
   import { router } from './lib/stores/router.svelte';
   import { player } from './lib/stores/player.svelte';
@@ -74,10 +76,11 @@
       {#if isMock}
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
+      {#key `${name}:${router.current.params.id ?? ''}`}
       {#if name === 'now-playing'}
-        <NowPlaying />
+        <div transition:springTransition><NowPlaying /></div>
       {:else}
-        <div class="mx-auto max-w-6xl p-4 md:p-8">
+        <div class="mx-auto max-w-6xl p-4 md:p-8" transition:springTransition>
           {#if name === 'home'}<Home />
           {:else if name === 'library'}<Library />
           {:else if name === 'playlists'}<Playlists />
@@ -93,6 +96,7 @@
           {/if}
         </div>
       {/if}
+      {/key}
     </main>
   </div>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @req RNF-08
   import { api } from '../ipc';
   import { hash } from '../util/format';
   import Icon from './Icon.svelte';
@@ -17,7 +18,7 @@
 </script>
 
 <div
-  class="relative grid shrink-0 place-items-center overflow-hidden bg-s3 {cls}"
+  class="motion-cover relative grid shrink-0 place-items-center overflow-hidden bg-s3 {cls}"
   style="border-radius:{rounded};{dim ? `width:${dim};height:${dim};` : ''}aspect-ratio:1/1"
   role={label ? 'img' : undefined}
   aria-label={label || undefined}

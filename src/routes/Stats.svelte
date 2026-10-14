@@ -1,6 +1,7 @@
 <script lang="ts">
+  // @req RF-19
   // Estatísticas da discoteca. @req RF-14
-  import { api, errorMessage, type LibraryStats } from '../lib/ipc';
+  import { api, errorMessage, type LibraryStats, type TasteProfile } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
@@ -11,10 +12,11 @@
   import Icon from '../lib/components/Icon.svelte';
 
   let s = $state<LibraryStats | null>(null);
+  let taste = $state<TasteProfile | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   async function load() {
-    try { s = await api.statsLibrary(); error = null; } catch (e) { error = errorMessage(e); } finally { loading = false; }
+    try { [s, taste] = await Promise.all([api.statsLibrary(), api.statsTaste()]); error = null; } catch (e) { error = errorMessage(e); } finally { loading = false; }
   }
   $effect(() => { library.version; void load(); });
 
@@ -48,6 +50,16 @@
     {/each}
   </dl>
 
+  {#if taste}
+    <section class="card mb-8 p-4" aria-labelledby="taste-heading">
+      <h2 id="taste-heading" class="mb-2 text-lg font-semibold">Seu gosto musical</h2>
+      <p class="text-sm text-muted">{fmtDuration(taste.totalListenedMs)} ouvidos · {Math.round(taste.skipRate * 100)}% de faixas puladas</p>
+      <div class="mt-3 grid gap-4 sm:grid-cols-2">
+        <div><h3 class="mb-1 text-sm font-semibold">Artistas</h3>{#each taste.topArtists as a}<p class="truncate text-sm text-muted">{a.name}</p>{/each}</div>
+        <div><h3 class="mb-1 text-sm font-semibold">Gêneros</h3>{#each taste.topGenres as g}<span class="chip mr-1 mb-1">{g.genre}</span>{/each}</div>
+      </div>
+    </section>
+  {/if}
   <h2 class="mb-2 text-lg font-semibold">Mais tocadas</h2>
   {#if s.topTracks.length === 0}
     <State kind="empty" title="Sem reproduções ainda" text="Ouça algumas faixas e elas aparecem aqui." />

@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Busca no YouTube: resultados, adicionar à biblioteca/playlist, baixar. @req RF-09 RF-10
+  // Busca no YouTube: resultados, adicionar à discoteca/playlist, baixar. @req RF-09 RF-10
   import { api, errorMessage, type SearchResult } from '../lib/ipc';
   import { ui } from '../lib/stores/ui.svelte';
   import { notify, notifyError } from '../lib/stores/toast.svelte';
@@ -33,12 +33,12 @@
       results = results?.map((x) => (x.sourceId === r.sourceId ? { ...x, inLibrary: true } : x)) ?? null;
       if (then === 'download') await downloadTracks(tracks.map((t) => t.id));
       else if (then === 'playlist') ui.pickPlaylist(tracks.map((t) => t.id));
-      else notify('Adicionada à biblioteca.');
+      else notify('Adicionada à discoteca.');
     } catch (e) { notifyError(e); } finally { busy = null; }
   }
 </script>
 
-<PageHeader title="Buscar no YouTube" subtitle="Encontre músicas, adicione à biblioteca e baixe para ouvir offline." />
+<PageHeader title="Buscar no YouTube" subtitle="Encontre músicas, adicione à discoteca e baixe para ouvir offline." />
 
 <form class="mb-5 flex gap-2" onsubmit={search} role="search">
   <div class="relative flex-1">
@@ -65,7 +65,7 @@
           <p class="truncate text-sm font-medium">{r.title}</p>
           <p class="truncate text-xs text-muted">{r.artist} · {fmtTime(r.durationMs)}</p>
         </div>
-        {#if r.inLibrary}<span class="chip text-ok"><Icon name="check" size={12} />Na biblioteca</span>{/if}
+        {#if r.inLibrary}<span class="chip text-ok"><Icon name="check" size={12} />Na discoteca</span>{/if}
         <div class="flex gap-1.5">
           {#if !r.inLibrary}
             <button class="btn btn-sm" disabled={busy === r.sourceId} onclick={() => add(r)}><Icon name="plus" size={14} />Adicionar</button>

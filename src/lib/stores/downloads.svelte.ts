@@ -26,6 +26,12 @@ class DownloadsStore {
     finally { this.loading = false; }
   }
 
+  async clearFinished() { // @req RF-10
+    const count = await api.downloadClearFinished();
+    this.jobs = this.jobs.filter((j) => j.status !== 'done' && j.status !== 'error');
+    return count;
+  }
+
   /** Para o trackId, devolve o job mais recente. */
   forTrack(trackId: string) {
     for (let i = this.jobs.length - 1; i >= 0; i--) if (this.jobs[i].trackId === trackId) return this.jobs[i];

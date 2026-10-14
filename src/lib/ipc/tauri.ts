@@ -1,3 +1,4 @@
+// @req RF-03 RF-05 RF-10 RF-15 RF-19
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { MiupyApi } from './api';
@@ -30,9 +31,11 @@ export function createTauriApi(): MiupyApi {
     playerPrevious: () => call('player_previous'),
     playerSetVolume: (a) => call('player_set_volume', a),
     playerSetMuted: (a) => call('player_set_muted', a),
+    playerGetQueue: () => call('player_get_queue'),
 
     libraryListTracks: (a) => call('library_list_tracks', a ?? {}),
     libraryGetTrack: (a) => call('library_get_track', a),
+    libraryListTracksByArtist: (a) => call('library_list_tracks_by_artist', a),
     librarySetFavorite: (a) => call('library_set_favorite', a),
     libraryDeleteTrack: (a) => call('library_delete_track', a),
 
@@ -52,6 +55,7 @@ export function createTauriApi(): MiupyApi {
     downloadEnqueuePlaylist: (a) => call('download_enqueue_playlist', a),
     downloadList: () => call('download_list'),
     downloadCancel: (a) => call('download_cancel', a),
+    downloadClearFinished: () => call('download_clear_finished'),
 
     metadataRefreshTrack: (a) => call('metadata_refresh_track', a),
     metadataGetArtist: (a) => call('metadata_get_artist', a),
@@ -59,6 +63,11 @@ export function createTauriApi(): MiupyApi {
 
     statsLibrary: () => call('stats_library'),
     statsWrapped: (a) => call('stats_wrapped', a),
+    statsWrappedYears: () => call('stats_wrapped_years'),
+    statsTaste: () => call('stats_taste'),
+    recommendationsList: (a) => call('recommendations_list', a ?? {}),
+    recommendationsRefresh: (a) => call('recommendations_refresh', a ?? {}),
+    recommendationsDismiss: (a) => call('recommendations_dismiss', a),
 
     profileGet: () => call('profile_get'),
     profileUpdate: (a) => call('profile_update', a),

@@ -22,7 +22,7 @@
   $effect(() => { void load(); });
 
   async function remove(p: Playlist) {
-    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na biblioteca.`, 'Apagar', true))) return;
+    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: p.id }); notify('Playlist apagada.'); } catch (e) { notifyError(e); }
   }
 </script>
@@ -44,7 +44,7 @@
 {:else}
   <ul class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
     {#each library.playlists as p (p.id)}
-      <li class="card group relative p-3 transition-colors hover:bg-s2">
+      <li class="card group relative p-3 hover:bg-s2">
         <a href={href(paths.playlist(p.id))} class="block" aria-label="Abrir playlist {p.name}">
           <Cover path={p.coverPath} seed={p.id} class="mb-3 w-full" />
           <span class="block truncate font-semibold">{p.name}</span>

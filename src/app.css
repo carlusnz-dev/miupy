@@ -113,7 +113,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   min-height: 2.5rem; padding: 0 1rem; border-radius: 999px;
   border: 1px solid var(--line-strong); background: transparent; font-weight: 600; font-size: 0.875rem;
-  transition: background-color 0.15s, border-color 0.15s;
+
 }
 .btn:hover:not(:disabled) { background: var(--surface-3); }
 .btn-primary { background: var(--grad-lava); color: var(--lava-ink); border-color: transparent; }
@@ -123,7 +123,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .icon-btn {
   display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
   border: 0; background: transparent; color: var(--fg-muted); flex: none;
-  transition: background-color 0.15s, color 0.15s;
+
 }
 .icon-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--fg); }
 .icon-btn.on { color: var(--lava-text); }
@@ -167,7 +167,7 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 @keyframes mesh-b { 0% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } }
 @keyframes mesh-c { 0% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } 100% { transform: translate3d(0, 10%, 0) scale(1); } }
 .mesh-layer { position: absolute; width: 90%; height: 90%; will-change: transform; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.mesh.paused .mesh-layer { animation-play-state: paused; }
+.mesh.paused .mesh-layer { animation-play-state: paused; will-change: auto; }
 @media (prefers-reduced-motion: reduce) { .mesh-layer { animation: none !important; } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -185,3 +185,47 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 @media (min-width: 768px) {
   :root { --nav-h: 0px; }
 }
+
+/* Primitivas de movimento curtas; apenas transform e opacity. @req RNF-08 RNF-09 */
+@keyframes spring-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.97); }
+  65% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.008); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes spring-out { to { opacity: 0; transform: translate3d(0, 7px, 0) scale(.98); } }
+@keyframes spring-bounce {
+  40% { transform: scale(.88); }
+  75% { transform: scale(1.09); }
+  to { transform: scale(1); }
+}
+.motion-page { animation: spring-in 280ms both; }
+.motion-item { animation: spring-in 280ms both; }
+.motion-item:nth-child(10n + 2) { animation-delay: 25ms; }
+.motion-item:nth-child(10n + 3) { animation-delay: 50ms; }
+.motion-item:nth-child(10n + 4) { animation-delay: 75ms; }
+.motion-player { animation: spring-in 240ms both; }
+.motion-toast { animation: spring-in 260ms both; }
+.motion-bounce:active { animation: spring-bounce 220ms; will-change: transform; }
+.btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover {
+  transition: transform 180ms linear(0, .43 30%, 1.1 70%, 1), opacity 160ms;
+}
+.btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover { transform: translate3d(0, -2px, 0); }
+.btn:active:not(:disabled), .icon-btn:active:not(:disabled), .group[role='listitem']:active { transform: scale(.96); }
+.group[role='listitem']:hover, .motion-cover:hover { transform: translate3d(0, -1px, 0); }
+.motion-cover img { animation: fade-image 180ms both; }
+@keyframes fade-image { from { opacity: 0; } to { opacity: 1; } }
+dialog.modal[open] { animation: spring-in 260ms both; }
+dialog.modal[open]::backdrop { animation: fade-image 180ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .motion-page, .motion-item, .motion-player, .motion-toast, dialog.modal[open] { animation: fade-image 100ms both; will-change: auto; }
+  .motion-bounce:active { animation: none; will-change: auto; }
+  .btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover { transition: none; }
+  .btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover,
+  .btn:active:not(:disabled), .icon-btn:active:not(:disabled), .group[role='listitem']:active,
+  .group[role='listitem']:hover, .motion-cover:hover { transform: none; }
+}
+/* Fechamento do dialog nativo com transição discreta de display. @req RNF-08 */
+dialog.modal { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); transition: opacity 180ms, transform 180ms, display 180ms allow-discrete, overlay 180ms allow-discrete; }
+dialog.modal[open] { opacity: 1; transform: none; }
+@starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { dialog.modal { transform: none; transition: opacity 90ms, display 90ms allow-discrete, overlay 90ms allow-discrete; } }

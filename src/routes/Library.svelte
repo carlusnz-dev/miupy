@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Biblioteca: busca, ordenação, filtro de favoritas e seleção múltipla.
+  // Discoteca: busca, ordenação, filtro de favoritas e seleção múltipla.
   // @req RF-05 RF-08 RF-10
   import { api, errorMessage, type SortDir, type Track, type TrackSort } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
@@ -43,7 +43,7 @@
   const filtering = $derived(search.trim() !== '' || favoritesOnly);
 </script>
 
-<PageHeader title="Biblioteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(tracks.reduce((s, t) => s + t.durationMs, 0))}`}>
+<PageHeader title="Discoteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(tracks.reduce((s, t) => s + t.durationMs, 0))}`}>
   {#snippet actions()}
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar tudo</button>
   {/snippet}
@@ -68,7 +68,7 @@
   {#if filtering}
     <State kind="empty" icon="search" title="Nenhuma faixa encontrada" text="Ajuste a busca ou tire o filtro de favoritas." />
   {:else}
-    <State kind="empty" title="Biblioteca vazia" text="Adicione músicas pela busca do YouTube." />
+    <State kind="empty" title="Discoteca vazia" text="Adicione músicas pela busca do YouTube." />
   {/if}
 {:else}
   <label class="mb-1 flex items-center gap-2 px-2 text-xs text-muted">
