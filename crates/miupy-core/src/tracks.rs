@@ -79,6 +79,19 @@ fn require_title(title: &str) -> Result<String> {
 }
 
 impl Database {
+    // @req RF-12 RF-20
+    /// Lista as faixas para reprocessamento, em ordem de inclusão. `only_missing` seleciona
+    /// ausência de gêneros, ano ou álbum; título e artista podem ser corrigidos via `TrackPatch`.
+    pub fn tracks_for_metadata_refresh(&self, only_missing: bool) -> Result<Vec<Track>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {TRACK_COLUMNS} FROM {TRACK_FROM}
+             WHERE (?1 = 0 OR t.genres = '[]' OR t.release_year IS NULL OR t.album IS NULL)
+             ORDER BY t.added_at, t.id"
+        ))?;
+        Ok(stmt
+            .query_map([only_missing], track_from_row)?
+            .collect::<rusqlite::Result<_>>()?)
+    }
     // @req RF-05
     pub fn get_track(&self, track_id: &str) -> Result<Track> {
         self.conn
@@ -839,5 +852,62 @@ mod tests {
         let restantes = db.playlist_tracks(&pl.id, &TrackQuery::default()).unwrap();
         assert_eq!(titles(&restantes), ["B"]);
         assert_eq!(db.get_playlist(&pl.id).unwrap().track_count, 1);
+    }
+
+    // @test RF-12 RF-20
+    #[test]
+    fn lista_para_reprocessamento_aplica_ou_nas_lacunas() {
+        let db = db();
+        let mut complete = NewTrack::youtube("complete", "C", Some("Ana".into()), 1000, None);
+        complete.genres = vec!["rock".into()];
+        complete.release_year = Some(2020);
+        complete.album = Some("Disco".into());
+        let complete = db.upsert_track(&complete).unwrap().track;
+        let genre = add_track_album(&db, "G", "Ana", "Disco", 1000);
+        let year = add_track_album(&db, "Y", "Ana", "Disco", 1000);
+        db.update_track(
+            &year.id,
+            &TrackPatch {
+                genres: Some(vec!["rock".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let album = add_track(&db, "A", "Ana", 1000);
+        db.update_track(
+            &album.id,
+            &TrackPatch {
+                genres: Some(vec!["rock".into()]),
+                release_year: Some(Some(2020)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(db.tracks_for_metadata_refresh(false).unwrap().len(), 4);
+        let missing = db.tracks_for_metadata_refresh(true).unwrap();
+        assert_eq!(missing.len(), 3);
+        assert!(!missing.iter().any(|t| t.id == complete.id));
+        assert!(missing.iter().any(|t| t.id == genre.id));
+        assert!(missing.iter().any(|t| t.id == year.id));
+        assert!(missing.iter().any(|t| t.id == album.id));
+        let fixed = db
+            .update_track(
+                &album.id,
+                &TrackPatch {
+                    title: Some("Corrigida".into()),
+                    artist_name: Some(Some("Bia".into())),
+                    album: Some(Some("Novo".into())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (
+                fixed.title.as_str(),
+                fixed.artist_name.as_deref(),
+                fixed.album.as_deref()
+            ),
+            ("Corrigida", Some("Bia"), Some("Novo"))
+        );
     }
 }

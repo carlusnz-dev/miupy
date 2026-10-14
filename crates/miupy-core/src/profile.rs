@@ -4,7 +4,7 @@ use rusqlite::params;
 
 use crate::db::Database;
 use crate::error::{Error, Result};
-use crate::model::{Profile, Settings, SettingsPatch};
+use crate::model::{GpuMode, Profile, Settings, SettingsPatch, ShuffleMode};
 use crate::text::clean_opt;
 
 const MAX_NAME_CHARS: usize = 100;
@@ -96,6 +96,55 @@ impl Database {
             ],
         )?;
         self.get_profile()
+    }
+
+    // @req RF-21
+    /// Troca ou remove o avatar; devolve o caminho anterior para exclusão pela casca.
+    pub fn set_profile_avatar(&self, avatar_path: Option<&str>) -> Result<Option<String>> {
+        let old = self.get_profile()?.avatar_path;
+        self.conn.execute(
+            "UPDATE profile SET avatar_path = ?1, updated_at = ?2 WHERE id = 1",
+            params![clean_opt(avatar_path), self.now_ms()],
+        )?;
+        Ok(old)
+    }
+
+    // @req RF-24
+    /// Modo salvo; não faz parte do `Settings` exposto pelo IPC.
+    pub fn get_shuffle_mode(&self) -> Result<ShuffleMode> {
+        Ok(self
+            .conn
+            .query_row("SELECT shuffle_mode FROM settings WHERE id = 1", [], |r| {
+                r.get(0)
+            })?)
+    }
+
+    // @req RF-24
+    pub fn set_shuffle_mode(&self, mode: ShuffleMode) -> Result<ShuffleMode> {
+        self.conn.execute(
+            "UPDATE settings SET shuffle_mode = ?1, updated_at = ?2 WHERE id = 1",
+            params![mode, self.now_ms()],
+        )?;
+        self.get_shuffle_mode()
+    }
+
+    // @req RNF-09
+    /// Modo de GPU salvo. A casca lê antes de criar a janela; `MIUPY_GPU` manda sobre ele.
+    pub fn get_gpu_mode(&self) -> Result<GpuMode> {
+        Ok(self
+            .conn
+            .query_row("SELECT gpu_mode FROM settings WHERE id = 1", [], |r| {
+                r.get(0)
+            })?)
+    }
+
+    // @req RNF-09
+    pub fn set_gpu_mode(&self, mode: GpuMode) -> Result<GpuMode> {
+        self.conn.execute(
+            "UPDATE settings SET gpu_mode = ?1, updated_at = ?2 WHERE id = 1",
+            params![mode, self.now_ms()],
+        )?;
+        self.get_gpu_mode()
     }
 
     // @req RF-17 RF-02
@@ -246,5 +295,48 @@ mod tests {
             LavaTheme::Blue,
             "falha não grava nada"
         );
+    }
+
+    // @test RF-21 RF-24
+    #[test]
+    fn avatar_e_modo_aleatorio_persistem_separados() {
+        let db = db();
+        assert_eq!(db.set_profile_avatar(Some("/avatar-a.jpg")).unwrap(), None);
+        assert_eq!(
+            db.set_profile_avatar(Some("/avatar-b.jpg"))
+                .unwrap()
+                .as_deref(),
+            Some("/avatar-a.jpg")
+        );
+        assert_eq!(
+            db.get_profile().unwrap().avatar_path.as_deref(),
+            Some("/avatar-b.jpg")
+        );
+        assert_eq!(
+            db.set_profile_avatar(None).unwrap().as_deref(),
+            Some("/avatar-b.jpg")
+        );
+        assert_eq!(db.get_profile().unwrap().avatar_path, None);
+        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Off);
+        assert_eq!(
+            db.set_shuffle_mode(ShuffleMode::Smart).unwrap(),
+            ShuffleMode::Smart
+        );
+        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Smart);
+        assert_eq!(db.get_settings().unwrap().volume, 0.8);
+    }
+
+    // @test RNF-09
+    #[test]
+    fn modo_de_gpu_comeca_em_auto_e_persiste() {
+        let db = db();
+        assert_eq!(db.get_gpu_mode().unwrap(), GpuMode::Auto);
+        assert_eq!(db.set_gpu_mode(GpuMode::Off).unwrap(), GpuMode::Off);
+        assert_eq!(db.get_gpu_mode().unwrap(), GpuMode::Off);
+        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Off);
+        let invalid = db
+            .conn
+            .execute("UPDATE settings SET gpu_mode = 'turbo' WHERE id = 1", []);
+        assert!(invalid.is_err(), "CHECK recusa modo desconhecido");
     }
 }

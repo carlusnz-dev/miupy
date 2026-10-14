@@ -2,9 +2,9 @@
 
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
-`crates/miupy-core/migrations/0001_init.sql` e `0002_recommendations.sql`. A versão do esquema
-fica em `PRAGMA user_version`. A migração 0001 não foi alterada; 0002 funciona sobre bancos com
-dados existentes.
+`crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
+`0003_dna_shuffle_images.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
 
@@ -31,7 +31,8 @@ recommendation_candidates (source_id único; sem FK para a faixa candidata)
 
 ### `artists`
 `id`, `name`, `name_key` (UNIQUE), `mbid`, `country`, `genres` (array JSON), `bio`, `image_path`,
-`created_at`. A identidade é `name_key` (aparado, espaços colapsados, minúsculas, sem acento):
+`image_credit` (desde 0003; autor e licença da foto), `created_at`. A identidade é `name_key`
+(aparado, espaços colapsados, minúsculas, sem acento):
 "Sigur Rós" e "sigur  ros" são o mesmo artista. O nome exibido é o da primeira ocorrência.
 Artistas que ficam sem faixas **não são apagados** (preserva o enriquecimento do MusicBrainz); só
 deixam de aparecer em listagens e contagens.
@@ -104,7 +105,10 @@ o log sobrevive à remoção da entidade. As operações do núcleo registram as
 ### `profile` e `settings`
 Linha única cada (`id INTEGER PRIMARY KEY CHECK (id = 1)`), criada pela migração.
 `profile`: `display_name`, `username`, `email`, `phone` (textos, vazios por padrão),
-`avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8).
+`avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8) e,
+desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`auto|on|off`,
+padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
+`Settings.gpuMode`.
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).

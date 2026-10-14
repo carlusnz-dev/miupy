@@ -54,6 +54,18 @@ text_enum!(
     }
 );
 
+// @req RF-24
+text_enum!(
+    /// Ordem de reprodução salva separadamente de `Settings` do IPC.
+    ShuffleMode { Off => "off", Random => "random", Smart => "smart" }
+);
+
+// @req RNF-09
+text_enum!(
+    /// Aceleração de hardware escolhida pelo usuário; a casca aplica na próxima abertura.
+    GpuMode { Auto => "auto", On => "on", Off => "off" }
+);
+
 #[allow(clippy::derivable_impls)] // o macro de enum não emite `#[default]`
 impl Default for LavaTheme {
     fn default() -> Self {
@@ -310,6 +322,60 @@ pub struct TasteProfile {
     pub skip_rate: f64,
 }
 
+// @req RF-25
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackScore {
+    pub track_id: String,
+    pub score: f64,
+    pub plays: i64,
+    pub skips: i64,
+    pub last_played_at: Option<i64>,
+}
+
+// @req RF-25
+text_enum!(
+    /// Tipo de tendência do DNA.
+    DnaTrendKind { Artist => "artist", Genre => "genre" }
+);
+
+// @req RF-25
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnaTrend {
+    pub kind: DnaTrendKind,
+    pub id: Option<String>,
+    pub label: String,
+    pub current: f64,
+    pub previous: f64,
+    pub delta: f64,
+}
+
+// @req RF-25
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dna {
+    pub window_days: u32,
+    pub top_artists: Vec<TasteArtist>,
+    pub top_genres: Vec<TasteGenre>,
+    pub skip_rate: f64,
+    pub previous_skip_rate: f64,
+    pub listened_ms: i64,
+    pub previous_listened_ms: i64,
+    pub rising: Vec<DnaTrend>,
+    pub falling: Vec<DnaTrend>,
+}
+
+// @req RF-24
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartTrack {
+    pub track_id: String,
+    pub score: f64,
+    pub artist_id: Option<String>,
+    pub genres: Vec<String>,
+}
+
 /// Dados do arquivo ao fim de um download.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -356,6 +422,8 @@ pub struct ArtistInfo {
     pub genres: Vec<String>,
     pub bio: Option<String>,
     pub image_path: Option<String>,
+    // @req RF-27
+    pub image_credit: Option<String>,
     pub track_count: i64,
 }
 
@@ -383,6 +451,8 @@ pub struct Playlist {
     pub name: String,
     pub description: Option<String>,
     pub cover_path: Option<String>,
+    // @req RF-22
+    pub mosaic_paths: Vec<String>,
     pub track_count: i64,
     pub total_duration_ms: i64,
     pub created_at: i64,
