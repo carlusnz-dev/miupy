@@ -20,6 +20,12 @@ Erros são `miupy_core::Error`; `err.code()` devolve o código do ipc (`not_foun
 `invalid_input`, `conflict`, `io`, `unavailable`, `internal`) e o erro serializa como
 `{ code, message }`.
 
+## Normalização de volume
+
+`Database::set_loudness` salva loudness integrado e pico verdadeiro por faixa;
+`Track.loudness_lufs` expõe só o loudness. `Settings.normalization` começa em `normal`.
+`Normalization::gain_db` calcula o ganho por faixa e limita picos conforme o modo.
+
 ## API nova para a casca
 
 ```rust

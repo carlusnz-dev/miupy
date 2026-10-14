@@ -96,6 +96,8 @@ pub trait AudioBackend: Send + Sync {
     fn seek(&self, position_ms: u64) -> Result<()>;
     /// Volume do usuário; valores fora de `0.0..=1.0` são limitados.
     fn set_volume(&self, volume: f32) -> Result<()>;
+    // @req RF-28
+    fn set_normalization_gain_db(&self, gain_db: f32) -> Result<()>;
     fn set_muted(&self, muted: bool) -> Result<()>;
     /// Estado atual (não bloqueia).
     fn state(&self) -> PlaybackState;

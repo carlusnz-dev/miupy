@@ -17,6 +17,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0001_init.sql")),
         M::up(include_str!("../migrations/0002_recommendations.sql")),
         M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
+        M::up(include_str!("../migrations/0004_loudness.sql")),
     ])
 }
 
@@ -121,7 +122,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -162,7 +163,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -216,10 +217,15 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
+        assert_eq!(track.loudness_lufs, None);
+        assert_eq!(
+            db.get_settings().unwrap().normalization,
+            crate::Normalization::Normal
+        );
         assert_eq!(db.get_play_event("e").unwrap().listened_ms, 60_000);
         drop(db);
         let _ = std::fs::remove_file(path);
@@ -256,7 +262,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (

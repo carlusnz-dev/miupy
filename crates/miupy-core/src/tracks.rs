@@ -18,7 +18,7 @@ use crate::text::{clean_opt, fts_query};
 /// Colunas lidas por [`track_from_row`], nesta ordem.
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.title, t.artist_id, a.name, t.album, \
      t.duration_ms, t.file_path, t.cover_path, t.source, t.source_id, t.codec, t.bitrate, \
-     (f.track_id IS NOT NULL), t.download_status, t.added_at, t.genres, t.release_year";
+     (f.track_id IS NOT NULL), t.download_status, t.added_at, t.genres, t.release_year, t.loudness_lufs";
 
 pub(crate) const TRACK_FROM: &str = "tracks t \
      LEFT JOIN artists a ON a.id = t.artist_id \
@@ -45,6 +45,7 @@ pub(crate) fn track_from_row(r: &Row<'_>) -> rusqlite::Result<Track> {
             rusqlite::Error::FromSqlConversionFailure(15, rusqlite::types::Type::Text, Box::new(e))
         })?,
         release_year: r.get(16)?,
+        loudness_lufs: r.get(17)?,
     })
 }
 
@@ -92,6 +93,35 @@ impl Database {
             .query_map([only_missing], track_from_row)?
             .collect::<rusqlite::Result<_>>()?)
     }
+    // @req RF-28
+    pub fn set_loudness(&self, track_id: &str, lufs: f64, true_peak_db: f64) -> Result<()> {
+        if !lufs.is_finite() || !true_peak_db.is_finite() {
+            return Err(Error::invalid("medição inválida"));
+        }
+        self.conn.execute(
+            "UPDATE tracks SET loudness_lufs = ?1, true_peak_db = ?2 WHERE id = ?3",
+            params![lufs, true_peak_db, track_id],
+        )?;
+        Ok(())
+    }
+
+    // @req RF-28
+    pub fn get_true_peak_db(&self, track_id: &str) -> Result<Option<f64>> {
+        Ok(self.conn.query_row(
+            "SELECT true_peak_db FROM tracks WHERE id = ?1",
+            [track_id],
+            |r| r.get(0),
+        )?)
+    }
+
+    // @req RF-28
+    pub fn tracks_without_loudness(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL AND loudness_lufs IS NULL ORDER BY added_at")?;
+        Ok(stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
     // @req RF-05
     pub fn get_track(&self, track_id: &str) -> Result<Track> {
         self.conn

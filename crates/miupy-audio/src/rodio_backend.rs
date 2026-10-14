@@ -8,6 +8,7 @@
 //! O dispositivo de saída só é aberto no primeiro `load`; sem dispositivo, o
 //! `load` devolve [`AudioError::NoOutputDevice`].
 
+use crate::dsp::{DspControls, DspSource};
 use crate::error::{AudioError, Result};
 use crate::types::{
     AudioBackend, AudioEvent, PROGRESS_INTERVAL_MS, PlaybackState, PlaybackStatus, StreamOptions,
@@ -18,6 +19,7 @@ use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -41,6 +43,7 @@ enum Cmd {
     Stop(Reply),
     Seek(u64, Reply),
     SetVolume(f32, Reply),
+    SetNormalizationGain(f32, Reply),
     SetMuted(bool, Reply),
     /// Duração calculada em segundo plano (geração da faixa, ms).
     DurationResolved(u64, u64),
@@ -63,6 +66,7 @@ impl RodioBackend {
         let shared = Arc::new(Mutex::new(PlaybackState::default()));
         let engine = Engine {
             sink: None,
+            dsp: Arc::new(DspControls::default()),
             player: None,
             shared: Arc::clone(&shared),
             events: ev_tx,
@@ -135,6 +139,10 @@ impl AudioBackend for RodioBackend {
     fn set_volume(&self, volume: f32) -> Result<()> {
         self.call(|r| Cmd::SetVolume(volume, r))
     }
+    // @req RF-28
+    fn set_normalization_gain_db(&self, gain_db: f32) -> Result<()> {
+        self.call(|r| Cmd::SetNormalizationGain(gain_db, r))
+    }
     // @req RF-02
     fn set_muted(&self, muted: bool) -> Result<()> {
         self.call(|r| Cmd::SetMuted(muted, r))
@@ -151,6 +159,7 @@ impl AudioBackend for RodioBackend {
 }
 
 struct Engine {
+    dsp: Arc<DspControls>,
     sink: Option<MixerDeviceSink>,
     player: Option<Player>,
     shared: Arc<Mutex<PlaybackState>>,
@@ -190,14 +199,13 @@ impl Engine {
     }
 
     fn apply_gain(&self) {
-        if let Some(p) = &self.player {
-            let s = self.st();
-            p.set_volume(if s.muted {
-                0.0
-            } else {
-                volume_to_gain(s.volume)
-            });
-        }
+        let s = self.st();
+        let gain = if s.muted {
+            0.0
+        } else {
+            volume_to_gain(s.volume)
+        };
+        self.dsp.volume.store(gain.to_bits(), Ordering::Relaxed);
     }
 
     fn handle(&mut self, cmd: Cmd) {
@@ -217,7 +225,7 @@ impl Engine {
                                 self.sink.as_ref().expect("sink aberto").mixer(),
                             );
                             player.pause();
-                            player.append(decoder);
+                            player.append(DspSource::new(decoder, Arc::clone(&self.dsp)));
                             self.player = Some(player);
                             self.stream_failure = Some(failure);
                             self.st().status = PlaybackStatus::Paused;
@@ -283,6 +291,15 @@ impl Engine {
                 }
                 self.apply_gain();
                 self.emit_state();
+                let _ = r.send(Ok(()));
+            }
+            Cmd::SetNormalizationGain(db, r) => {
+                if db.is_finite() {
+                    let gain = 10.0_f32.powf(db.clamp(-20.0, 12.0) / 20.0);
+                    self.dsp
+                        .normalization
+                        .store(gain.to_bits(), Ordering::Relaxed);
+                }
                 let _ = r.send(Ok(()));
             }
             Cmd::SetMuted(m, r) => {
@@ -394,7 +411,7 @@ impl Engine {
         let mixer = self.sink.as_ref().expect("sink aberto").mixer();
         let player = Player::connect_new(mixer);
         player.pause();
-        player.append(decoder);
+        player.append(DspSource::new(decoder, Arc::clone(&self.dsp)));
         self.player = Some(player);
         {
             let mut s = self.st();

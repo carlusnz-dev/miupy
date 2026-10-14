@@ -1,4 +1,4 @@
-use miupy_core::{GpuMode, Profile, SettingsPatch};
+use miupy_core::{GpuMode, Normalization, Profile, SettingsPatch};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -15,6 +15,7 @@ pub struct SettingsDto {
     lava_theme: miupy_core::LavaTheme,
     volume: f64,
     gpu_mode: GpuMode,
+    normalization: Normalization,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -22,6 +23,7 @@ pub struct SettingsPatchDto {
     lava_theme: Option<miupy_core::LavaTheme>,
     volume: Option<f64>,
     gpu_mode: Option<GpuMode>,
+    normalization: Option<Normalization>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,6 +89,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 lava_theme: s.lava_theme,
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
+                normalization: s.normalization,
             })
         })
         .await
@@ -103,6 +106,7 @@ pub async fn settings_update(
     let core = SettingsPatch {
         lava_theme: settings.lava_theme,
         volume,
+        normalization: settings.normalization,
     };
     let saved = state
         .db
@@ -115,6 +119,7 @@ pub async fn settings_update(
                 lava_theme: s.lava_theme,
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
+                normalization: s.normalization,
             })
         })
         .await?;
@@ -128,6 +133,10 @@ pub async fn settings_update(
     if let Some(v) = volume {
         let player = state.player.clone();
         blocking(move || player.set_volume(v).map(|_| ())).await?;
+    }
+    if settings.normalization.is_some() {
+        let player = state.player.clone();
+        blocking(move || player.refresh_normalization()).await?;
     }
     Ok(saved)
 }

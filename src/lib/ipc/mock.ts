@@ -95,7 +95,7 @@ function buildTracks(): Track[] {
       isFavorite: r() < 0.25,
       downloadStatus: dl === 'queued' ? 'none' : dl,
       addedAt: now - Math.floor(r() * 200) * DAY,
-      genres: [...a.genres], releaseYear: 2018 + i % 8,
+      genres: [...a.genres], releaseYear: 2018 + i % 8, loudnessLufs: dl === 'done' ? -16 + i % 8 : null,
     } satisfies Track;
   });
 }
@@ -121,7 +121,7 @@ export function createMockApi(): MiupyApi {
   ];
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto' };
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal' };
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
@@ -395,7 +395,7 @@ export function createMockApi(): MiupyApi {
         if (ex) { out.push({ ...ex }); continue; }
         const src = YT_POOL.find((p) => p.sourceId === sid) ?? err('not_found', 'Resultado não encontrado.');
         const art = ARTISTS.find((a) => a.name === src.artist);
-        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null };
+        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null, loudnessLufs: null };
         tracks.push(t);
         youtubeIds.set(sid, t.id);
         out.push({ ...t });

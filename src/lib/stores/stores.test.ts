@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MiupyApi, PlayerState, Track } from '../ipc';
 
-const track: Track = { id: 'one', title: 'Uma faixa', artistId: null, artistName: 'Artista', album: null, durationMs: 120000, filePath: null, coverPath: null, source: 'youtube', sourceId: 'yt1', codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: 1, genres: [], releaseYear: null };
+const track: Track = { id: 'one', title: 'Uma faixa', artistId: null, artistName: 'Artista', album: null, durationMs: 120000, filePath: null, coverPath: null, source: 'youtube', sourceId: 'yt1', codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: 1, genres: [], releaseYear: null, loudnessLufs: null };
 const state: PlayerState = { status: 'playing', track, positionMs: 0, durationMs: track.durationMs, volume: .8, muted: false, queue: ['one'], queueIndex: 0, streaming: true, shuffle: 'off' };
 let handlers: Record<string, (value: unknown) => void>;
 let fake: MiupyApi;
