@@ -25,6 +25,7 @@ fn playlist_from_row(r: &Row<'_>) -> rusqlite::Result<Playlist> {
         name: r.get(1)?,
         description: r.get(2)?,
         cover_path: r.get(3)?,
+        mosaic_paths: Vec::new(),
         track_count: r.get(4)?,
         total_duration_ms: r.get(5)?,
         created_at: r.get(6)?,
@@ -64,14 +65,17 @@ impl Database {
 
     // @req RF-06
     pub fn get_playlist(&self, playlist_id: &str) -> Result<Playlist> {
-        self.conn
+        let mut playlist = self
+            .conn
             .query_row(
                 &format!("{PLAYLIST_SQL} WHERE p.id = ?1"),
                 [playlist_id],
                 playlist_from_row,
             )
             .optional()?
-            .ok_or_else(|| Error::not_found("playlist", playlist_id))
+            .ok_or_else(|| Error::not_found("playlist", playlist_id))?;
+        playlist.mosaic_paths = self.playlist_mosaic_paths(playlist_id)?;
+        Ok(playlist)
     }
 
     // @req RF-06
@@ -81,7 +85,67 @@ impl Database {
             .conn
             .prepare(&format!("{PLAYLIST_SQL} ORDER BY p.created_at, p.id"))?;
         let rows = stmt.query_map([], playlist_from_row)?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        let mut playlists: Vec<Playlist> = rows.collect::<rusqlite::Result<_>>()?;
+        for playlist in &mut playlists {
+            playlist.mosaic_paths = self.playlist_mosaic_paths(&playlist.id)?;
+        }
+        Ok(playlists)
+    }
+
+    // @req RF-22
+    /// Até quatro imagens, uma por artista: mais faixas primeiro, empate por nome.
+    /// Foto do artista tem prioridade; sem foto, usa uma capa da faixa na playlist.
+    pub fn playlist_mosaic_paths(&self, playlist_id: &str) -> Result<Vec<String>> {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM playlists WHERE id = ?1",
+                [playlist_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?
+            .ok_or_else(|| Error::not_found("playlist", playlist_id))?;
+        let mut stmt = self.conn.prepare(
+            "WITH ranked AS (
+                 SELECT a.id, a.name, a.image_path, COUNT(*) AS track_count
+                 FROM playlist_tracks pt
+                 JOIN tracks t ON t.id = pt.track_id
+                 JOIN artists a ON a.id = t.artist_id
+                 WHERE pt.playlist_id = ?1
+                 GROUP BY a.id
+                 ORDER BY track_count DESC, a.name COLLATE miupy_nocase, a.id
+                 LIMIT 4
+             )
+             SELECT COALESCE(r.image_path, (
+                 SELECT t2.cover_path FROM playlist_tracks pt2
+                 JOIN tracks t2 ON t2.id = pt2.track_id
+                 WHERE pt2.playlist_id = ?1 AND t2.artist_id = r.id AND t2.cover_path IS NOT NULL
+                 ORDER BY pt2.position, t2.id LIMIT 1)) AS image
+             FROM ranked r
+             WHERE COALESCE(r.image_path, (
+                 SELECT t2.cover_path FROM playlist_tracks pt2
+                 JOIN tracks t2 ON t2.id = pt2.track_id
+                 WHERE pt2.playlist_id = ?1 AND t2.artist_id = r.id AND t2.cover_path IS NOT NULL
+                 ORDER BY pt2.position, t2.id LIMIT 1)) IS NOT NULL
+             ORDER BY r.track_count DESC, r.name COLLATE miupy_nocase, r.id",
+        )?;
+        Ok(stmt
+            .query_map([playlist_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-22
+    /// Salva ou remove a capa escolhida e devolve o caminho anterior.
+    pub fn set_playlist_cover(
+        &self,
+        playlist_id: &str,
+        cover_path: Option<&str>,
+    ) -> Result<Option<String>> {
+        let old = self.get_playlist(playlist_id)?.cover_path;
+        self.conn.execute(
+            "UPDATE playlists SET cover_path = ?2, updated_at = ?3 WHERE id = ?1",
+            params![playlist_id, clean_opt(cover_path), self.now_ms()],
+        )?;
+        Ok(old)
     }
 
     // @req RF-06
@@ -506,5 +570,92 @@ mod tests {
             .unwrap();
         assert_eq!(n, 0);
         assert_eq!(db.list_tracks(&TrackQuery::default()).unwrap().len(), 4);
+    }
+
+    // @test RF-22
+    #[test]
+    fn mosaico_ordena_artistas_e_prefere_foto_a_capa() {
+        let db = db();
+        let p = db.create_playlist("P", None).unwrap();
+        let mut ids = Vec::new();
+        for (artist, count) in [("Bia", 2), ("Ana", 2), ("Cris", 1), ("Duda", 1), ("Eva", 1)] {
+            for n in 0..count {
+                let t = add_track(&db, &format!("{artist} {n}"), artist, 1000);
+                db.update_track(
+                    &t.id,
+                    &crate::TrackPatch {
+                        cover_path: Some(Some(format!("/{artist}-{n}.jpg"))),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                ids.push(t.id);
+            }
+        }
+        db.add_tracks_to_playlist(&p.id, &ids).unwrap();
+        let bia = db.get_or_create_artist("Bia").unwrap();
+        db.set_artist_image(&bia.id, Some("/bia-artista.jpg"), Some("crédito"))
+            .unwrap();
+        assert_eq!(
+            db.get_playlist(&p.id).unwrap().mosaic_paths,
+            [
+                "/Ana-0.jpg",
+                "/bia-artista.jpg",
+                "/Cris-0.jpg",
+                "/Duda-0.jpg"
+            ]
+        );
+        assert_eq!(
+            db.set_playlist_cover(&p.id, Some("/manual.jpg")).unwrap(),
+            None
+        );
+        assert_eq!(
+            db.get_playlist(&p.id).unwrap().cover_path.as_deref(),
+            Some("/manual.jpg")
+        );
+        assert_eq!(
+            db.set_playlist_cover(&p.id, None).unwrap().as_deref(),
+            Some("/manual.jpg")
+        );
+        assert_eq!(db.list_playlists().unwrap()[0].mosaic_paths.len(), 4);
+    }
+
+    // @test RF-22
+    #[test]
+    fn mosaico_nao_puxa_quinto_artista_quando_um_dos_quatro_nao_tem_imagem() {
+        let db = db();
+        let playlist = db.create_playlist("Mosaico", None).unwrap();
+        let mut ids = Vec::new();
+        for artist in ["Ana", "Bia", "Cris", "Duda"] {
+            for n in 0..2 {
+                let track = add_track(&db, &format!("{artist} {n}"), artist, 1000);
+                if artist != "Ana" {
+                    db.update_track(
+                        &track.id,
+                        &crate::TrackPatch {
+                            cover_path: Some(Some(format!("/{artist}-{n}.jpg"))),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                }
+                ids.push(track.id);
+            }
+        }
+        let fifth = add_track(&db, "Eva", "Eva", 1000);
+        db.update_track(
+            &fifth.id,
+            &crate::TrackPatch {
+                cover_path: Some(Some("/Eva.jpg".into())),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ids.push(fifth.id);
+        db.add_tracks_to_playlist(&playlist.id, &ids).unwrap();
+        assert_eq!(
+            db.get_playlist(&playlist.id).unwrap().mosaic_paths,
+            ["/Bia-0.jpg", "/Cris-0.jpg", "/Duda-0.jpg"]
+        );
     }
 }

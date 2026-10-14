@@ -106,7 +106,21 @@ interface Profile {
   avatarPath: string | null;
 }
 
-interface Settings { lavaTheme: LavaTheme; volume: number; }
+type GpuMode = 'auto' | 'on' | 'off';   // RNF-09
+
+interface Settings {
+  lavaTheme: LavaTheme;
+  volume: number;
+  gpuMode: GpuMode;             // vale a partir da próxima abertura do app (RNF-09)
+}
+
+interface GpuStatus {
+  mode: GpuMode;                // modo salvo
+  envOverride: GpuMode | null;  // MIUPY_GPU, quando definida, manda sobre o salvo
+  hardware: boolean;            // a sessão atual está compondo pela GPU
+  reason: string;               // ex.: "software (Wayland com driver NVIDIA detectado)"
+  restartRequired: boolean;     // o modo salvo difere do que está valendo agora
+}
 
 interface RankedTrack { track: Track; plays: number; listenedMs: number; }
 interface RankedArtist { artistId: string; name: string; plays: number; listenedMs: number; }
@@ -267,7 +281,8 @@ interface YtDlpStatus {
 | `profile_update` | `{ profile: Profile }` | `Profile` | RF-16 |
 | `profile_set_avatar` | `{ image: ImageUpload \| null }` | `Profile` | RF-21 |
 | `settings_get` | — | `Settings` | RF-17 |
-| `settings_update` | `{ settings: Partial<Settings> }` | `Settings` | RF-17 |
+| `settings_update` | `{ settings: Partial<Settings> }` | `Settings` | RF-17, RNF-09 |
+| `system_gpu_status` | — | `GpuStatus` | RNF-09 |
 
 ## Eventos (Rust → frontend)
 
@@ -343,6 +358,26 @@ interface YtDlpStatus {
   um, a foto do artista (`ArtistInfo.imagePath`) ou, sem foto, a capa de uma faixa dele na
   playlist. Artista sem nenhuma das duas fica de fora. Com menos de 4, o frontend decide o
   arranjo (1 capa inteira, 2 ou 3 em grade).
+
+### Aceleração de hardware (RNF-09)
+
+- `Settings.gpuMode` (padrão `auto`) fica no banco. A casca lê o modo **antes de criar a janela**,
+  então a troca só vale na próxima abertura; `GpuStatus.restartRequired` avisa a interface.
+- `MIUPY_GPU=on|off|auto` continua funcionando e, quando definida, manda sobre o modo salvo
+  (`envOverride`).
+- `auto` mantém o recuo para software onde a GPU derruba o app (Wayland + NVIDIA). `on` força a
+  GPU mesmo assim; se o app cair, o usuário volta com `MIUPY_GPU=off`.
+
+### Capas guardadas no disco (RF-05, RF-12)
+
+- A capa do álbum vem do Cover Art Archive (pelo álbum identificado no MusicBrainz) e é gravada
+  **uma vez por álbum** em `covers/albuns/<chave>.jpg`, onde a chave é o MBID do *release group*
+  ou, sem ele, um hash de artista + álbum normalizados. Todas as faixas do álbum apontam
+  `coverPath` para esse arquivo. Sem capa de álbum, fica a miniatura do vídeo em
+  `covers/<trackId>.<ext>`, como hoje.
+- A foto do artista fica em `covers/artistas/<artistId>.jpg` (ver "Fotos de artista").
+- Imagem já gravada não é baixada de novo; nada disso usa rede para exibir. Apagar uma faixa não
+  apaga a capa do álbum enquanto outra faixa a usar.
 
 ### Fotos de artista (RF-27)
 

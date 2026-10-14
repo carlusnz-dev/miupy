@@ -12,18 +12,23 @@ pub mod error;
 pub mod metadata;
 pub mod ratelimit;
 pub mod resolver;
+pub mod suggest;
 pub mod tagger;
 pub mod title;
 pub mod ytdlp;
+pub mod ytdlp_manager;
 
 pub use error::{MediaError, Result};
 pub use metadata::{
-    ArtistDetails, LyricsData, MetadataConfig, MetadataProvider, OnlineMetadata, RecordingMatch,
+    ArtistDetails, ArtistPhoto, LyricsData, MetadataConfig, MetadataProvider, OnlineMetadata,
+    RecordingMatch,
 };
 pub use resolver::{
     DownloadRequest, DownloadedAudio, MediaResolver, PlaylistInfo, ProgressFn, SearchResult,
     StreamAudio, VideoMetadata,
 };
+pub use suggest::suggest;
 pub use tagger::{AudioInfo, Cover, TagUpdate};
 pub use title::{ParsedTitle, clean_title};
-pub use ytdlp::YtDlpResolver;
+pub use ytdlp::{CorrectedTrack, YtDlpResolver, corrected_track, is_song_result};
+pub use ytdlp_manager::{YtDlpManager, YtDlpState, YtDlpStatus, YtDlpStatusFn};

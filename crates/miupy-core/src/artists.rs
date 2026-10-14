@@ -8,7 +8,7 @@ use crate::model::{Artist, ArtistInfo, ArtistPatch};
 use crate::text::{clean_opt, name_key};
 
 const ARTIST_INFO_SQL: &str =
-    "SELECT a.id, a.name, a.mbid, a.country, a.genres, a.bio, a.image_path,
+    "SELECT a.id, a.name, a.mbid, a.country, a.genres, a.bio, a.image_path, a.image_credit,
         (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = a.id)
      FROM artists a";
 
@@ -25,7 +25,8 @@ fn info_from_row(r: &Row<'_>) -> rusqlite::Result<ArtistInfo> {
         genres: genres_from_json(&r.get::<_, String>(4)?),
         bio: r.get(5)?,
         image_path: r.get(6)?,
-        track_count: r.get(7)?,
+        image_credit: r.get(7)?,
+        track_count: r.get(8)?,
     })
 }
 
@@ -123,7 +124,8 @@ impl Database {
                 .map_err(|e| Error::Internal(format!("gêneros: {e}")))?;
             self.conn.execute(
                 "UPDATE artists SET name = ?2, name_key = ?3, mbid = ?4, country = ?5,
-                        genres = ?6, bio = ?7, image_path = ?8 WHERE id = ?1",
+                        genres = ?6, bio = ?7, image_path = ?8,
+                        image_credit = CASE WHEN ?9 THEN NULL ELSE image_credit END WHERE id = ?1",
                 params![
                     artist_id,
                     name,
@@ -133,10 +135,34 @@ impl Database {
                     genres_json,
                     pick(&patch.bio, &cur.bio),
                     pick(&patch.image_path, &cur.image_path),
+                    patch.image_path.is_some(),
                 ],
             )?;
             self.get_artist_info(artist_id)
         })
+    }
+
+    // @req RF-27
+    /// Salva foto e crédito juntos e devolve o caminho anterior para a casca remover o arquivo.
+    /// `None` em `image_path` remove também o crédito.
+    pub fn set_artist_image(
+        &self,
+        artist_id: &str,
+        image_path: Option<&str>,
+        image_credit: Option<&str>,
+    ) -> Result<Option<String>> {
+        let old = self.get_artist_info(artist_id)?.image_path;
+        let path = clean_opt(image_path);
+        let credit = if path.is_some() {
+            clean_opt(image_credit)
+        } else {
+            None
+        };
+        self.conn.execute(
+            "UPDATE artists SET image_path = ?2, image_credit = ?3 WHERE id = ?1",
+            params![artist_id, path, credit],
+        )?;
+        Ok(old)
     }
 }
 
@@ -216,5 +242,33 @@ mod tests {
         };
         assert_eq!(db.list_tracks(&q("novo")).unwrap().len(), 1);
         assert_eq!(db.list_tracks(&q("velho")).unwrap().len(), 0);
+    }
+
+    // @test RF-27
+    #[test]
+    fn foto_e_credito_do_artista_sao_atomicos() {
+        let db = db();
+        let artist = db.get_or_create_artist("Ana").unwrap();
+        assert_eq!(
+            db.set_artist_image(&artist.id, Some("/ana.jpg"), Some("Autora, CC BY-SA"))
+                .unwrap(),
+            None
+        );
+        let info = db.get_artist_info(&artist.id).unwrap();
+        assert_eq!(info.image_credit.as_deref(), Some("Autora, CC BY-SA"));
+        assert_eq!(
+            db.set_artist_image(&artist.id, None, Some("crédito solto"))
+                .unwrap()
+                .as_deref(),
+            Some("/ana.jpg")
+        );
+        let info = db.get_artist_info(&artist.id).unwrap();
+        assert_eq!((info.image_path, info.image_credit), (None, None));
+        assert_eq!(
+            db.set_artist_image("missing", Some("/x"), None)
+                .unwrap_err()
+                .code(),
+            "not_found"
+        );
     }
 }
