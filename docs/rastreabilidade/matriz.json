@@ -1,10 +1,10 @@
 {
   "summary": {
-    "total": 37,
+    "total": 50,
     "verificado": 30,
     "implementado": 4,
     "soTeste": 0,
-    "pendente": 3
+    "pendente": 16
   },
   "unknownIds": [],
   "requirements": [
@@ -174,7 +174,7 @@
       "id": "RF-04",
       "title": "Favoritos",
       "priority": "M",
-      "description": "Adicionar e remover faixas das favoritas.",
+      "description": "Adicionar e remover faixas das favoritas, de qualquer tela (inclusive dos resultados da busca no YouTube). As favoritas são as faixas da playlist que o usuário marcou como \"favoritas\" (RF-30).",
       "implementation": [
         "crates/miupy-core/src/tracks.rs:347",
         "src-tauri/src/commands/library.rs:40",
@@ -1073,6 +1073,96 @@
       "status": "verificado"
     },
     {
+      "id": "RF-28",
+      "title": "Normalização de volume",
+      "priority": "S",
+      "description": "Igualar o volume percebido entre faixas, como no Spotify: modos Desligado, Baixo (−19 LUFS), Normal (−14 LUFS, padrão) e Alto (−11 LUFS, com limitador). Loudness EBU R128 medido por faixa no download e, nas faixas antigas, em segundo plano; faixa ainda não medida toca sem ganho.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-29",
+      "title": "Equalizador",
+      "priority": "S",
+      "description": "Equalizador de 8 bandas no motor de áudio, com 8 perfis prontos (Plano, Graves, Agudos, Vocal, Rock, Pop, Eletrônica, Acústico) e até 3 perfis personalizados criados pelo usuário. Escolha nas Configurações e na tela Tocando.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-30",
+      "title": "Playlist de favoritas",
+      "priority": "S",
+      "description": "O usuário marca qual playlist é a de favoritas. Sem marcação, o app cria \"Favoritas\" com as favoritas existentes. Trocar a marcação copia as faixas da antiga para a nova; a antiga continua como playlist comum.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-31",
+      "title": "Baixar playlist automaticamente",
+      "priority": "S",
+      "description": "Uma playlist com \"baixar automaticamente\" baixa em segundo plano o que falta nela e toda faixa nova adicionada, com aviso em toast. Sem rede, as faixas esperam e o app tenta de novo depois.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-32",
+      "title": "Andamento do reprocessamento de metadados",
+      "priority": "S",
+      "description": "A tela de Configurações mostra o estado do reprocessamento em lote: em andamento, quantas faixas feitas de quantas, falhas e quando terminou.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-33",
+      "title": "Menu lateral redimensionável",
+      "priority": "C",
+      "description": "O usuário arrasta a borda do menu lateral para mudar a largura, entre 220 e 400 px; a largura fica salva entre aberturas.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-34",
+      "title": "Busca vazia com sugestões",
+      "priority": "C",
+      "description": "A tela de busca no YouTube, antes de digitar, mostra recomendações (RF-19) e as buscas recentes. A Discoteca tem um botão \"Adicionar músicas\" que leva a essa tela.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-35",
+      "title": "Dados de artista em segundo plano",
+      "priority": "S",
+      "description": "Foto, país, gêneros e biografia do artista aparecem na hora a partir do que está guardado e são atualizados em segundo plano quando passam de 30 dias. Opção nas Configurações para desativar a atualização.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-36",
+      "title": "Tamanho e limpeza do cache",
+      "priority": "S",
+      "description": "As Configurações mostram quanto ocupa o cache de dados vindos da rede (fotos e dados de artista, letras, recomendações, cache do WebView) e permitem apagá-lo, avisando que algumas informações vão demorar mais para carregar. Áudio, capas de álbum, avatar e capas de playlist não entram.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RF-37",
+      "title": "Registros do sistema",
+      "priority": "C",
+      "description": "Com o modo de depuração ligado nas Configurações, o app grava e mostra numa tela própria os eventos do sistema: o que tocou, faixas puladas, downloads, reprocessamento de metadados, cargas em segundo plano e erros. Guarda até 30 dias ou 5.000 registros.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
       "id": "RNF-01",
       "title": "Banco local SQLite",
       "priority": "M",
@@ -1124,7 +1214,7 @@
       "id": "RNF-04",
       "title": "Interface flat \"magma\"",
       "priority": "M",
-      "description": "Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca.",
+      "description": "Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca. Botões sem gradiente; o `primary` ganha só um brilho pequeno no hover. **Exceção autorizada pelo autor (2026-10-14):** o toast usa vidro translúcido com *backdrop blur*, flat e sem bordas complexas.",
       "implementation": [
         "src/App.svelte:4",
         "src/app.css:7",
@@ -1242,6 +1332,33 @@
         "src/lib/motion.test.ts:27"
       ],
       "status": "verificado"
+    },
+    {
+      "id": "RNF-11",
+      "title": "Carregamento sem espera",
+      "priority": "S",
+      "description": "Toda tela mostra *skeleton* em vez de spinner enquanto não tem dados. Os dados ficam em cache entre telas: ao voltar a uma tela, o cache aparece na hora e é atualizado em segundo plano.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RNF-12",
+      "title": "Imagens compactas",
+      "priority": "S",
+      "description": "Imagens guardadas em WebP com perda (qualidade 82): capas e fotos de artista até 600 px no maior lado, avatar e capa de playlist em 512×512. As imagens antigas são convertidas e os originais apagados.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
+    },
+    {
+      "id": "RNF-13",
+      "title": "Fluidez",
+      "priority": "S",
+      "description": "Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`, criado pela frente que implementa este requisito), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms.",
+      "implementation": [],
+      "tests": [],
+      "status": "pendente"
     }
   ]
 }

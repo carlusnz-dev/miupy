@@ -2,7 +2,7 @@
 
 > Arquivo gerado por `scripts/rastreabilidade.mjs` (`npm run docs:matriz`). Não edite à mão.
 
-Total: **37** · verificado: **30** · implementado: **4** · só teste: **0** · pendente: **3**
+Total: **50** · verificado: **30** · implementado: **4** · só teste: **0** · pendente: **16**
 
 | ID | Requisito | Prior. | Status | Implementação (`@req`) | Testes (`@test`) |
 |---|---|---|---|---|---|
@@ -33,6 +33,16 @@ Total: **37** · verificado: **30** · implementado: **4** · só teste: **0** �
 | RF-25 | Pontuação e DNA | S | verificado | `crates/miupy-core/src/model.rs:325`<br>`crates/miupy-core/src/model.rs:336`<br>`crates/miupy-core/src/model.rs:342`<br>`crates/miupy-core/src/model.rs:354`<br>`crates/miupy-core/src/recommendations.rs:58`<br>`crates/miupy-core/src/recommendations.rs:169`<br>`crates/miupy-core/src/recommendations.rs:210`<br>`src-tauri/src/commands/stats.rs:37`<br>`src-tauri/src/commands/stats.rs:49`<br>`src/lib/components/TrackRow.svelte:14`<br>`src/lib/ipc/api.ts:60`<br>`src/lib/ipc/mock.ts:501`<br>`src/lib/ipc/mock.ts:505`<br>`src/lib/ipc/tauri.ts:74`<br>`src/lib/ipc/types.ts:165`<br>`src/lib/stores/dna.svelte.ts:1`<br>`src/lib/stores/scores.svelte.ts:1`<br>`src/routes/Dna.svelte:2` | `crates/miupy-core/src/recommendations.rs:711`<br>`crates/miupy-core/src/recommendations.rs:744`<br>`crates/miupy-core/src/recommendations.rs:777`<br>`src/lib/stores/newStores.test.ts:40`<br>`src/lib/stores/newStores.test.ts:56`<br>`src/lib/stores/newStores.test.ts:94` |
 | RF-26 | yt-dlp gerenciado pelo app | S | verificado | `crates/miupy-media/src/ytdlp_manager.rs:14`<br>`crates/miupy-media/src/ytdlp_manager.rs:24`<br>`crates/miupy-media/src/ytdlp_manager.rs:36`<br>`crates/miupy-media/src/ytdlp_manager.rs:57`<br>`crates/miupy-media/src/ytdlp_manager.rs:65`<br>`src-tauri/src/commands/youtube.rs:37`<br>`src-tauri/src/commands/youtube.rs:43`<br>`src-tauri/src/state.rs:116`<br>`src/lib/ipc/api.ts:42`<br>`src/lib/ipc/mock.ts:125`<br>`src/lib/ipc/mock.ts:380`<br>`src/lib/ipc/tauri.ts:55`<br>`src/lib/ipc/types.ts:165`<br>`src/routes/Settings.svelte:27` | `crates/miupy-media/src/ytdlp_manager.rs:402`<br>`crates/miupy-media/src/ytdlp_manager.rs:477`<br>`crates/miupy-media/tests/network.rs:73`<br>`src-tauri/src/state.rs:528` |
 | RF-27 | Foto de artista | S | verificado | `crates/miupy-core/migrations/0003_dna_shuffle_images.sql:1`<br>`crates/miupy-core/src/artists.rs:145`<br>`crates/miupy-core/src/model.rs:425`<br>`crates/miupy-media/src/metadata.rs:63`<br>`crates/miupy-media/src/metadata.rs:73`<br>`crates/miupy-media/src/metadata.rs:87`<br>`crates/miupy-media/src/metadata.rs:96`<br>`crates/miupy-media/src/metadata.rs:129`<br>`crates/miupy-media/src/metadata.rs:240`<br>`src-tauri/src/metadata.rs:101`<br>`src-tauri/src/metadata.rs:348`<br>`src/lib/ipc/mock.ts:12`<br>`src/lib/ipc/types.ts:102` | `crates/miupy-core/src/artists.rs:247`<br>`crates/miupy-core/src/db.rs:228`<br>`crates/miupy-media/src/metadata.rs:1041`<br>`crates/miupy-media/tests/network.rs:36`<br>`src-tauri/src/metadata.rs:776`<br>`src-tauri/src/metadata.rs:825`<br>`src-tauri/src/metadata.rs:854`<br>`src-tauri/src/state.rs:528` |
+| RF-28 | Normalização de volume | S | pendente | — | — |
+| RF-29 | Equalizador | S | pendente | — | — |
+| RF-30 | Playlist de favoritas | S | pendente | — | — |
+| RF-31 | Baixar playlist automaticamente | S | pendente | — | — |
+| RF-32 | Andamento do reprocessamento de metadados | S | pendente | — | — |
+| RF-33 | Menu lateral redimensionável | C | pendente | — | — |
+| RF-34 | Busca vazia com sugestões | C | pendente | — | — |
+| RF-35 | Dados de artista em segundo plano | S | pendente | — | — |
+| RF-36 | Tamanho e limpeza do cache | S | pendente | — | — |
+| RF-37 | Registros do sistema | C | pendente | — | — |
 | RNF-01 | Banco local SQLite | M | verificado | `crates/miupy-core/src/db.rs:14`<br>`crates/miupy-core/src/db.rs:42`<br>`crates/miupy-core/src/db.rs:52`<br>`crates/miupy-core/src/error.rs:31` | `crates/miupy-core/src/db.rs:114`<br>`crates/miupy-core/src/db.rs:120`<br>`crates/miupy-core/src/db.rs:132`<br>`crates/miupy-core/src/db.rs:143`<br>`crates/miupy-core/src/db.rs:171`<br>`crates/miupy-core/src/db.rs:190`<br>`crates/miupy-core/src/db.rs:228`<br>`crates/miupy-core/src/error.rs:94`<br>`crates/miupy-core/src/error.rs:108`<br>`src-tauri/src/error.rs:110`<br>`src-tauri/src/error.rs:120`<br>`src-tauri/src/state.rs:619` |
 | RNF-02 | Offline-first | M | pendente | — | — |
 | RNF-03 | Multiplataforma | M | implementado | `src/App.svelte:4`<br>`src/lib/components/Nav.svelte:2` | — |
@@ -43,3 +53,6 @@ Total: **37** · verificado: **30** · implementado: **4** · só teste: **0** �
 | RNF-08 | Animações | S | implementado | `src/App.svelte:2`<br>`src/app.css:189`<br>`src/app.css:231`<br>`src/lib/components/Cover.svelte:2`<br>`src/lib/components/Toasts.svelte:2`<br>`src/lib/components/Transport.svelte:2`<br>`src/lib/motion.ts:1` | — |
 | RNF-09 | Aceleração de hardware | S | verificado | `crates/miupy-core/migrations/0003_dna_shuffle_images.sql:1`<br>`crates/miupy-core/src/model.rs:63`<br>`crates/miupy-core/src/profile.rs:131`<br>`crates/miupy-core/src/profile.rs:141`<br>`src-tauri/src/commands/profile.rs:121`<br>`src-tauri/src/commands/profile.rs:135`<br>`src-tauri/src/commands/profile.rs:157`<br>`src-tauri/src/gpu.rs:26`<br>`src-tauri/src/gpu.rs:101`<br>`src-tauri/src/gpu.rs:121`<br>`src-tauri/src/gpu.rs:130`<br>`src-tauri/src/gpu.rs:201`<br>`src-tauri/src/gpu.rs:214`<br>`src-tauri/src/gpu.rs:241`<br>`src-tauri/src/lib.rs:85`<br>`src-tauri/src/lib.rs:173`<br>`src/App.svelte:36`<br>`src/app.css:189`<br>`src/lib/ipc/api.ts:73`<br>`src/lib/ipc/mock.ts:533`<br>`src/lib/ipc/tauri.ts:86`<br>`src/lib/motion.ts:1`<br>`src/routes/Settings.svelte:95` | `crates/miupy-core/src/profile.rs:329`<br>`src-tauri/src/gpu.rs:254`<br>`src-tauri/src/gpu.rs:283`<br>`src-tauri/src/gpu.rs:296`<br>`src-tauri/src/gpu.rs:311`<br>`src-tauri/src/gpu.rs:320`<br>`src-tauri/src/gpu.rs:342` |
 | RNF-10 | Transições com elementos compartilhados | S | verificado | `src/lib/components/TrackRow.svelte:2`<br>`src/lib/layoutPresence.ts:1`<br>`src/lib/motion.ts:20`<br>`src/lib/motion.ts:30`<br>`src/lib/motion.ts:41` | `src/lib/layoutPresence.ts:63`<br>`src/lib/motion.test.ts:5`<br>`src/lib/motion.test.ts:13`<br>`src/lib/motion.test.ts:27` |
+| RNF-11 | Carregamento sem espera | S | pendente | — | — |
+| RNF-12 | Imagens compactas | S | pendente | — | — |
+| RNF-13 | Fluidez | S | pendente | — | — |

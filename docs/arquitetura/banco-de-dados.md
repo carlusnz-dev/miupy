@@ -144,6 +144,27 @@ JS, `-new Date().getTimezoneOffset()`). Um evento pertence ao dia/mês/ano do se
 mesmo critério. Limitação: um único deslocamento vale para o ano todo (horário de verão no meio
 do ano não é modelado).
 
+## Migrações reservadas para a v0.3
+
+Várias frentes criam migrações ao mesmo tempo. Para não haver duas `0004`, cada frente usa o
+número reservado abaixo, mesmo que outra entre antes. Se uma frente for integrada antes de uma de
+número menor, a orquestração renumera antes do merge: a lista em `db.rs` é aplicada na ordem e
+uma migração já aplicada no banco do autor não pode mudar de posição.
+
+| Número | Frente | Conteúdo |
+|---|---|---|
+| `0004_loudness.sql` | `feat/normalizacao-volume` | `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` |
+| `0005_equalizer.sql` | `feat/equalizador` | `eq_presets` (personalizados); `settings.eq_preset_id` |
+| `0006_sidebar_width.sql` | `feat/visual-flat` | `settings.sidebar_width` |
+| `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | `settings.favorites_playlist_id`; cria "Favoritas" a partir de `favorites` |
+| `0008_search_history.sql` | `feat/busca-vazia` | `search_history` |
+| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | `playlists.auto_download` |
+| `0010_artist_refresh.sql` | `feat/skeleton-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
+| `0011_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
+
+`feat/imagens-comprimidas` não cria migração: a troca de `.jpg` para `.webp` é uma tarefa da
+casca na abertura, que atualiza os caminhos já existentes.
+
 ## Decisões
 
 - **Apagar uma faixa apaga o histórico dela** (`play_events` em cascata): o ranking precisa da
