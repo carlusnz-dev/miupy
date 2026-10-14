@@ -18,6 +18,7 @@ type SortDir = 'asc' | 'desc';
 type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
 type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
 type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
+type ShuffleMode = 'off' | 'random' | 'smart';   // RF-24
 
 interface Track {
   id: string;
@@ -43,7 +44,8 @@ interface Playlist {
   id: string;
   name: string;
   description: string | null;
-  coverPath: string | null;
+  coverPath: string | null;     // capa escolhida pelo usuário; null usa o mosaico (RF-22)
+  mosaicPaths: string[];        // 0 a 4 caminhos locais, um por artista, para o mosaico padrão (RF-22)
   trackCount: number;
   totalDurationMs: number;
   createdAt: number;
@@ -62,6 +64,7 @@ interface PlayerState {
   queue: string[];              // ids das faixas
   queueIndex: number;           // -1 se vazia
   streaming: boolean;           // true quando a faixa atual toca da rede, sem arquivo local (RF-18)
+  shuffle: ShuffleMode;         // RF-24
 }
 
 interface SearchResult {
@@ -89,6 +92,7 @@ interface ArtistInfo {
   genres: string[];
   bio: string | null;
   imagePath: string | null;
+  imageCredit: string | null;   // autor e licença da foto (Wikimedia Commons), para exibir junto (RF-27)
   trackCount: number;
 }
 
@@ -156,6 +160,54 @@ interface TasteProfile {
   totalListenedMs: number;
   skipRate: number;             // 0.0 a 1.0: eventos pulados / eventos encerrados
 }
+
+// ---- Pontuação e DNA (RF-25)
+interface TrackScore {
+  trackId: string;
+  score: number;                // pontuação da faixa (recomendacao.md); pode ser negativa
+  plays: number;                // eventos que contam como "play"
+  skips: number;
+  lastPlayedAt: number | null;
+}
+
+interface DnaTrend {
+  kind: 'artist' | 'genre';
+  id: string | null;            // artistId para 'artist'; null para 'genre'
+  label: string;
+  current: number;              // saldo na janela atual
+  previous: number;             // saldo na janela anterior
+  delta: number;                // current - previous
+}
+
+interface Dna {
+  windowDays: number;           // tamanho de cada janela
+  topArtists: { artistId: string; name: string; score: number }[];   // janela atual, até 10
+  topGenres: { genre: string; score: number }[];                     // janela atual, até 10
+  skipRate: number;             // janela atual
+  previousSkipRate: number;     // janela anterior
+  listenedMs: number;           // janela atual
+  previousListenedMs: number;
+  rising: DnaTrend[];           // até 5, maior delta positivo primeiro
+  falling: DnaTrend[];          // até 5, delta mais negativo primeiro
+}
+
+// ---- Imagens enviadas pelo usuário (RF-21, RF-22)
+interface ImageUpload {
+  dataBase64: string;           // conteúdo do arquivo, sem o prefixo "data:"
+  mimeType: string;             // image/jpeg, image/png ou image/webp
+}
+
+// ---- yt-dlp gerenciado pelo app (RF-26)
+type YtDlpState = 'missing' | 'downloading' | 'ready' | 'error';
+
+interface YtDlpStatus {
+  state: YtDlpState;
+  version: string | null;       // ex.: "2026.08.19"
+  path: string | null;          // binário em uso
+  checkedAt: number | null;     // última verificação de versão nova
+  progress: number;             // 0.0 a 1.0 enquanto 'downloading'
+  error: string | null;
+}
 ```
 
 ## Comandos
@@ -173,6 +225,7 @@ interface TasteProfile {
 | `player_set_volume` | `{ volume }` | `PlayerState` | RF-02 |
 | `player_set_muted` | `{ muted }` | `PlayerState` | RF-02 |
 | `player_get_queue` | — | `Track[]` | RF-03 |
+| `player_set_shuffle` | `{ mode: ShuffleMode }` | `PlayerState` | RF-24 |
 | `library_list_tracks` | `{ query?: TrackQuery }` | `Track[]` | RF-05, RF-08 |
 | `library_get_track` | `{ trackId }` | `Track` | RF-05 |
 | `library_list_tracks_by_artist` | `{ artistId, query?: TrackQuery }` | `Track[]` | RF-05, RF-08 |
@@ -186,8 +239,12 @@ interface TasteProfile {
 | `playlist_add_tracks` | `{ playlistId, trackIds }` | `Playlist` | RF-06 |
 | `playlist_remove_tracks` | `{ playlistId, trackIds }` | `Playlist` | RF-06 |
 | `playlist_move_track` | `{ playlistId, trackId, newPosition }` | `void` | RF-07 |
+| `playlist_set_cover` | `{ playlistId, image: ImageUpload \| null }` | `Playlist` | RF-22 |
 | `youtube_search` | `{ query, limit? }` | `SearchResult[]` | RF-09 |
+| `youtube_suggest` | `{ query }` | `string[]` | RF-23 |
 | `youtube_add_to_library` | `{ sourceIds, playlistId? }` | `Track[]` | RF-09 |
+| `ytdlp_status` | — | `YtDlpStatus` | RF-26 |
+| `ytdlp_update` | — | `YtDlpStatus` | RF-26 |
 | `download_enqueue` | `{ trackIds }` | `DownloadJob[]` | RF-10 |
 | `download_enqueue_playlist` | `{ playlistId }` | `DownloadJob[]` | RF-11 |
 | `download_list` | — | `DownloadJob[]` | RF-10 |
@@ -196,15 +253,19 @@ interface TasteProfile {
 | `metadata_refresh_track` | `{ trackId }` | `Track` | RF-12 |
 | `metadata_get_artist` | `{ artistId }` | `ArtistInfo` | RF-12 |
 | `metadata_get_lyrics` | `{ trackId }` | `Lyrics` | RF-12 |
+| `metadata_refresh_library` | `{ onlyMissing?: boolean }` | `number` | RF-12, RF-20 |
 | `stats_library` | — | `LibraryStats` | RF-14 |
 | `stats_wrapped` | `{ year }` | `Wrapped` | RF-15 |
 | `stats_wrapped_years` | — | `number[]` | RF-15 |
 | `stats_taste` | — | `TasteProfile` | RF-19 |
+| `stats_track_scores` | `{ trackIds?: string[] }` | `TrackScore[]` | RF-25 |
+| `stats_dna` | `{ windowDays?: number }` | `Dna` | RF-25 |
 | `recommendations_list` | `{ playlistId?, limit? }` | `Recommendation[]` | RF-19 |
 | `recommendations_refresh` | `{ playlistId? }` | `Recommendation[]` | RF-19 |
 | `recommendations_dismiss` | `{ sourceId }` | `void` | RF-19 |
 | `profile_get` | — | `Profile` | RF-16 |
 | `profile_update` | `{ profile: Profile }` | `Profile` | RF-16 |
+| `profile_set_avatar` | `{ image: ImageUpload \| null }` | `Profile` | RF-21 |
 | `settings_get` | — | `Settings` | RF-17 |
 | `settings_update` | `{ settings: Partial<Settings> }` | `Settings` | RF-17 |
 
@@ -217,16 +278,24 @@ interface TasteProfile {
 | `download://progress` | `DownloadJob` | Mudança de status ou progresso de um download. |
 | `library://changed` | `{ reason: string }` | Faixas ou playlists criadas, alteradas ou removidas. |
 | `recommendations://changed` | `{ count: number }` | A lista de candidatas mudou (atualização, dispensa ou faixa adicionada). |
+| `player://error` | `{ trackId: string, code: string, message: string }` | A faixa pedida não pôde tocar depois de `player_play` já ter voltado (ex.: falha ao resolver o streaming). |
+| `metadata://progress` | `{ done: number, total: number }` | Andamento de `metadata_refresh_library`; `done == total` no fim. |
+| `ytdlp://status` | `YtDlpStatus` | Mudança de estado ou progresso do download do yt-dlp. |
 
 ## Regras de comportamento
 
 - `player_play` em faixa sem arquivo local (`filePath` nulo): se a origem é `youtube`, a casca
-  resolve a URL do áudio e toca por streaming (`PlayerState.streaming = true`, status `loading` até
-  o primeiro áudio sair). Sem rede, devolve `network`. Faixa `local` sem arquivo devolve
-  `unavailable`. Streaming não grava arquivo nem muda `downloadStatus`; o registro de atividade
-  conta igual. `player_seek` funciona em streaming.
-- `coverPath`, `imagePath` e `avatarPath` são caminhos locais. O frontend converte com
-  `convertFileSrc`, então `src-tauri` habilita o protocolo `asset` com escopo no diretório de dados.
+  toca por streaming (`PlayerState.streaming = true`). **`player_play` volta na hora** com status
+  `loading` e a faixa nova, sem esperar o yt-dlp: a URL é resolvida em segundo plano, sem segurar
+  a trava do player, e o status passa a `playing` quando o primeiro áudio sai. Se a resolução
+  falha (sem rede, vídeo indisponível), a casca emite `player://error` com o código (`network`,
+  `unavailable`) e `player://state` com status `stopped`. Se outro `player_play` chega antes de a
+  resolução terminar, o resultado da anterior é descartado. Faixa `local` sem arquivo devolve
+  `unavailable` na hora. Streaming não grava arquivo nem muda `downloadStatus`; o registro de
+  atividade conta igual. `player_seek` funciona em streaming.
+- `coverPath`, `mosaicPaths`, `imagePath` e `avatarPath` são caminhos locais. O frontend converte
+  com `convertFileSrc`, então `src-tauri` habilita o protocolo `asset` com escopo no diretório de
+  dados (`audio/`, `covers/`, `avatars/`, `playlists/`).
 - `stats_wrapped` agrupa por mês e dia no horário local. O fuso é calculado pela casca (relógio do
   sistema), não enviado pelo frontend.
 - Conta como "play" o evento concluído ou com pelo menos 30 s ouvidos.
@@ -238,6 +307,78 @@ interface TasteProfile {
 - `download_clear_finished` remove os jobs `done` e `error` e devolve quantos removeu. Não apaga
   arquivo nem faixa.
 - `library_list_tracks_by_artist` aceita o mesmo `TrackQuery` de `library_list_tracks`.
+
+### Aleatório e *smart random* (RF-24)
+
+- `player_set_shuffle` muda só a ordem do que vem **depois** da faixa atual; a faixa atual continua
+  tocando. `PlayerState.queue` sempre traz a ordem em que as faixas vão tocar.
+- `random`: embaralhamento uniforme do restante da fila.
+- `smart`: sorteio ponderado, uma faixa por vez. O peso de cada faixa restante combina a pontuação
+  dela (`TrackScore.score`, normalizada) com a proximidade da faixa escolhida antes (mesmo artista
+  pesa mais que gênero em comum). Toda faixa tem peso mínimo positivo, então todas tocam; faixas
+  puladas muitas vezes só ficam mais para o fim. Fórmula em [`recomendacao.md`](recomendacao.md).
+- Voltar para `off` restaura a ordem original do restante, a partir da faixa atual.
+- Um `player_play { trackId, queue }` novo com `shuffle` ligado embaralha a fila nova da mesma
+  forma, mantendo `trackId` primeiro. O modo fica salvo entre aberturas do app.
+
+### Pontuação e DNA (RF-25)
+
+- `stats_track_scores` sem `trackIds` devolve todas as faixas da discoteca; faixa nunca tocada
+  tem `plays = 0` e `score` só com o bônus de favorita, se for.
+- `stats_dna`: `windowDays` padrão 30, entre 7 e 365. A janela atual é `[agora − windowDays,
+  agora]`; a anterior, os `windowDays` antes dela. `rising` e `falling` comparam o saldo de cada
+  artista e gênero entre as duas janelas e ignoram variações menores que 0,1. Sem histórico, listas
+  vazias e taxas zero (não é erro).
+- Favoritar uma faixa conta no gosto mesmo que ela nunca tenha tocado (`stats_taste`, `stats_dna`
+  e recomendações).
+
+### Imagens enviadas (RF-21, RF-22)
+
+- `profile_set_avatar` e `playlist_set_cover` recebem a imagem inteira em base64, até 10 MB. A
+  casca decodifica (JPEG, PNG ou WebP; outro formato é `invalid_input`), recorta o centro em
+  quadrado, reduz para 512×512 e grava em JPEG em `avatars/` ou `playlists/`, com um nome novo a
+  cada envio para não reaproveitar cache. O arquivo anterior é apagado. `image: null` remove a
+  imagem (o avatar volta ao padrão; a playlist volta ao mosaico).
+- `Playlist.mosaicPaths`: os 4 artistas com mais faixas na playlist (empate pelo nome); para cada
+  um, a foto do artista (`ArtistInfo.imagePath`) ou, sem foto, a capa de uma faixa dele na
+  playlist. Artista sem nenhuma das duas fica de fora. Com menos de 4, o frontend decide o
+  arranjo (1 capa inteira, 2 ou 3 em grade).
+
+### Fotos de artista (RF-27)
+
+- A foto vem do Wikimedia Commons, pela propriedade "imagem" (P18) do item do Wikidata ligado ao
+  MBID do artista no MusicBrainz. Sem MBID, sem item ou sem imagem: `imagePath` nulo.
+- A casca busca a foto em segundo plano depois de um download ou de `metadata_get_artist`, grava
+  em `covers/artistas/<artistId>.jpg` e guarda `imageCredit` (autor e licença do arquivo no
+  Commons), que a interface mostra junto da foto.
+
+### Busca no YouTube (RF-09, RF-23)
+
+- `youtube_search` e `recommendations_refresh` descartam vídeos com mais de 10 minutos e títulos
+  de coletânea ("full album", "álbum completo", "mix", "playlist", "coletânea", "greatest hits",
+  "1 hour" e parecidos).
+- `youtube_suggest` devolve até 10 sugestões de texto para a busca, do serviço de sugestões do
+  YouTube. Consulta vazia devolve `[]`. Sem rede, `network`; a interface ignora o erro e não
+  mostra sugestões.
+
+### yt-dlp gerenciado pelo app (RF-26)
+
+- O app usa o binário oficial do yt-dlp (release do GitHub `yt-dlp/yt-dlp`), baixado para
+  `bin/` no diretório de dados e conferido contra o `SHA2-256SUMS` da mesma release. Não usa o
+  yt-dlp do sistema. Exceção para desenvolvimento: a variável `MIUPY_YTDLP=<caminho>` força um
+  binário.
+- Na abertura, sem binário, a casca baixa em segundo plano (`ytdlp://status`). Com binário, verifica
+  versão nova no máximo uma vez por dia, sem bloquear. `ytdlp_update` força a verificação.
+- Enquanto o yt-dlp não está pronto, busca, download e streaming devolvem `unavailable` com uma
+  mensagem dizendo que o yt-dlp está sendo baixado.
+
+### Metadados em lote (RF-12, RF-20)
+
+- `metadata_refresh_library` volta na hora com o número de faixas enfileiradas e roda em segundo
+  plano, uma faixa por vez, respeitando o limite do MusicBrainz. Faz o mesmo que
+  `metadata_refresh_track`, inclusive refazer título, artista e álbum a partir dos dados do
+  YouTube. `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
+  `metadata://progress` e `library://changed` ao fim.
 
 ### Recomendações (RF-19)
 
@@ -258,8 +399,8 @@ interface TasteProfile {
 
 ## Lacunas conhecidas
 
-Ainda sem comando próprio: envio de avatar, e tocar uma recomendação ou um resultado de busca antes
-de adicionar à discoteca (hoje é preciso adicionar primeiro).
+Ainda sem comando próprio: tocar uma recomendação ou um resultado de busca antes de adicionar à
+discoteca (hoje é preciso adicionar primeiro).
 
 O registro de atividade (RF-13) não tem comando próprio: o backend grava os eventos de reprodução
 sozinho, a partir do estado do player.
