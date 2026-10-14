@@ -2,6 +2,7 @@
 name = "miupy-audio"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 crossbeam-channel = "0.5.17"
