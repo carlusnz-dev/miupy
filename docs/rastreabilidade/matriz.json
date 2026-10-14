@@ -1,10 +1,10 @@
 {
   "summary": {
     "total": 50,
-    "verificado": 32,
+    "verificado": 34,
     "implementado": 4,
     "soTeste": 0,
-    "pendente": 14
+    "pendente": 12
   },
   "unknownIds": [],
   "requirements": [
@@ -230,7 +230,7 @@
         "src-tauri/src/paths.rs:284",
         "src-tauri/src/state.rs:257",
         "src/lib/ipc/tauri.test.ts:1",
-        "src/lib/stores/stores.test.ts:68",
+        "src/lib/stores/stores.test.ts:94",
         "src/lib/util/asset.test.ts:1"
       ],
       "status": "verificado"
@@ -270,7 +270,7 @@
         "crates/miupy-core/src/playlists.rs:561",
         "crates/miupy-core/src/tracks.rs:845",
         "src-tauri/src/youtube.rs:284",
-        "src/lib/stores/stores.test.ts:68"
+        "src/lib/stores/stores.test.ts:94"
       ],
       "status": "verificado"
     },
@@ -398,7 +398,7 @@
         "src/lib/ipc/api.ts:1",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/stores/downloads.svelte.ts:1",
-        "src/lib/stores/downloads.svelte.ts:29",
+        "src/lib/stores/downloads.svelte.ts:33",
         "src/lib/stores/selection.svelte.ts:1",
         "src/routes/Downloads.svelte:2",
         "src/routes/Library.svelte:3",
@@ -432,7 +432,7 @@
         "src-tauri/src/error.rs:157",
         "src-tauri/src/state.rs:257",
         "src-tauri/src/state.rs:669",
-        "src/lib/stores/stores.test.ts:83"
+        "src/lib/stores/stores.test.ts:108"
       ],
       "status": "verificado"
     },
@@ -498,7 +498,7 @@
         "src-tauri/src/paths.rs:159",
         "src/lib/components/settings/MetadataSection.svelte:2",
         "src/lib/ipc/api.ts:52",
-        "src/lib/ipc/mock.ts:424",
+        "src/lib/ipc/mock.ts:437",
         "src/lib/ipc/tauri.ts:66",
         "src/routes/Artist.svelte:2",
         "src/routes/NowPlaying.svelte:4"
@@ -715,10 +715,10 @@
         "src/lib/components/PlayerBar.svelte:2",
         "src/lib/components/TrackRow.svelte:2",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:211",
+        "src/lib/ipc/mock.ts:224",
         "src/lib/ipc/types.ts:1",
         "src/lib/ipc/types.ts:61",
-        "src/lib/stores/player.svelte.ts:31",
+        "src/lib/stores/player.svelte.ts:33",
         "src/routes/NowPlaying.svelte:2"
       ],
       "tests": [
@@ -779,7 +779,7 @@
         "src/lib/ipc/api.ts:1",
         "src/lib/ipc/api.ts:62",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:127",
+        "src/lib/ipc/mock.ts:138",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/ipc/types.ts:1",
         "src/lib/ipc/types.ts:65",
@@ -798,7 +798,7 @@
         "crates/miupy-media/src/ytdlp.rs:837",
         "crates/miupy-media/tests/network.rs:177",
         "src-tauri/src/state.rs:257",
-        "src/lib/stores/stores.test.ts:97"
+        "src/lib/stores/stores.test.ts:122"
       ],
       "status": "verificado"
     },
@@ -833,7 +833,7 @@
         "src-tauri/src/metadata.rs:212",
         "src/lib/ipc/api.ts:52",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:424",
+        "src/lib/ipc/mock.ts:437",
         "src/lib/ipc/tauri.ts:66",
         "src/lib/ipc/types.ts:1",
         "src/lib/ipc/types.ts:28",
@@ -868,12 +868,12 @@
         "src-tauri/src/paths.rs:81",
         "src/lib/components/Avatar.svelte:2",
         "src/lib/ipc/api.ts:68",
-        "src/lib/ipc/mock.ts:522",
+        "src/lib/ipc/mock.ts:535",
         "src/lib/ipc/tauri.ts:82",
         "src/lib/ipc/types.ts:169",
         "src/lib/stores/profile.svelte.ts:8",
         "src/lib/util/imageUpload.ts:1",
-        "src/routes/Profile.svelte:15"
+        "src/routes/Profile.svelte:16"
       ],
       "tests": [
         "crates/miupy-core/src/profile.rs:305",
@@ -897,14 +897,14 @@
         "src/lib/components/PlaylistCover.svelte:2",
         "src/lib/ipc/api.ts:37",
         "src/lib/ipc/mock.ts:12",
-        "src/lib/ipc/mock.ts:139",
-        "src/lib/ipc/mock.ts:346",
+        "src/lib/ipc/mock.ts:152",
+        "src/lib/ipc/mock.ts:359",
         "src/lib/ipc/tauri.ts:51",
         "src/lib/ipc/types.ts:38",
         "src/lib/ipc/types.ts:169",
         "src/lib/util/imageUpload.ts:1",
         "src/lib/util/mosaic.ts:1",
-        "src/routes/PlaylistDetail.svelte:69"
+        "src/routes/PlaylistDetail.svelte:87"
       ],
       "tests": [
         "crates/miupy-core/src/playlists.rs:575",
@@ -926,10 +926,10 @@
         "crates/miupy-media/src/suggest.rs:14",
         "src-tauri/src/commands/youtube.rs:31",
         "src/lib/ipc/api.ts:41",
-        "src/lib/ipc/mock.ts:371",
+        "src/lib/ipc/mock.ts:384",
         "src/lib/ipc/tauri.ts:54",
         "src/lib/stores/suggestions.svelte.ts:1",
-        "src/routes/YouTube.svelte:16"
+        "src/routes/YouTube.svelte:17"
       ],
       "tests": [
         "crates/miupy-media/src/suggest.rs:62",
@@ -966,11 +966,11 @@
         "src-tauri/src/queue.rs:132",
         "src/lib/components/ShuffleButton.svelte:2",
         "src/lib/ipc/api.ts:21",
-        "src/lib/ipc/mock.ts:287",
+        "src/lib/ipc/mock.ts:300",
         "src/lib/ipc/tauri.ts:35",
         "src/lib/ipc/types.ts:8",
         "src/lib/ipc/types.ts:62",
-        "src/lib/stores/player.svelte.ts:66",
+        "src/lib/stores/player.svelte.ts:92",
         "src/lib/util/shuffle.ts:1"
       ],
       "tests": [
@@ -1006,8 +1006,8 @@
         "src-tauri/src/commands/stats.rs:49",
         "src/lib/components/TrackRow.svelte:14",
         "src/lib/ipc/api.ts:60",
-        "src/lib/ipc/mock.ts:501",
-        "src/lib/ipc/mock.ts:505",
+        "src/lib/ipc/mock.ts:514",
+        "src/lib/ipc/mock.ts:518",
         "src/lib/ipc/tauri.ts:74",
         "src/lib/ipc/types.ts:169",
         "src/lib/stores/dna.svelte.ts:1",
@@ -1040,8 +1040,8 @@
         "src-tauri/src/state.rs:140",
         "src/lib/components/settings/YtDlpSection.svelte:2",
         "src/lib/ipc/api.ts:42",
-        "src/lib/ipc/mock.ts:125",
-        "src/lib/ipc/mock.ts:380",
+        "src/lib/ipc/mock.ts:136",
+        "src/lib/ipc/mock.ts:393",
         "src/lib/ipc/tauri.ts:55",
         "src/lib/ipc/types.ts:169"
       ],
@@ -1263,6 +1263,7 @@
       "implementation": [
         "src/App.svelte:4",
         "src/app.css:7",
+        "src/lib/components/Skeleton.svelte:2",
         "src/routes/Dna.svelte:2"
       ],
       "tests": [],
@@ -1343,7 +1344,7 @@
         "src/app.css:189",
         "src/lib/components/settings/GpuSection.svelte:2",
         "src/lib/ipc/api.ts:73",
-        "src/lib/ipc/mock.ts:533",
+        "src/lib/ipc/mock.ts:546",
         "src/lib/ipc/tauri.ts:86",
         "src/lib/motion.ts:1"
       ],
@@ -1383,9 +1384,36 @@
       "title": "Carregamento sem espera",
       "priority": "S",
       "description": "Toda tela mostra *skeleton* em vez de spinner enquanto não tem dados. Os dados ficam em cache entre telas: ao voltar a uma tela, o cache aparece na hora e é atualizado em segundo plano.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/Skeleton.svelte:2",
+        "src/lib/components/SkeletonList.svelte:2",
+        "src/lib/stores/library.svelte.ts:1",
+        "src/lib/stores/recommendations.svelte.ts:1",
+        "src/lib/stores/resource.svelte.ts:1",
+        "src/lib/util/libraryEvents.ts:1",
+        "src/routes/Artist.svelte:2",
+        "src/routes/Dna.svelte:2",
+        "src/routes/Downloads.svelte:2",
+        "src/routes/Home.svelte:2",
+        "src/routes/Library.svelte:3",
+        "src/routes/PlaylistDetail.svelte:4",
+        "src/routes/Playlists.svelte:2",
+        "src/routes/Profile.svelte:2",
+        "src/routes/Stats.svelte:2",
+        "src/routes/Wrapped.svelte:2"
+      ],
+      "tests": [
+        "src/lib/stores/resource.test.ts:12",
+        "src/lib/stores/resource.test.ts:21",
+        "src/lib/stores/resource.test.ts:54",
+        "src/lib/stores/resource.test.ts:67",
+        "src/lib/stores/resource.test.ts:81",
+        "src/lib/stores/resource.test.ts:115",
+        "src/lib/util/libraryEvents.test.ts:5",
+        "src/lib/util/libraryEvents.test.ts:13",
+        "src/lib/util/libraryEvents.test.ts:19"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RNF-12",
@@ -1415,9 +1443,50 @@
       "title": "Fluidez",
       "priority": "S",
       "description": "Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`, criado pela frente que implementa este requisito), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/Cover.svelte:2",
+        "src/lib/dev/perf.ts:1",
+        "src/lib/dev/perfStats.ts:1",
+        "src/lib/stores/downloads.svelte.ts:1",
+        "src/lib/stores/library.svelte.ts:1",
+        "src/lib/stores/player.svelte.ts:1",
+        "src/lib/stores/recommendations.svelte.ts:1",
+        "src/lib/stores/resource.svelte.ts:1",
+        "src/lib/stores/scores.svelte.ts:1",
+        "src/lib/util/chunked.svelte.ts:1",
+        "src/lib/util/diff.ts:1",
+        "src/lib/util/libraryEvents.ts:1",
+        "src/routes/Artist.svelte:2",
+        "src/routes/Downloads.svelte:2",
+        "src/routes/Home.svelte:2",
+        "src/routes/Library.svelte:3",
+        "src/routes/PlaylistDetail.svelte:4",
+        "src/routes/Stats.svelte:2"
+      ],
+      "tests": [
+        "src/lib/dev/perfStats.test.ts:5",
+        "src/lib/dev/perfStats.test.ts:15",
+        "src/lib/dev/perfStats.test.ts:22",
+        "src/lib/dev/perfStats.test.ts:29",
+        "src/lib/dev/perfStats.test.ts:36",
+        "src/lib/stores/resource.test.ts:41",
+        "src/lib/stores/resource.test.ts:81",
+        "src/lib/stores/resource.test.ts:98",
+        "src/lib/stores/stores.test.ts:68",
+        "src/lib/stores/stores.test.ts:81",
+        "src/lib/util/chunked.test.ts:5",
+        "src/lib/util/chunked.test.ts:12",
+        "src/lib/util/diff.test.ts:11",
+        "src/lib/util/diff.test.ts:20",
+        "src/lib/util/diff.test.ts:26",
+        "src/lib/util/diff.test.ts:36",
+        "src/lib/util/diff.test.ts:46",
+        "src/lib/util/libraryEvents.test.ts:5",
+        "src/lib/util/libraryEvents.test.ts:13",
+        "src/lib/util/libraryEvents.test.ts:25",
+        "src/lib/util/libraryEvents.test.ts:33"
+      ],
+      "status": "verificado"
     }
   ]
 }
