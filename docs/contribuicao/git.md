@@ -104,6 +104,8 @@ ler queue[i].id.
 1. Branch a partir de `develop` (ou de `main`, se for `hotfix/*`).
 2. Antes de abrir: `cargo fmt --all`, `cargo clippy --workspace --all-targets`,
    `cargo test --workspace`; se tocou no frontend, `npm run check`, `npm test` e `npm run build`.
+   A matriz de rastreabilidade não precisa ser gerada à mão: o CI faz isso (ver "Integração
+   contínua").
 3. O **título do PR segue o mesmo formato de commit**, porque vira a mensagem do commit de
    integração: `feat(audio): toca M4A por streaming`.
 4. Revisão antes do merge: quem revisa lê o diff inteiro e roda a verificação. Para agentes, é a
@@ -115,13 +117,83 @@ ler queue[i].id.
      versão. Título: `chore(release): vX.Y.Z`.
    - `hotfix/*` → `main`: **squash**.
 
+## Integração contínua
+
+Os workflows ficam em `.github/workflows/`. Não há servidor nem nuvem: o "deploy" é publicar os
+instaladores na release do GitHub.
+
+| Workflow | Quando roda | O que faz |
+|---|---|---|
+| `ci.yml` | PR para `develop` ou `main`; push em `develop` e `main`; `workflow_dispatch` | Os portões abaixo. |
+| `matriz.yml` | PR para `develop` vindo de branch do próprio repositório | Roda `npm run docs:matriz` e, se a matriz mudou, commita no branch do PR. |
+| `release.yml` | push de tag `vX.Y.Z`; `workflow_dispatch` com a tag | Constrói os instaladores e publica a release. |
+
+### Portões (`ci.yml`)
+
+Os nomes dos jobs são os *checks* obrigatórios do ruleset (ver "Proteção de branches").
+
+| Job | Roda | Falha quando |
+|---|---|---|
+| `rust` | sempre | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` ou `cargo test --workspace` falham. Testes `#[ignore]` (rede real, áudio) não rodam. Linux com as dependências do Tauri 2. |
+| `frontend` | sempre | `npm run check`, `npm test` ou `npm run build` falham. |
+| `docs` | sempre | há ID `@req`/`@test` que não existe nos requisitos; os testes de `scripts/ci/` falham; ou a matriz está desatualizada (exceção abaixo). |
+| `regras-do-fluxo` | só em PR | o título não é Conventional Commits com os tipos e escopos acima; o branch de origem não é `<tipo>/<nome>`; o par origem/destino viola o fluxo (PR para `main` só de `develop` ou `hotfix/*`; PR para `develop` não vem de `main`, salvo o retorno de hotfix `chore: traz hotfix vX.Y.Z para develop`); no PR para `main`, as versões de `Cargo.toml`, `package.json` e `tauri.conf.json` não são iguais ou não são maiores que a última tag `v*`. O PR `develop` -> `main` precisa se chamar `chore(release): vX.Y.Z`. |
+
+As regras ficam em `scripts/ci/regras.mjs` (testadas com `node --test scripts/ci/`). Para checar um
+título antes de abrir o PR: `node scripts/ci/verificar-pr.mjs --head <branch> --base develop --titulo "<título>"`.
+
+### Matriz automática (`matriz.yml`)
+
+Em PR para `develop` cujo branch é do próprio repositório, o workflow gera a matriz e, se
+`docs/rastreabilidade/` mudou, faz o commit `docs: regenera a matriz de rastreabilidade` (autor
+`github-actions[bot]`) no branch do PR. Quem implementa só precisa anotar `@req`/`@test`.
+
+- Push feito com o `GITHUB_TOKEN` não dispara outros workflows. Por isso o `matriz.yml` não entra
+  em laço, mas também por isso o commit do bot não receberia checks: o `matriz.yml` dispara o
+  `ci.yml` por `workflow_dispatch` (exceção à regra) no branch, e os checks obrigatórios aparecem
+  no commit novo. `regras-do-fluxo` fica "skipped", o que conta como aprovado.
+- No PR de branch do repositório para `develop`, o job `docs` não cobra a matriz em dia (o bot
+  cuida); em todo o resto (PR de fork, PR para `main`, push) cobra.
+- Se o PR fica atrás da `develop` e a matriz conflita, atualize o branch (`git merge
+  upstream/develop`), resolva a matriz com `npm run docs:matriz` e suba.
+- `node scripts/rastreabilidade.mjs --check` continua útil localmente para achar ID inexistente.
+
+### Como lançar uma versão
+
+1. Em um branch `chore/` a partir de `develop`, suba a versão nos três arquivos (`Cargo.toml`,
+   `package.json`, `src-tauri/tauri.conf.json`) e o `Cargo.lock`; PR para `develop`.
+2. PR `develop` -> `main` com o título `chore(release): vX.Y.Z`. O `regras-do-fluxo` confere as
+   versões. Merge **commit** (sem squash).
+3. Tag anotada na `main`, com as notas em pt-BR (seções Novidades, Correções, Conhecido; a
+   primeira linha, `miupy vX.Y.Z`, não entra nas notas):
+   ```sh
+   git switch main && git pull upstream main
+   git tag -a vX.Y.Z      # abre o editor: escreva as notas
+   git push upstream vX.Y.Z
+   ```
+4. O `release.yml` confere que a tag é anotada, está na `main` e bate com as versões; cria a release
+   em rascunho com as notas da tag (ou reaproveita uma release que já exista); constrói Linux
+   (AppImage e .deb), Windows (NSIS e MSI) e macOS (.dmg universal); confere que os cinco tipos de
+   instalador estão anexados e então publica a release como última versão (`latest`).
+5. Para refazer: Actions > Release > Run workflow, informando a tag existente.
+
+Pendências conhecidas: os instaladores não são assinados (sem certificado de código no Windows nem
+notarização no macOS; o sistema avisa na instalação) e o Android não é construído.
+
+### Proteção de branches
+
+O ruleset do GitHub está descrito em [`protecao-de-branches.json`](protecao-de-branches.json):
+`develop` e `main` sem push direto nem force-push, PR obrigatório, checks `rust`, `frontend`,
+`docs` e `regras-do-fluxo`, squash só em `develop` e merge commit só em `main`.
+
 ## Versões
 
 - Versão semântica (`MAJOR.MINOR.PATCH`), a mesma em `Cargo.toml`, `package.json` e
   `src-tauri/tauri.conf.json`.
 - Enquanto for `0.x`: `feat` sobe o minor, `fix` e `perf` sobem o patch, e mudança que quebra
   compatibilidade sobe o minor.
-- Cada merge de `develop` na `main` recebe uma tag anotada `vX.Y.Z` na `main`.
+- Cada merge de `develop` na `main` recebe uma tag anotada `vX.Y.Z` na `main`. A tag dispara o
+  workflow de release, que publica os instaladores (ver "Como lançar uma versão").
 
 ## Hotfix
 

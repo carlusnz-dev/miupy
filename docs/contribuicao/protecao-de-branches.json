@@ -1,0 +1,81 @@
+{
+  "_comentario": "Descrição do ruleset do GitHub para develop e main. Não é lido por nenhuma ferramenta; a orquestração aplica pela API (POST /repos/{owner}/{repo}/rulesets) ou pela interface. Os nomes de check são os jobs de .github/workflows/ci.yml.",
+  "rulesets": [
+    {
+      "name": "develop",
+      "target": "branch",
+      "enforcement": "active",
+      "conditions": { "ref_name": { "include": ["refs/heads/develop"], "exclude": [] } },
+      "bypass_actors": [],
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "allowed_merge_methods": ["squash"]
+          }
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": false,
+            "required_status_checks": [
+              { "context": "rust" },
+              { "context": "frontend" },
+              { "context": "docs" },
+              { "context": "regras-do-fluxo" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "main",
+      "target": "branch",
+      "enforcement": "active",
+      "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+      "bypass_actors": [],
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "allowed_merge_methods": ["merge", "squash"]
+          }
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": false,
+            "required_status_checks": [
+              { "context": "rust" },
+              { "context": "frontend" },
+              { "context": "docs" },
+              { "context": "regras-do-fluxo" }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "_notas": [
+    "Aprovação de revisão exigida = 0: o projeto tem um autor; a revisão é a skill revisar-pr, feita antes do merge.",
+    "main permite merge commit (develop -> main) e squash (hotfix/* -> main). O ruleset não distingue por branch de origem: a regra regras-do-fluxo cobre isso. Mantido allowed_merge_methods = [merge, squash] por causa do hotfix.",
+    "develop só permite squash. O retorno de hotfix (main -> develop, merge commit, ver git.md) exige liberar 'merge' temporariamente em develop, ou trazer o hotfix por cherry-pick em um branch com squash.",
+    "Tags: proteger refs/tags/v* contra atualização e exclusão (regra de tag separada) é opcional.",
+    "strict_required_status_checks_policy=false: não exige o branch atualizado com a base, para os PRs em paralelo não precisarem de rebase a cada merge. Mude para true se preferir.",
+    "Se o repositório ativar 'immutable releases', o release.yml continua funcionando porque anexa os instaladores à release ainda em rascunho antes de publicar."
+  ]
+}

@@ -20,7 +20,8 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
   `src-tauri` é a única cola.
 - O contrato frontend ⇄ Rust é `docs/arquitetura/ipc.md`. Mudou o contrato, atualize o arquivo.
 - Todo código que implementa um requisito leva `// @req RF-NN`; todo teste leva `// @test RF-NN`.
-  Depois: `npm run docs:matriz`.
+  Nos PRs para `develop` o CI gera e commita a matriz; você não precisa rodar `npm run docs:matriz`
+  (o `node scripts/rastreabilidade.mjs --check` local continua útil para achar ID inexistente).
 - Interface e documentação em pt-BR. Identificadores de código em inglês.
 - Antes de encerrar: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`.
 
@@ -37,11 +38,14 @@ Detalhes em `docs/contribuicao/git.md`. Resumo:
   em inglês, descrição em pt-BR, no imperativo, minúscula, sem ponto final. Escopos: `core`,
   `audio`, `media`, `shell`, `ui`, `ipc`, `db`, `docs`, `deps`. Mudança que quebra compatibilidade
   leva `!` e rodapé `BREAKING CHANGE:`. Requisitos no rodapé: `Refs: RF-NN`.
+- O CI (`.github/workflows/`, ver "Integração contínua" em `docs/contribuicao/git.md`) barra PR com
+  `rust`, `frontend`, `docs` ou `regras-do-fluxo` vermelho. Versão sai por tag anotada `vX.Y.Z` na
+  `main`; o `release.yml` publica os instaladores.
 - PR só entra depois de revisado (skill `revisar-pr`). Squash para `develop`; merge commit de
   `develop` para `main`.
 
 ## Fim de sessão
 
 1. Atualize `docs/arquitetura/arquitetura.json` se a estrutura mudou.
-2. Rode `npm run docs:matriz`.
+2. A matriz é gerada pelo CI no PR (`matriz.yml`); só rode `npm run docs:matriz` se não houver PR.
 3. Salve um relatório em `docs/relatorios/` seguindo `docs/relatorios/README.md`.

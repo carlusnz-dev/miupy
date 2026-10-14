@@ -21,6 +21,10 @@ Confira o fluxo de `docs/contribuicao/git.md`: o nome do branch tem um tipo vál
 `hotfix/*` e para o PR de versão vindo de `develop`), e o título do PR e os commits estão em
 Conventional Commits. Corrija o título com `gh pr edit <pr> --title` se precisar.
 
+Confira o CI do PR: `gh pr checks <pr>` deve mostrar `rust`, `frontend`, `docs` e `regras-do-fluxo`
+verdes (o commit `docs: regenera a matriz de rastreabilidade` do bot é esperado em PR para
+`develop`). CI vermelho bloqueia o merge; CI verde não substitui os passos 2 e 3.
+
 Se o branch estiver atrás da base, atualize antes de verificar (`git merge upstream/develop` no
 worktree do branch) e resolva os conflitos você. Verificar um branch desatualizado não prova nada
 sobre o resultado do merge.
@@ -70,8 +74,9 @@ npm run build
 npm test          # se o script existir
 ```
 
-Se tocou em anotações `@req` / `@test`: `npm run docs:matriz` e confira se a matriz gerada está no
-PR.
+Se tocou em anotações `@req` / `@test`: o `matriz.yml` gera a matriz no PR; confira com `git pull`
+que o commit do bot chegou e que `node scripts/rastreabilidade.mjs --check` passa. Sem CI (PR de
+fork), rode `npm run docs:matriz` e confira se a matriz está no PR.
 
 Anote o resultado real de cada comando (contagem de testes, falhas, ignorados). Teste de rede
 ignorado é "não rodado", não "passou".
