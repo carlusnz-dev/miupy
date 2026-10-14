@@ -10,7 +10,7 @@ use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::picture::{Picture, PictureType};
 use lofty::probe::Probe;
-use lofty::tag::{Accessor, Tag};
+use lofty::tag::{Accessor, ItemKey, Tag};
 
 use crate::error::{MediaError, Result};
 
@@ -28,6 +28,8 @@ pub struct AudioInfo {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub genres: Vec<String>,
+    pub release_year: Option<u32>,
     pub duration_ms: u64,
     /// "aac" (MP4/M4A; um M4A ALAC também aparece como "aac"), "mp3", "flac", "vorbis", "opus"...
     pub codec: String,
@@ -42,6 +44,9 @@ pub struct TagUpdate {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    /// Lista vazia remove o gênero; `None` preserva a tag atual.
+    pub genres: Option<Vec<String>>,
+    pub release_year: Option<u32>,
     /// Bytes de uma imagem JPEG/PNG (formato detectado pelo conteúdo).
     pub cover: Option<Vec<u8>>,
 }
@@ -67,6 +72,15 @@ fn non_empty(s: Option<std::borrow::Cow<'_, str>>) -> Option<String> {
     s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+fn normalize_genres<'a>(genres: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    genres
+        .into_iter()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty() && seen.insert(s.clone()))
+        .collect()
+}
+
 fn open(path: &Path) -> Result<lofty::file::TaggedFile> {
     Probe::open(path)
         .map_err(|e| MediaError::Io(format!("{}: {e}", path.display())))?
@@ -76,7 +90,7 @@ fn open(path: &Path) -> Result<lofty::file::TaggedFile> {
         .map_err(|e| MediaError::Internal(format!("arquivo de áudio ilegível: {e}")))
 }
 
-// @req RF-05
+// @req RF-05 RF-20
 /// Lê tags e propriedades. Arquivo sem tags devolve campos `None` (não é erro).
 pub fn read_tags(path: &Path) -> Result<AudioInfo> {
     let file = open(path)?;
@@ -99,6 +113,17 @@ pub fn read_tags(path: &Path) -> Result<AudioInfo> {
         title: tag.and_then(|t| non_empty(t.title())),
         artist: tag.and_then(|t| non_empty(t.artist())),
         album: tag.and_then(|t| non_empty(t.album())),
+        genres: tag
+            .and_then(|t| non_empty(t.genre()))
+            .map(|s| normalize_genres(s.split(';')))
+            .unwrap_or_default(),
+        release_year: tag
+            .and_then(|t| {
+                t.get_string(ItemKey::RecordingDate)
+                    .or_else(|| t.get_string(ItemKey::Year))
+            })
+            .and_then(|date| date.get(..4))
+            .and_then(|year| year.parse().ok()),
         duration_ms: props.duration().as_millis() as u64,
         codec: codec_name(file.file_type()).to_string(),
         bitrate_kbps: props.audio_bitrate().or(props.overall_bitrate()),
@@ -107,7 +132,7 @@ pub fn read_tags(path: &Path) -> Result<AudioInfo> {
     })
 }
 
-// @req RF-05 RF-12
+// @req RF-05 RF-12 RF-20
 /// Grava título/artista/álbum/capa no formato de tag nativo do arquivo.
 pub fn write_tags(path: &Path, update: &TagUpdate) -> Result<()> {
     let mut file = open(path)?;
@@ -127,6 +152,22 @@ pub fn write_tags(path: &Path, update: &TagUpdate) -> Result<()> {
     }
     if let Some(v) = &update.album {
         tag.set_album(v.clone());
+    }
+    if let Some(genres) = &update.genres {
+        let genres = normalize_genres(genres.iter().map(String::as_str));
+        if genres.is_empty() {
+            tag.remove_genre();
+        } else {
+            tag.set_genre(genres.join("; "));
+        }
+    }
+    if let Some(year) = update.release_year {
+        if !(1000..=3000).contains(&year) {
+            return Err(MediaError::InvalidInput(
+                "ano de lançamento inválido".into(),
+            ));
+        }
+        tag.insert_text(ItemKey::RecordingDate, year.to_string());
     }
     if let Some(data) = &update.cover {
         let mut pic = Picture::from_reader(&mut data.as_slice())
@@ -178,7 +219,7 @@ mod tests {
         }
     }
 
-    // @test RF-05
+    // @test RF-05 RF-20
     #[test]
     fn m4a_le_propriedades_e_ida_e_volta_de_tags() {
         let dir = tempfile::tempdir().unwrap();
@@ -203,6 +244,8 @@ mod tests {
                 artist: Some("Artista".into()),
                 album: Some("Álbum".into()),
                 cover: Some(PNG_1X1.to_vec()),
+                genres: Some(vec!["Rock".into(), "Pop".into(), "rock".into()]),
+                release_year: Some(2020),
             },
         )
         .unwrap();
@@ -210,6 +253,8 @@ mod tests {
         assert_eq!(info.title.as_deref(), Some("Música"));
         assert_eq!(info.artist.as_deref(), Some("Artista"));
         assert_eq!(info.album.as_deref(), Some("Álbum"));
+        assert_eq!(info.genres, ["rock", "pop"]);
+        assert_eq!(info.release_year, Some(2020));
         let cover = info.cover.unwrap();
         assert_eq!(cover.mime, "image/png");
         assert_eq!(cover.data, PNG_1X1);
@@ -227,10 +272,12 @@ mod tests {
         let info = read_tags(&f).unwrap();
         assert_eq!(info.title.as_deref(), Some("Outro"));
         assert_eq!(info.artist.as_deref(), Some("Artista"));
+        assert_eq!(info.genres, ["rock", "pop"]);
+        assert_eq!(info.release_year, Some(2020));
         assert!(info.cover.is_some());
     }
 
-    // @test RF-05
+    // @test RF-05 RF-20
     #[test]
     fn mp3_e_flac_tambem_funcionam() {
         let dir = tempfile::tempdir().unwrap();
@@ -248,6 +295,8 @@ mod tests {
                     artist: Some("A".into()),
                     album: Some("B".into()),
                     cover: Some(PNG_1X1.to_vec()),
+                    genres: Some(vec!["Jazz".into()]),
+                    release_year: Some(1998),
                 },
             )
             .unwrap();
@@ -255,6 +304,8 @@ mod tests {
             assert_eq!(info.title.as_deref(), Some("T"), "{name}");
             assert_eq!(info.artist.as_deref(), Some("A"), "{name}");
             assert!(info.cover.is_some(), "{name}");
+            assert_eq!(info.genres, ["jazz"], "{name}");
+            assert_eq!(info.release_year, Some(1998), "{name}");
         }
     }
 

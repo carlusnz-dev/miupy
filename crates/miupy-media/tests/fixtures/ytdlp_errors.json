@@ -1,0 +1,6 @@
+{
+  "indisponivel": "ERROR: [youtube] aaaaaaaaaaa: This video is unavailable",
+  "formato": "ERROR: [youtube] jNQXAC9IVRw: Requested format is not available. Use --list-formats for a list of available formats",
+  "mix": "ERROR: [youtube:tab] RDdQw4w9WgXcQ: YouTube said: This playlist type is unviewable.",
+  "rede": "ERROR: [youtube] jNQXAC9IVRw: Unable to download API page: Unable to connect to proxy (127.0.0.1:1: Connection refused)"
+}
