@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "App nativo abre (tauri dev). Na sessão 02 o autor usou a versão do commit inicial na janela: buscar, baixar, tocar, playlists e estatísticas funcionaram. A develop ainda não foi aberta na janela."
+      "nota": "App nativo abre na develop (tauri dev) e migra o banco para a versão 2 sem perda. Fluxos e visual da develop aguardam o teste do autor na janela."
     },
     "windows": {
       "status": "planejado",
@@ -65,8 +65,7 @@
         "RNF-01"
       ],
       "limitacoes": [
-        "Faixa favoritada e nunca tocada não entra no perfil de gosto.",
-        "Nenhum comando IPC usa a API de recomendação ainda."
+        "Faixa favoritada e nunca tocada não entra no perfil de gosto."
       ]
     },
     {
@@ -96,8 +95,7 @@
       ],
       "limitacoes": [
         "Streaming verificado contra URLs reais do YouTube com o backend mudo; ninguém ouviu o som.",
-        "No streaming a faixa só fica pronta com o arquivo inteiro baixado (1,5 a 3,5 s medidos); o cache fica em memória.",
-        "A casca ainda não chama load_url."
+        "No streaming a faixa só fica pronta com o arquivo inteiro baixado (1,5 a 3,5 s medidos); o cache fica em memória."
       ]
     },
     {
@@ -142,7 +140,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, 37 comandos IPC, eventos, fila de reprodução, registro de atividade e gerenciador de downloads.",
+      "papel": "Casca do app: estado, 45 comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU).",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -154,23 +152,31 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 68,
-        "falhando": 0
+        "passando": 74,
+        "falhando": 0,
+        "ignorados": 1,
+        "nota": "O ignorado é o streaming real (yt-dlp + rodio); passou quando rodado à mão em 2026-10-13."
       },
       "requisitos": [
         "RF-01",
         "RF-02",
         "RF-03",
+        "RF-05",
         "RF-09",
         "RF-10",
         "RF-11",
         "RF-12",
-        "RF-13"
+        "RF-13",
+        "RF-15",
+        "RF-18",
+        "RF-19",
+        "RF-20",
+        "RNF-09"
       ],
       "limitacoes": [
-        "Os comandos novos do contrato (fila, faixas por artista, anos da retrospectiva, limpar downloads, perfil de gosto, recomendações) NÃO existem na casca; o frontend da develop já os chama.",
-        "Streaming, gravação de gêneros e ano, e aceleração de hardware não foram ligados: WEBKIT_DISABLE_DMABUF_RENDERER=1 continua sempre ativo no Linux.",
-        "Sem teste de ponta a ponta."
+        "player_play em streaming fica cerca de 3,5 s sem retorno enquanto o yt-dlp resolve a URL, segurando a trava do player.",
+        "GPU: em Wayland + NVIDIA o modo auto continua em software; MIUPY_GPU=on não foi visto em tela.",
+        "Nenhum comando novo foi conferido de dentro da janela pela orquestração."
       ]
     },
     {
@@ -202,8 +208,7 @@
         "RNF-08"
       ],
       "limitacoes": [
-        "Visual e animações da develop nunca foram vistos em tela.",
-        "Chama comandos que a casca ainda não implementa; na janela, várias telas da develop devem dar erro."
+        "Visual e animações nunca foram revisados; aguardam o teste do autor."
       ]
     },
     {
@@ -236,6 +241,6 @@
   "git": {
     "publicado": "main",
     "integracao": "develop",
-    "nota": "A develop está à frente da main e não deve ser promovida antes de a casca implementar os comandos novos."
+    "nota": "A develop está à frente da main. Promover para a main depois do teste do autor na janela."
   }
 }

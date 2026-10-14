@@ -33,4 +33,4 @@ falhou, isso fica escrito.
 | Data | Sessão | Arquivo |
 |---|---|---|
 | 2026-10-13 | 01 — fundação do projeto | [sessão](2026-10-13_sessao-01.md) · [core](2026-10-13_sessao-01_agente-core.md) · [audio](2026-10-13_sessao-01_agente-audio.md) · [media](2026-10-13_sessao-01_agente-media.md) · [frontend](2026-10-13_sessao-01_agente-frontend.md) |
-| 2026-10-13 | 02 — YouTube real, streaming, recomendações e fluxo de git | [sessão](2026-10-13_sessao-02.md) · [core](2026-10-13_sessao-02_agente-core.md) · [audio](2026-10-13_sessao-02_agente-audio.md) · [media](2026-10-13_sessao-02_agente-media.md) · [frontend](2026-10-13_sessao-02_agente-frontend.md) |
+| 2026-10-13 | 02 — YouTube real, streaming, recomendações e fluxo de git | [sessão](2026-10-13_sessao-02.md) · [core](2026-10-13_sessao-02_agente-core.md) · [audio](2026-10-13_sessao-02_agente-audio.md) · [media](2026-10-13_sessao-02_agente-media.md) · [frontend](2026-10-13_sessao-02_agente-frontend.md) · [shell](2026-10-13_sessao-02_agente-shell.md) |
