@@ -25,6 +25,8 @@ pub struct PlaybackState {
     pub status: PlaybackStatus,
     /// Faixa carregada, se houver.
     pub path: Option<PathBuf>,
+    /// URL da faixa em streaming, se houver.
+    pub url: Option<String>,
     pub position_ms: u64,
     /// Duração total; `0` enquanto desconhecida.
     pub duration_ms: u64,
@@ -38,12 +40,22 @@ impl Default for PlaybackState {
         Self {
             status: PlaybackStatus::Stopped,
             path: None,
+            url: None,
             position_ms: 0,
             duration_ms: 0,
             volume: 1.0,
             muted: false,
         }
     }
+}
+
+/// Dados conhecidos pela casca antes de iniciar o streaming.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StreamOptions {
+    /// Cabeçalhos HTTP (por exemplo, User-Agent e Referer).
+    pub headers: Vec<(String, String)>,
+    /// Duração da faixa em milissegundos; zero quando desconhecida.
+    pub duration_ms: u64,
 }
 
 /// Evento publicado pelo backend.
@@ -70,6 +82,10 @@ pub trait AudioBackend: Send + Sync {
     /// Carrega o arquivo, substituindo a faixa atual (sem emitir `TrackEnded`).
     /// Ao retornar, o status é `Paused` na posição 0; chame [`play`](Self::play).
     fn load(&self, path: &Path) -> Result<()>;
+    /// Inicia a abertura assíncrona de uma URL HTTP. Retorna antes de acessar a rede;
+    /// `Loading` permanece até o áudio estar pronto. Falhas chegam por `AudioEvent::Error`.
+    // @req RF-18
+    fn load_url(&self, url: &str, options: StreamOptions) -> Result<()>;
     /// Inicia a faixa carregada (equivale a `resume`).
     fn play(&self) -> Result<()>;
     fn pause(&self) -> Result<()>;
