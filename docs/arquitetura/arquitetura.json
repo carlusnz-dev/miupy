@@ -223,7 +223,7 @@
       "id": "ferramentas",
       "caminho": "scripts",
       "tipo": "script-node",
-      "papel": "Gerador da matriz de rastreabilidade (scripts/rastreabilidade.mjs).",
+      "papel": "Gerador da matriz de rastreabilidade (scripts/rastreabilidade.mjs) e regras de fluxo do CI (scripts/ci/: título, branch e versões). Workflows em .github/workflows/ (ci, matriz, release).",
       "dependeDe": [],
       "status": "verificado"
     }

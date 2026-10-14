@@ -1337,7 +1337,17 @@ mod tests {
             },
         )
         .unwrap();
-        b.play().unwrap();
+        match b.play() {
+            Ok(()) => {}
+            // Sem placa de som (ex.: runner do CI), como nos outros testes com saída real.
+            Err(AudioError::NoOutputDevice(why)) => {
+                eprintln!("PULADO: queda no meio do stream com saída real ({why})");
+                stop.store(true, Ordering::Relaxed);
+                server.join().unwrap();
+                return;
+            }
+            Err(e) => panic!("play falhou: {e}"),
+        }
         let ready_deadline = Instant::now() + Duration::from_secs(1);
         while b.state().status == PlaybackStatus::Loading && Instant::now() < ready_deadline {
             std::thread::sleep(Duration::from_millis(10));
@@ -1367,8 +1377,13 @@ mod tests {
             let _ = was_playing;
             assert!(error.is_some(), "queda de rede não emitiu Error");
             assert_eq!(b.state().status, PlaybackStatus::Stopped);
-            b.load(&fixture("tone.m4a")).unwrap();
-            assert_eq!(b.state().status, PlaybackStatus::Paused);
+            match b.load(&fixture("tone.m4a")) {
+                Ok(()) => assert_eq!(b.state().status, PlaybackStatus::Paused),
+                Err(AudioError::NoOutputDevice(why)) => {
+                    eprintln!("PULADO: recarga depois da queda com saída real ({why})")
+                }
+                Err(e) => panic!("recarga falhou: {e}"),
+            }
         }
         stop.store(true, Ordering::Relaxed);
         server.join().unwrap();
