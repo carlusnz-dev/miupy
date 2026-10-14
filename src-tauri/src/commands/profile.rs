@@ -118,6 +118,12 @@ pub async fn settings_update(
             })
         })
         .await?;
+    // @req RNF-09: nova escolha descarta a marca de uma falha anterior, sem tocar na abertura atual.
+    if gpu_mode.is_some()
+        && let Err(error) = crate::gpu::discard_previous_failure(&state.dirs.root)
+    {
+        log::warn!("Falha ao descartar a sentinela antiga da GPU: {error}");
+    }
     // Mudou o volume pelas configurações: o motor precisa ouvir também.
     if let Some(v) = volume {
         let player = state.player.clone();
@@ -146,4 +152,11 @@ pub async fn system_gpu_status(state: State<'_, AppState>) -> R<GpuStatusDto> {
         reason,
         restart_required: override_mode.unwrap_or(mode) != crate::gpu::applied_mode(),
     })
+}
+
+// @req RNF-09
+#[tauri::command]
+pub async fn system_gpu_startup_confirmed() -> R<()> {
+    crate::gpu::confirm_startup()?;
+    Ok(())
 }

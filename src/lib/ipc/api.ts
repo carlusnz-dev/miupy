@@ -70,6 +70,7 @@ export interface MiupyApi {
   settingsGet(): Promise<Settings>;
   settingsUpdate(a: { settings: Partial<Settings> }): Promise<Settings>;
   systemGpuStatus(): Promise<GpuStatus>;
+  systemGpuStartupConfirmed(): Promise<void>; // @req RNF-09
 
   /** Assina um evento; devolve a função que cancela a assinatura. */
   on<E extends EventName>(event: E, handler: (payload: EventMap[E]) => void): Promise<() => void>;

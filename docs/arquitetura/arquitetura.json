@@ -2,7 +2,7 @@
   "projeto": "miupy",
   "versao": "0.2.0",
   "atualizadoEm": "2026-10-14",
-  "sessao": "2026-10-14_sessao-03",
+  "sessao": "2026-10-14_sessao-04",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "App abre na develop e migra o banco para a versão 3 sem perda; o autor usou a janela, relato pendente. gpu_mode salvo como \"on\": se não abrir, MIUPY_GPU=off."
+      "nota": "App abre na develop e migra o banco para a versão 3 sem perda; o autor usou a janela, relato pendente. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
     },
     "windows": {
       "status": "planejado",
@@ -138,7 +138,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, 45 comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU).",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -150,7 +150,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 78,
+        "passando": 83,
         "falhando": 0,
         "ignorados": 2,
         "nota": "Os ignorados são provas reais (streaming, yt-dlp, sugestões, foto); passaram à mão em 2026-10-14 (a de foto 2 de 3, 503 do MusicBrainz)."
@@ -203,7 +203,8 @@
         "RF-01 a RF-20 (interface)",
         "RNF-04",
         "RNF-05",
-        "RNF-08"
+        "RNF-08",
+        "RNF-09"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",
@@ -229,6 +230,7 @@
   "dadosEmDisco": {
     "raiz": "app_data_dir() do Tauri",
     "banco": "miupy.db",
+    "sentinelaGpu": "gpu-startup-pending (temporária, só em Wayland/NVIDIA com modo on salvo)",
     "audio": "audio/<track_id>.m4a",
     "capas": "covers/",
     "binarios": "bin/yt-dlp_linux (yt-dlp oficial) e bin/yt-dlp-status.json",
