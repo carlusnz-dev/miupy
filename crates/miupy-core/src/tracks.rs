@@ -93,7 +93,6 @@ impl Database {
             .query_map([only_missing], track_from_row)?
             .collect::<rusqlite::Result<_>>()?)
     }
-    // @req RF-05
     // @req RF-28
     pub fn set_loudness(&self, track_id: &str, lufs: f64, true_peak_db: f64) -> Result<()> {
         if !lufs.is_finite() || !true_peak_db.is_finite() {
@@ -123,6 +122,7 @@ impl Database {
             .collect::<rusqlite::Result<_>>()?)
     }
 
+    // @req RF-05
     pub fn get_track(&self, track_id: &str) -> Result<Track> {
         self.conn
             .query_row(

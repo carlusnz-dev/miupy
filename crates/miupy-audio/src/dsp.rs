@@ -53,11 +53,13 @@ impl<S: Source> DspSource<S> {
         let channels = input.channels().get() as usize;
         let rate = input.sample_rate().get();
         let block_len = ((rate as usize / 200).max(1)) * channels;
+        // Começa no ganho já pedido para a faixa, sem 10 ms de rampa a partir de 0 dB.
+        let gain = f32::from_bits(controls.normalization.load(Ordering::Relaxed));
         Self {
             input,
             controls,
             eq: Box::new(FlatEq),
-            gain: 1.0,
+            gain,
             channel: 0,
             channels,
             block_len,

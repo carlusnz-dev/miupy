@@ -2,7 +2,7 @@
 
 - **Data:** 2026-10-14
 - **Autor:** agente normalizacao
-- **Modelo:** GPT-6
+- **Modelo:** Codex `gpt-6-sol`, esforço medium
 - **Escopo:** Medição EBU R128, ganho por faixa, cadeia DSP, persistência, casca e configuração de áudio.
 
 ## O que foi feito

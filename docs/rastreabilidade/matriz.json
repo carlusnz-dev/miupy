@@ -197,7 +197,7 @@
       "implementation": [
         "crates/miupy-core/src/artists.rs:48",
         "crates/miupy-core/src/downloads.rs:159",
-        "crates/miupy-core/src/tracks.rs:96",
+        "crates/miupy-core/src/tracks.rs:125",
         "crates/miupy-core/src/tracks.rs:144",
         "crates/miupy-core/src/tracks.rs:235",
         "crates/miupy-core/src/tracks.rs:403",
@@ -1082,7 +1082,7 @@
       "priority": "S",
       "description": "Igualar o volume percebido entre faixas, como no Spotify: modos Desligado, Baixo (−19 LUFS), Normal (−14 LUFS, padrão) e Alto (−11 LUFS, com limitador). Loudness EBU R128 medido por faixa no download e, nas faixas antigas, em segundo plano; faixa ainda não medida toca sem ganho.",
       "implementation": [
-        "crates/miupy-audio/src/dsp.rs:136",
+        "crates/miupy-audio/src/dsp.rs:138",
         "crates/miupy-audio/src/loudness.rs:16",
         "crates/miupy-audio/src/null.rs:224",
         "crates/miupy-audio/src/rodio_backend.rs:142",
@@ -1091,9 +1091,9 @@
         "crates/miupy-core/src/model.rs:129",
         "crates/miupy-core/src/model.rs:614",
         "crates/miupy-core/src/model.rs:651",
-        "crates/miupy-core/src/tracks.rs:97",
-        "crates/miupy-core/src/tracks.rs:109",
-        "crates/miupy-core/src/tracks.rs:118",
+        "crates/miupy-core/src/tracks.rs:96",
+        "crates/miupy-core/src/tracks.rs:108",
+        "crates/miupy-core/src/tracks.rs:117",
         "src-tauri/src/downloads.rs:362",
         "src-tauri/src/player.rs:244",
         "src-tauri/src/player.rs:627",
@@ -1106,7 +1106,7 @@
         "src/lib/stores/settings.svelte.ts:33"
       ],
       "tests": [
-        "crates/miupy-audio/src/dsp.rs:175",
+        "crates/miupy-audio/src/dsp.rs:177",
         "crates/miupy-audio/src/loudness.rs:71",
         "crates/miupy-core/src/model.rs:713",
         "crates/miupy-core/src/profile.rs:352",
