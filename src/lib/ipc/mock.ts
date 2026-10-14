@@ -72,10 +72,19 @@ const LYRICS_SYNCED = `[00:00.00] (introdução)
 [01:50.00] A noite sobe devagar sobre a pedra
 [01:58.00] e o chão ainda guarda o calor do dia`;
 
+/** `?perfTracks=N` (RNF-13): replica o acervo de exemplo para medir com uma discoteca de verdade. */
+function perfTrackCount(): number {
+  const n = typeof location === 'undefined' ? 0 : Number(new URLSearchParams(location.search).get('perfTracks'));
+  return Number.isFinite(n) && n > TITLES.length ? Math.min(n, 5000) : TITLES.length;
+}
+
 function buildTracks(): Track[] {
   const r = rng(7);
   const now = Date.now();
-  return TITLES.map(([ai, title, album, secs], i) => {
+  const count = perfTrackCount();
+  return Array.from({ length: count }, (_, i) => [...TITLES[i % TITLES.length], i] as const).map(([ai, title0, album, secs, i0]) => {
+    const i = i0;
+    const title = i < TITLES.length ? title0 : `${title0} ${Math.floor(i / TITLES.length) + 1}`;
     const a = ARTISTS[ai];
     const status = r() < 0.7 ? 'done' : r() < 0.5 ? 'none' : 'queued';
     const dl = i % 9 === 8 ? 'error' : status;
@@ -128,6 +137,8 @@ export function createMockApi(): MiupyApi {
 
   const listeners = new Map<string, Set<(p: never) => void>>();
   const emit = <E extends EventName>(e: E, p: EventMap[E]) => listeners.get(e)?.forEach((h) => h(p as never));
+  // RNF-13: o medidor (lib/dev/perf.ts) dispara eventos por aqui para simular rajadas.
+  if (typeof window !== 'undefined') (window as unknown as { __miupyMockEmit: unknown }).__miupyMockEmit = emit;
 
   const plays = new Map<string, number>();
   const r0 = rng(21);
