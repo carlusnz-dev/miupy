@@ -27,7 +27,7 @@ pub struct Youtube {
 
 /// Título e artista exibidos (e gravados) para um vídeo: título limpo de ruído de vídeo, artista
 /// do título ou, na falta, do canal.
-fn display_fields(r: &miupy_media::SearchResult) -> (String, String) {
+pub(crate) fn display_fields(r: &miupy_media::SearchResult) -> (String, String) {
     let parsed = clean_title(&r.title, &r.channel);
     let title = if parsed.title.trim().is_empty() {
         r.title.clone()
@@ -62,6 +62,13 @@ impl Youtube {
 
     fn cache(&self) -> std::sync::MutexGuard<'_, HashMap<String, miupy_media::SearchResult>> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn cache_results(&self, results: &[miupy_media::SearchResult]) {
+        let mut cache = self.cache();
+        for result in results {
+            cache.insert(result.video_id.clone(), result.clone());
+        }
     }
 
     // @req RF-09
@@ -172,6 +179,13 @@ impl Youtube {
             })
             .await?;
         self.events.library_changed("tracks_added");
+        // @req RF-19: o trigger do núcleo tira a candidata adicionada da lista.
+        let count = self
+            .db
+            .with(|db| db.list_recommendations(None, None))
+            .map(|r| r.len())
+            .unwrap_or(0);
+        self.events.recommendations_changed(count);
         Ok(tracks)
     }
 }

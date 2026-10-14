@@ -8,11 +8,13 @@ mod downloads;
 mod dto;
 mod error;
 mod events;
+mod gpu;
 mod listening;
 mod metadata;
 mod paths;
 mod player;
 mod queue;
+mod recommendations;
 mod state;
 mod tz;
 mod youtube;
@@ -23,7 +25,8 @@ use miupy_media::{MetadataConfig, MetadataProvider, OnlineMetadata, YtDlpResolve
 use tauri::{Manager, RunEvent};
 
 use commands::{
-    download, library, metadata as meta, player as pl, playlist, profile, stats, youtube as yt,
+    download, library, metadata as meta, player as pl, playlist, profile, recommendations as rec,
+    stats, youtube as yt,
 };
 use events::TauriEvents;
 use state::{AppState, Parts, default_backend};
@@ -74,13 +77,8 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // O renderizador DMABUF do WebKitGTK derruba o app em alguns compositores Wayland
-    // ("Error 71 dispatching to Wayland display"). Quem quiser religar define a variável como 0.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        // SAFETY: primeira instrução do processo, antes de qualquer outra thread existir.
-        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
-    }
+    let gpu_decision = gpu::configure();
 
     let app = tauri::Builder::default()
         .plugin(
@@ -88,7 +86,9 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            log::info!("GPU: {}", gpu_decision);
             let state = build_state(app.handle())?;
             state.start();
             app.manage(state);
@@ -96,6 +96,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             pl::player_get_state,
+            pl::player_get_queue,
             pl::player_play,
             pl::player_pause,
             pl::player_resume,
@@ -106,6 +107,7 @@ pub fn run() {
             pl::player_set_volume,
             pl::player_set_muted,
             library::library_list_tracks,
+            library::library_list_tracks_by_artist,
             library::library_get_track,
             library::library_set_favorite,
             library::library_delete_track,
@@ -122,12 +124,18 @@ pub fn run() {
             download::download_enqueue,
             download::download_enqueue_playlist,
             download::download_list,
+            download::download_clear_finished,
             download::download_cancel,
             meta::metadata_refresh_track,
             meta::metadata_get_artist,
             meta::metadata_get_lyrics,
             stats::stats_library,
             stats::stats_wrapped,
+            stats::stats_wrapped_years,
+            stats::stats_taste,
+            rec::recommendations_list,
+            rec::recommendations_refresh,
+            rec::recommendations_dismiss,
             profile::profile_get,
             profile::profile_update,
             profile::settings_get,

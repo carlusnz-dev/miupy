@@ -12,7 +12,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use miupy_core::{DownloadJob, DownloadStatus, DownloadUpdate, DownloadedFile, Source, Track};
+use miupy_core::{
+    DownloadJob, DownloadStatus, DownloadUpdate, DownloadedFile, Source, Track, TrackPatch,
+};
 use miupy_media::{DownloadRequest, MediaResolver, MetadataProvider, TagUpdate, tagger};
 use tokio::sync::{Notify, Semaphore, watch};
 use tokio_util::sync::CancellationToken;
@@ -205,7 +207,7 @@ impl Downloads {
 
     async fn run_job(&self, job: &DownloadJob, token: &CancellationToken) -> AppResult<()> {
         let track_id = job.track_id.clone();
-        let track = self.db.run(move |db| Ok(db.get_track(&track_id)?)).await?;
+        let mut track = self.db.run(move |db| Ok(db.get_track(&track_id)?)).await?;
         let video_id = match (&track.source, &track.source_id) {
             (Source::Youtube, Some(id)) => id.clone(),
             _ => return Err(AppError::invalid("A faixa não tem origem para baixar.")),
@@ -223,11 +225,12 @@ impl Downloads {
             stop.clone(),
             token.clone(),
         ));
-        let request = DownloadRequest::new(video_id, self.dirs.audio.clone(), track.id.clone())
-            .with_progress(Arc::new(move |p| {
-                tx.send_replace(p);
-            }))
-            .with_cancel(token.clone());
+        let request =
+            DownloadRequest::new(video_id.clone(), self.dirs.audio.clone(), track.id.clone())
+                .with_progress(Arc::new(move |p| {
+                    tx.send_replace(p);
+                }))
+                .with_cancel(token.clone());
         let result = self.resolver.download_audio(request).await;
         // Espera o relator terminar: nenhuma gravação de progresso pode chegar depois do fim.
         stop.cancel();
@@ -239,6 +242,72 @@ impl Downloads {
             return Err(miupy_media::MediaError::Cancelled.into());
         }
 
+        // @req RF-20: MusicBrainz prevalece; título, artista, álbum e ano do vídeo
+        // complementam apenas o que faltar. Categorias do YouTube não são gêneros musicais.
+        let recording = match self
+            .metadata
+            .find_recording(
+                &track.title,
+                track.artist_name.as_deref(),
+                Some(audio.duration_ms),
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(e) => {
+                log::info!("MusicBrainz indisponível para {}: {e}", track.id);
+                None
+            }
+        };
+        let video = if recording.is_none()
+            || recording
+                .as_ref()
+                .is_some_and(|r| r.album.is_none() || r.release_year.is_none())
+        {
+            self.resolver.video_metadata(&video_id).await.ok()
+        } else {
+            None
+        };
+        if recording.is_some() || video.is_some() {
+            let patch = TrackPatch {
+                title: recording
+                    .as_ref()
+                    .map(|r| r.title.clone())
+                    .or_else(|| video.as_ref().and_then(|v| v.track.clone())),
+                artist_name: recording
+                    .as_ref()
+                    .map(|r| Some(r.artist.clone()))
+                    .or_else(|| video.as_ref().and_then(|v| v.artist.clone().map(Some))),
+                album: recording
+                    .as_ref()
+                    .and_then(|r| r.album.clone())
+                    .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+                    .map(Some),
+                genres: recording.as_ref().map(|r| r.genres.clone()),
+                release_year: recording
+                    .as_ref()
+                    .and_then(|r| r.release_year.map(|y| y as i32))
+                    .or_else(|| {
+                        video
+                            .as_ref()
+                            .and_then(|v| v.release_year.map(|y| y as i32))
+                    })
+                    .map(Some),
+                mbid: recording.as_ref().map(|r| Some(r.mbid.clone())),
+                isrc: recording.as_ref().and_then(|r| r.isrc.clone()).map(Some),
+                ..Default::default()
+            };
+            let id = track.id.clone();
+            match self
+                .db
+                .run(move |db| Ok(db.update_track(&id, &patch)?))
+                .await
+            {
+                Ok(updated) => track = updated,
+                Err(e) => log::warn!("metadados do download de {}: {e}", track.id),
+            }
+        }
+
         // Capa (miniatura do YouTube). Falha aqui não invalida o download.
         let cover = self.download_cover(&track).await;
 
@@ -247,8 +316,9 @@ impl Downloads {
             title: Some(track.title.clone()),
             artist: track.artist_name.clone(),
             album: track.album.clone(),
+            genres: Some(track.genres.clone()),
+            release_year: track.release_year.and_then(|y| u32::try_from(y).ok()),
             cover: cover.as_deref().and_then(|p| std::fs::read(p).ok()),
-            ..Default::default()
         };
         let audio_path = audio.path.clone();
         match tokio::task::spawn_blocking(move || tagger::write_tags(&audio_path, &update)).await {
@@ -380,6 +450,12 @@ pub mod testing {
     #[derive(Default)]
     pub struct FakeResolver {
         pub results: Mutex<Vec<SearchResult>>,
+        pub related: Mutex<Vec<SearchResult>>,
+        pub stream_fail: Mutex<Option<MediaError>>,
+        pub stream_calls: Mutex<u32>,
+        pub stream_expiry: Mutex<Option<u64>>,
+        pub always_fail_network: Mutex<bool>,
+        pub video: Mutex<Option<miupy_media::VideoMetadata>>,
         /// `Some(erro)` faz o download falhar com esse erro.
         pub fail_with: Mutex<Option<MediaError>>,
         pub downloads: Mutex<Vec<String>>,
@@ -398,10 +474,14 @@ pub mod testing {
     #[async_trait]
     impl MediaResolver for FakeResolver {
         async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+            if *self.always_fail_network.lock().unwrap() {
+                return Err(MediaError::Network("offline".into()));
+            }
             if let Some(e) = self.fail_with.lock().unwrap().take() {
                 return Err(e);
             }
             let all = self.results.lock().unwrap().clone();
+            let query = query.strip_suffix(" music").unwrap_or(query);
             Ok(all
                 .into_iter()
                 .filter(|r| r.title.to_lowercase().contains(&query.to_lowercase()))
@@ -409,20 +489,45 @@ pub mod testing {
                 .collect())
         }
 
-        async fn resolve_stream(&self, _video_id: &str) -> Result<miupy_media::StreamAudio> {
-            Err(MediaError::Unavailable("streaming não simulado".into()))
+        async fn resolve_stream(&self, video_id: &str) -> Result<miupy_media::StreamAudio> {
+            *self.stream_calls.lock().unwrap() += 1;
+            if let Some(error) = self.stream_fail.lock().unwrap().take() {
+                return Err(error);
+            }
+            Ok(miupy_media::StreamAudio {
+                url: format!("https://audio.example/{video_id}.m4a"),
+                http_headers: std::collections::BTreeMap::from([(
+                    "User-Agent".into(),
+                    "miupy-test".into(),
+                )]),
+                codec: "aac".into(),
+                container: "m4a".into(),
+                bitrate_kbps: Some(128),
+                duration_ms: Some(200_000),
+                expires_at: *self.stream_expiry.lock().unwrap(),
+            })
         }
 
-        async fn related_tracks(
-            &self,
-            _video_id: &str,
-            _limit: usize,
-        ) -> Result<Vec<SearchResult>> {
-            Ok(Vec::new())
+        async fn related_tracks(&self, video_id: &str, limit: usize) -> Result<Vec<SearchResult>> {
+            if *self.always_fail_network.lock().unwrap() {
+                return Err(MediaError::Network("offline".into()));
+            }
+            if let Some(error) = self.fail_with.lock().unwrap().take() {
+                return Err(error);
+            }
+            Ok(self
+                .related
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.video_id != video_id)
+                .take(limit)
+                .cloned()
+                .collect())
         }
 
         async fn video_metadata(&self, _video_id: &str) -> Result<miupy_media::VideoMetadata> {
-            Ok(miupy_media::VideoMetadata::default())
+            Ok(self.video.lock().unwrap().clone().unwrap_or_default())
         }
 
         async fn download_audio(&self, request: DownloadRequest) -> Result<DownloadedAudio> {

@@ -67,6 +67,12 @@ pub async fn download_list(state: State<'_, AppState>) -> R<Vec<DownloadJob>> {
 
 // @req RF-10
 #[tauri::command]
+pub async fn download_clear_finished(state: State<'_, AppState>) -> R<usize> {
+    state.db.run(|db| Ok(db.clear_finished_downloads()?)).await
+}
+
+// @req RF-10
+#[tauri::command]
 pub async fn download_cancel(state: State<'_, AppState>, job_id: String) -> R<()> {
     let dl = state.downloads.clone();
     crate::db::blocking(move || dl.cancel(&job_id)).await

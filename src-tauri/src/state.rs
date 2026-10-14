@@ -13,6 +13,7 @@ use crate::events::Events;
 use crate::metadata::MetadataService;
 use crate::paths::Dirs;
 use crate::player::Player;
+use crate::recommendations::Recommendations;
 use crate::youtube::Youtube;
 
 /// Estado compartilhado, registrado no Tauri com `app.manage`.
@@ -25,6 +26,7 @@ pub struct AppState {
     pub downloads: Arc<Downloads>,
     pub youtube: Arc<Youtube>,
     pub metadata: Arc<MetadataService>,
+    pub recommendations: Arc<Recommendations>,
 }
 
 /// Dependências externas injetadas (trocadas por dublês nos testes).
@@ -60,7 +62,13 @@ impl AppState {
             );
         }
 
-        let player = Player::new(db.clone(), backend, events.clone(), dirs.prefs_file.clone());
+        let player = Player::new(
+            db.clone(),
+            backend,
+            resolver.clone(),
+            events.clone(),
+            dirs.prefs_file.clone(),
+        );
         player.restore_prefs();
         let downloads = Downloads::new(
             db.clone(),
@@ -69,10 +77,18 @@ impl AppState {
             events.clone(),
             dirs.clone(),
         );
-        let youtube = Arc::new(Youtube::new(db.clone(), resolver, events.clone()));
+        let youtube = Arc::new(Youtube::new(db.clone(), resolver.clone(), events.clone()));
+        // @req RF-19
+        let recommendations = Arc::new(Recommendations::new(
+            db.clone(),
+            resolver.clone(),
+            events.clone(),
+            youtube.clone(),
+        ));
         let metadata = Arc::new(MetadataService::new(
             db.clone(),
             provider,
+            resolver,
             dirs.clone(),
             events.clone(),
         ));
@@ -84,6 +100,7 @@ impl AppState {
             downloads,
             youtube,
             metadata,
+            recommendations,
         })
     }
 
@@ -168,9 +185,273 @@ pub fn default_backend() -> Arc<dyn AudioBackend> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::downloads::testing::{FakeMetadata, FakeResolver};
+    use crate::downloads::testing::{FakeMetadata, FakeResolver, sr};
     use crate::events::testing::RecordingEvents;
+    use chrono::Datelike;
     use miupy_core::{DownloadStatus, NewTrack};
+
+    // @test RF-03 RF-05 RF-10 RF-13 RF-14 RF-15 RF-18 RF-19 RF-20
+    #[tokio::test]
+    async fn fluxo_sem_janela_da_busca_ate_recomendacoes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let backend = Arc::new(NullBackend::new());
+        let resolver = Arc::new(FakeResolver::default());
+        resolver.results.lock().unwrap().extend([
+            sr("seed001", "Banda Pedra - Canção", "Banda Pedra"),
+            sr("stream002", "Banda Pedra - Outra", "Banda Pedra"),
+        ]);
+        resolver.related.lock().unwrap().extend([
+            sr("rec003", "Banda Pedra - Nova", "Banda Pedra"),
+            sr("rec004", "Banda Pedra - Mais", "Banda Pedra"),
+            miupy_media::SearchResult {
+                duration_ms: None,
+                ..sr("live005", "Ao vivo", "Canal")
+            },
+            miupy_media::SearchResult {
+                duration_ms: Some(7_200_000),
+                ..sr("mix006", "Mix longo", "Canal")
+            },
+        ]);
+        let provider = Arc::new(FakeMetadata::default());
+        *provider.recording.lock().unwrap() = Some(miupy_media::RecordingMatch {
+            mbid: "mb-1".into(),
+            title: "Canção".into(),
+            artist: "Banda Pedra".into(),
+            artist_mbid: None,
+            album: Some("Disco".into()),
+            release_mbid: None,
+            release_mbids: vec![],
+            duration_ms: Some(200_000),
+            score: 100,
+            genres: vec!["rock".into()],
+            release_year: Some(2024),
+            isrc: Some("BRABC2400001".into()),
+        });
+        let events = Arc::new(RecordingEvents::default());
+        let st = AppState::new(Parts {
+            dirs: Dirs::new(tmp.path()),
+            events: events.clone(),
+            backend: backend.clone(),
+            resolver: resolver.clone(),
+            provider,
+        })
+        .unwrap();
+        st.youtube.search("Banda Pedra", None).await.unwrap();
+        let tracks = st
+            .youtube
+            .add_to_library(vec!["seed001".into(), "stream002".into()], None)
+            .await
+            .unwrap();
+        st.db
+            .with(|db| db.enqueue_downloads(&[tracks[0].id.clone()]))
+            .unwrap();
+        st.downloads.run_until_idle().await;
+        let first = st.db.with(|db| db.get_track(&tracks[0].id)).unwrap();
+        assert!(first.file_path.is_some());
+        assert_eq!(first.genres, vec!["rock"]);
+        assert_eq!(first.release_year, Some(2024));
+        assert_eq!(
+            st.db
+                .with(|db| db.list_tracks_by_artist(
+                    first.artist_id.as_deref().unwrap(),
+                    &miupy_core::TrackQuery::default()
+                ))
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(st.db.with(|db| db.clear_finished_downloads()).unwrap(), 1);
+
+        let queue_ids = tracks.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
+        st.player.play(&first.id, Some(queue_ids.clone())).unwrap();
+        let local_event_id = st.player.current_event_id().unwrap();
+        assert_eq!(
+            st.player
+                .queue_tracks()
+                .unwrap()
+                .iter()
+                .map(|t| &t.id)
+                .collect::<Vec<_>>(),
+            queue_ids.iter().collect::<Vec<_>>()
+        );
+        for _ in 0..360 {
+            backend.advance(500);
+            st.player.process_pending_events();
+        }
+        let local_event = st.db.with(|db| db.get_play_event(&local_event_id)).unwrap();
+        assert!(local_event.completed);
+        assert!(local_event.listened_ms > 0);
+        assert!(st.player.state().streaming);
+        let stream_event_id = st.player.current_event_id().unwrap();
+        assert_eq!(st.player.state().track.as_ref().unwrap().id, tracks[1].id);
+        assert_eq!(st.db.with(|db| db.library_stats()).unwrap().track_count, 2);
+        let year = chrono::Local::now().year();
+        let tz = crate::tz::local_offset_minutes();
+        assert!(
+            st.db
+                .with(|db| db.wrapped_years(tz))
+                .unwrap()
+                .contains(&year)
+        );
+        let wrapped = st.db.with(|db| db.wrapped(year, tz)).unwrap();
+        assert!(wrapped.total_listened_ms > 0);
+        st.player.play(&first.id, None).unwrap(); // pula a faixa em streaming
+        assert!(
+            st.db
+                .with(|db| db.get_play_event(&stream_event_id))
+                .unwrap()
+                .skipped
+        );
+        st.player.stop().unwrap();
+        let taste = st.db.with(|db| db.taste_profile(None)).unwrap();
+        assert!(taste.total_listened_ms > 0);
+
+        let found = st.recommendations.refresh(None).await.unwrap();
+        assert_eq!(found.len(), 2);
+        assert!(!found[0].reasons.is_empty());
+        assert_eq!(
+            found.iter().map(|r| &r.source_id).collect::<Vec<_>>(),
+            st.recommendations
+                .list(None, None)
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| &r.source_id)
+                .collect::<Vec<_>>()
+        );
+        let playlist = st.db.with(|db| db.create_playlist("Pedras", None)).unwrap();
+        st.db
+            .with(|db| db.add_tracks_to_playlist(&playlist.id, std::slice::from_ref(&first.id)))
+            .unwrap();
+        assert_eq!(
+            st.recommendations
+                .refresh(Some(playlist.id.clone()))
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            st.recommendations
+                .list(Some(playlist.id), Some(1))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        *resolver.always_fail_network.lock().unwrap() = true;
+        assert_eq!(
+            st.recommendations.refresh(None).await.unwrap_err().code(),
+            "network"
+        );
+        assert_eq!(st.recommendations.list(None, None).await.unwrap().len(), 2);
+        *resolver.always_fail_network.lock().unwrap() = false;
+        let added = st
+            .youtube
+            .add_to_library(vec![found[0].source_id.clone()], None)
+            .await
+            .unwrap();
+        assert_eq!(added.len(), 1);
+        assert!(
+            !st.recommendations
+                .list(None, None)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.source_id == found[0].source_id)
+        );
+        let other = found[1].source_id.clone();
+        st.recommendations.dismiss(other.clone()).await.unwrap();
+        st.recommendations.refresh(None).await.unwrap();
+        assert!(
+            !st.recommendations
+                .list(None, None)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.source_id == other)
+        );
+        assert!(!events.recommendations.lock().unwrap().is_empty());
+    }
+
+    // @test RF-18
+    #[tokio::test]
+    async fn streaming_sem_rede_devolve_network_e_nao_abre_evento() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = Arc::new(FakeResolver::default());
+        *resolver.stream_fail.lock().unwrap() =
+            Some(miupy_media::MediaError::Network("offline".into()));
+        let st = AppState::new(Parts {
+            dirs: Dirs::new(tmp.path()),
+            events: Arc::new(RecordingEvents::default()),
+            backend: Arc::new(NullBackend::new()),
+            resolver,
+            provider: Arc::new(FakeMetadata::default()),
+        })
+        .unwrap();
+        let track = st
+            .db
+            .with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "offline01",
+                    "Sem rede",
+                    None,
+                    200_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        assert_eq!(
+            st.player.play(&track.id, None).unwrap_err().code(),
+            "network"
+        );
+        assert_eq!(st.player.state().status, crate::dto::PlayerStatus::Stopped);
+    }
+
+    // @test RF-18 RF-13
+    #[tokio::test]
+    async fn streaming_renova_url_expirada_e_recupera_um_erro() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = Arc::new(FakeResolver::default());
+        *resolver.stream_expiry.lock().unwrap() = Some(0);
+        let backend = Arc::new(NullBackend::new());
+        let st = AppState::new(Parts {
+            dirs: Dirs::new(tmp.path()),
+            events: Arc::new(RecordingEvents::default()),
+            backend,
+            resolver: resolver.clone(),
+            provider: Arc::new(FakeMetadata::default()),
+        })
+        .unwrap();
+        let track = st
+            .db
+            .with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "renova001",
+                    "Faixa",
+                    None,
+                    200_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        st.player.play(&track.id, None).unwrap();
+        st.player.pause().unwrap();
+        st.player.resume().unwrap();
+        assert_eq!(*resolver.stream_calls.lock().unwrap(), 2);
+        st.player.handle_event(AudioEvent::Error {
+            message: "rede caiu".into(),
+        });
+        assert!(st.player.state().streaming);
+        assert_eq!(*resolver.stream_calls.lock().unwrap(), 3);
+        st.player.handle_event(AudioEvent::Error {
+            message: "rede caiu de novo".into(),
+        });
+        assert_eq!(st.player.state().status, crate::dto::PlayerStatus::Stopped);
+        assert!(st.player.current_event_id().is_none());
+    }
 
     fn parts(root: &std::path::Path, backend: Arc<dyn AudioBackend>) -> Parts {
         Parts {
