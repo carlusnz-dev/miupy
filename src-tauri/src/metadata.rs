@@ -128,6 +128,8 @@ impl MetadataService {
             cover_path: cover
                 .as_ref()
                 .map(|p| Some(p.to_string_lossy().into_owned())),
+            // gêneros, ano, MBID e ISRC passam a ser preenchidos pela casca na segunda onda
+            ..Default::default()
         };
         let artist_mbid = rec.artist_mbid.clone();
         let artist_name = rec.artist.clone();

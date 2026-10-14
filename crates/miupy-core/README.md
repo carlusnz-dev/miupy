@@ -20,6 +20,26 @@ Erros são `miupy_core::Error`; `err.code()` devolve o código do ipc (`not_foun
 `invalid_input`, `conflict`, `io`, `unavailable`, `internal`) e o erro serializa como
 `{ code, message }`.
 
+## API nova para a casca
+
+```rust
+Database::list_tracks_by_artist(&self, artist_id: &str, query: &TrackQuery) -> Result<Vec<Track>>
+Database::get_tracks_by_ids(&self, track_ids: &[String]) -> Result<Vec<Track>>
+Database::wrapped_years(&self, tz_offset_minutes: i32) -> Result<Vec<i32>>
+Database::taste_profile(&self, playlist_id: Option<&str>) -> Result<TasteProfile>
+Database::recommendation_seeds(&self, playlist_id: Option<&str>, track_limit: u32,
+    artist_limit: u32, genre_limit: u32) -> Result<Vec<RecommendationSeed>>
+Database::upsert_recommendation_candidate(&self, candidate: &RecommendationCandidate) -> Result<bool>
+Database::dismiss_recommendation(&self, source_id: &str) -> Result<()>
+Database::list_recommendations(&self, playlist_id: Option<&str>, limit: Option<u32>) -> Result<Vec<Recommendation>>
+```
+
+`list_recommendations` só lê o banco. A casca implementa `recommendations_refresh` com rede:
+pede sementes, busca, grava candidatas e chama `list_recommendations`. O `bool` do upsert indica
+se a candidata foi gravada; `false` significa que já está na discoteca ou foi dispensada.
+Para uma semente `similarTrack`, copie `RecommendationSeed.track_id` para
+`RecommendationCandidate.seed_track_id`. Os tipos expostos serializam em camelCase.
+
 ## Mapa dos módulos (`src/`)
 
 | Arquivo | Conteúdo | Requisitos |
@@ -34,6 +54,7 @@ Erros são `miupy_core::Error`; `err.code()` devolve o código do ipc (`not_foun
 | `downloads.rs` | fila de downloads, progresso, cancelamento, `mark_downloaded`, playlist inteira | RF-10 RF-11 |
 | `activity.rs` | eventos de reprodução (`start_play` / `add_listened` / `finish_play`) e log de ações | RF-13 |
 | `stats.rs` | `library_stats`, `wrapped(year, tz)`; regra de "play" documentada no cabeçalho | RF-14 RF-15 |
+| `recommendations.rs` | perfil de gosto, sementes, candidatas e ranking local | RF-19 |
 | `profile.rs` | perfil (com validação) e configurações | RF-16 RF-17 |
 | `lyrics.rs` | letras (plain/synced) | RF-12 |
 | `text.rs` | normalização (sem acento), montagem segura de consulta FTS5, collation | RF-08 |

@@ -40,6 +40,22 @@ fn is_play() -> String {
 }
 
 impl Database {
+    // @req RF-15
+    /// Anos com ao menos um evento, pelo início no fuso local informado, decrescentes.
+    pub fn wrapped_years(&self, tz_offset_minutes: i32) -> Result<Vec<i32>> {
+        if tz_offset_minutes.abs() > 24 * 60 {
+            return Err(Error::invalid("deslocamento de fuso fora de ±24 h"));
+        }
+        let offset_ms = i64::from(tz_offset_minutes) * 60_000;
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT CAST(strftime('%Y', (started_at + ?1) / 1000, 'unixepoch') AS INTEGER)
+             FROM play_events ORDER BY 1 DESC",
+        )?;
+        Ok(stmt
+            .query_map([offset_ms], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
     // @req RF-14
     /// Totais da discoteca e ranking geral de faixas. `artistCount` conta artistas que têm
     /// ao menos uma faixa.
@@ -228,6 +244,22 @@ mod tests {
     use crate::time::days_from_civil;
 
     const H: i64 = 3_600_000;
+
+    // @test RF-15
+    #[test]
+    fn anos_com_eventos_no_fuso_local_em_ordem_decrescente() {
+        let db = db();
+        assert!(db.wrapped_years(-180).unwrap().is_empty());
+        let t = add_track(&db, "A", "B", 60_000);
+        let at = days_from_civil(2026, 1, 1) * 86_400_000 + H;
+        db.start_play_at(&t.id, None, at).unwrap();
+        db.start_play_at(&t.id, None, at + 5 * H).unwrap();
+        db.start_play_at(&t.id, None, days_from_civil(2024, 1, 1) * 86_400_000)
+            .unwrap();
+        assert_eq!(db.wrapped_years(-180).unwrap(), [2026, 2025, 2023]);
+        assert_eq!(db.wrapped_years(0).unwrap(), [2026, 2024]);
+        assert_eq!(db.wrapped_years(2000).unwrap_err().code(), "invalid_input");
+    }
     const MIN: i64 = 60_000;
 
     /// Epoch ms de uma data/hora UTC.

@@ -2,7 +2,9 @@
 
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
-`crates/miupy-core/migrations/0001_init.sql`. A versão do esquema fica em `PRAGMA user_version`.
+`crates/miupy-core/migrations/0001_init.sql` e `0002_recommendations.sql`. A versão do esquema
+fica em `PRAGMA user_version`. A migração 0001 não foi alterada; 0002 funciona sobre bancos com
+dados existentes.
 
 ## Convenções
 
@@ -22,6 +24,7 @@ artists 1─* tracks 1─* playlist_tracks *─1 playlists
                  └ 1─* play_events *─0..1 playlists (contexto)
 user_actions (log solto, sem FK)        profile, settings (linha única)
 tracks_fts (FTS5)  ←  triggers em tracks e artists
+recommendation_candidates (source_id único; sem FK para a faixa candidata)
 ```
 
 ## Tabelas
@@ -37,6 +40,9 @@ deixam de aparecer em listagens e contagens.
 `id`, `title`, `artist_id` (FK `ON DELETE SET NULL`), `album`, `duration_ms`, `file_path`
 (anulável: vazio até o download), `cover_path`, `source` (`youtube`|`local`), `source_id`, `codec`,
 `bitrate`, `thumbnail_url`, `download_status` (`none|queued|downloading|done|error`), `added_at`.
+Desde a migração 0002 também: `genres` (array JSON normalizado para minúsculas, sem repetição,
+padrão `[]`), `release_year` (1..9999 ou NULL), `mbid` e `isrc` opcionais. A normalização ocorre
+na API de criação/edição; o banco valida que `genres` é um array JSON.
 
 - `UNIQUE (source, source_id) WHERE source_id IS NOT NULL`: o mesmo vídeo do YouTube entra uma vez.
 - `UNIQUE (file_path) WHERE file_path IS NOT NULL`: dois registros não apontam para o mesmo arquivo.
@@ -77,6 +83,16 @@ quando `update_download` devolve `not_found`. O sucesso passa por `mark_download
 `id`, `track_id` (FK cascade), `playlist_id` (FK `SET NULL`, contexto opcional), `started_at`,
 `ended_at` (NULL = aberto), `listened_ms` (tempo realmente ouvido, acumulado), `completed`,
 `skipped`. Índices em `started_at` e `(track_id, started_at)`.
+
+### `recommendation_candidates` (RF-19)
+
+`source_id` (PK), `title`, `artist`, `duration_ms`, `thumbnail_url`, `genres` (array JSON),
+`seed_kind` (`similarTrack|artist|genre`), `seed_label`, `seed_track_id` (FK opcional, `SET NULL`),
+`fetched_at` e `dismissed` (0/1). A candidata não está em `tracks`: o upsert recusa `source_id`
+já presente. Um trigger remove candidatas ativas quando uma faixa com o mesmo `source_id` entra
+em `tracks`. A linha dispensada permanece como lápide para impedir reaparição futura. O índice
+`(dismissed, fetched_at)` auxilia a lista. Fórmula e seleção em
+[`recomendacao.md`](recomendacao.md).
 
 ### `user_actions`
 Log genérico: `id`, `kind` (ex.: `track_added`, `track_removed`, `track_favorited`,
