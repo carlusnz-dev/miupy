@@ -107,8 +107,9 @@ Linha única cada (`id INTEGER PRIMARY KEY CHECK (id = 1)`), criada pela migraç
 `profile`: `display_name`, `username`, `email`, `phone` (textos, vazios por padrão),
 `avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8) e,
 desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`auto|on|off`,
-padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
-`Settings.gpuMode`.
+padrão `auto`). Desde a migração `0006`, `sidebar_width` guarda a largura do menu em px
+(220 a 400, padrão 280); o núcleo corta valores fora do intervalo antes de gravar.
+O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira `Settings.gpuMode`.
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).

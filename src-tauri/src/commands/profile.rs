@@ -16,6 +16,8 @@ pub struct SettingsDto {
     volume: f64,
     gpu_mode: GpuMode,
     normalization: Normalization,
+    // @req RF-33
+    sidebar_width: i64,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -24,6 +26,8 @@ pub struct SettingsPatchDto {
     volume: Option<f64>,
     gpu_mode: Option<GpuMode>,
     normalization: Option<Normalization>,
+    // @req RF-33
+    sidebar_width: Option<i64>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +94,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
+                sidebar_width: s.sidebar_width,
             })
         })
         .await
@@ -107,6 +112,7 @@ pub async fn settings_update(
         lava_theme: settings.lava_theme,
         volume,
         normalization: settings.normalization,
+        sidebar_width: settings.sidebar_width.map(|width| width.clamp(220, 400)),
     };
     let saved = state
         .db
@@ -120,6 +126,7 @@ pub async fn settings_update(
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
+                sidebar_width: s.sidebar_width,
             })
         })
         .await?;

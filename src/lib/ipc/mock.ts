@@ -121,7 +121,8 @@ export function createMockApi(): MiupyApi {
   ];
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal' };
+  // @req RF-33
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', sidebarWidth: 280 };
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
@@ -526,6 +527,7 @@ export function createMockApi(): MiupyApi {
     async settingsGet() { await wait(20); return { ...settings }; },
     async settingsUpdate({ settings: s }) {
       settings = { ...settings, ...s };
+      if (s.sidebarWidth !== undefined) settings.sidebarWidth = Math.max(220, Math.min(400, Math.round(s.sidebarWidth)));
       if (s.volume !== undefined) { player.volume = s.volume; pushState(); }
       return { ...settings };
     },

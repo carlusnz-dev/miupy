@@ -18,6 +18,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0002_recommendations.sql")),
         M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
         M::up(include_str!("../migrations/0004_loudness.sql")),
+        M::up(include_str!("../migrations/0006_sidebar_width.sql")),
     ])
 }
 
@@ -139,7 +140,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -180,7 +181,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -234,7 +235,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
@@ -244,6 +245,33 @@ mod tests {
             crate::Normalization::Normal
         );
         assert_eq!(db.get_play_event("e").unwrap().listened_ms, 60_000);
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
+
+    // @test RF-33 RNF-01
+    #[test]
+    fn migra_largura_sem_perder_configuracoes_existentes() {
+        let path = std::env::temp_dir().join(format!("miupy-sidebar-{}.db", new_id()));
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            register_collation(&conn).unwrap();
+            Migrations::new(vec![
+                M::up(include_str!("../migrations/0001_init.sql")),
+                M::up(include_str!("../migrations/0002_recommendations.sql")),
+                M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
+                M::up(include_str!("../migrations/0004_loudness.sql")),
+            ])
+            .to_latest(&mut conn)
+            .unwrap();
+            conn.execute("UPDATE settings SET lava_theme = 'blue' WHERE id = 1", [])
+                .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert_eq!(db.schema_version().unwrap(), 5);
+        let settings = db.get_settings().unwrap();
+        assert_eq!(settings.sidebar_width, 280);
+        assert_eq!(settings.lava_theme, crate::LavaTheme::Blue);
         drop(db);
         let _ = std::fs::remove_file(path);
     }
@@ -279,7 +307,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (

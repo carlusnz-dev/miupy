@@ -1,0 +1,3 @@
+-- @req RF-33 RNF-01
+ALTER TABLE settings ADD COLUMN sidebar_width INTEGER NOT NULL DEFAULT 280
+    CHECK (sidebar_width BETWEEN 220 AND 400);

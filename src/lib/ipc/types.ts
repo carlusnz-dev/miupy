@@ -125,6 +125,8 @@ export interface Settings {
   volume: number;
   gpuMode: GpuMode;
   normalization: Normalization;
+  // @req RF-33
+  sidebarWidth: number;
 }
 export type GpuMode = 'auto' | 'on' | 'off';
 export interface GpuStatus { mode: GpuMode; envOverride: GpuMode | null; hardware: boolean; reason: string; restartRequired: boolean; }

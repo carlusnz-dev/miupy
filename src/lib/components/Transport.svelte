@@ -11,8 +11,7 @@
     <Icon name="prev" size={big ? 26 : 20} />
   </button>
   <button
-    class="motion-bounce grid shrink-0 place-items-center rounded-full border-0 {big ? 'h-16 w-16' : 'h-10 w-10'}"
-    style="background:var(--grad-lava);color:var(--lava-ink)"
+    class="btn-primary motion-bounce grid shrink-0 place-items-center rounded-full border-0 {big ? 'h-16 w-16' : 'h-10 w-10'}"
     aria-label={player.isPlaying ? 'Pausar' : 'Tocar'} disabled={!player.active} onclick={() => player.toggle()}
   >
     <Icon name={player.isPlaying || player.isLoading ? 'pause' : 'play'} size={big ? 30 : 22} fill />

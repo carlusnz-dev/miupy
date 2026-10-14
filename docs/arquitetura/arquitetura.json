@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa.",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness, preferência de normalização por faixa e largura salva do menu lateral.",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",
@@ -44,7 +44,7 @@
       ],
       "status": "verificado",
       "testes": {
-        "passando": 79,
+        "passando": 81,
         "falhando": 0
       },
       "requisitos": [
@@ -63,7 +63,8 @@
         "RF-19",
         "RF-20",
         "RNF-01",
-        "RF-28"
+        "RF-28",
+        "RF-33"
       ],
       "limitacoes": []
     },
@@ -176,7 +177,8 @@
         "RF-20",
         "RNF-09",
         "RF-28",
-        "RNF-12"
+        "RNF-12",
+        "RF-33"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
@@ -188,7 +190,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola. Seção de áudio com seleção do modo de normalização.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola. Seção de áudio com seleção do modo de normalização. Botão primário flat, toast de vidro e menu lateral redimensionável.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -202,7 +204,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 20,
+        "passando": 25,
         "falhando": 0,
         "nota": "Vitest com cliente falso; validado na versão web por agente Sonnet + Playwright (12 itens, transições medidas)."
       },
@@ -212,7 +214,8 @@
         "RNF-05",
         "RNF-08",
         "RNF-09",
-        "RF-28"
+        "RF-28",
+        "RF-33"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",
