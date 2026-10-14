@@ -2,6 +2,8 @@
 //! `miupy-core` (banco), `miupy-audio` (motor de reprodução) e `miupy-media` (YouTube,
 //! metadados e tags). É a única parte do projeto que conhece o Tauri.
 
+#[cfg(target_os = "linux")]
+mod asset_webkit;
 mod commands;
 mod db;
 mod downloads;
@@ -98,6 +100,8 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "linux")]
             log::info!("GPU: {}", gpu_decision);
+            #[cfg(target_os = "linux")]
+            asset_webkit::configure(app);
             let state = build_state(app.handle())?;
             state.start();
             app.manage(state);

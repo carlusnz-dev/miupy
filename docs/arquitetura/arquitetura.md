@@ -72,6 +72,9 @@ Tudo que fala com a internet ou mexe no arquivo de mídia:
 ### `src-tauri`
 A casca. Guarda o estado do app (banco, backend de áudio, fila de reprodução, fila de downloads),
 expõe os comandos de [`ipc.md`](ipc.md), emite eventos e faz a orquestração que cruza crates:
+- No Linux, habilita CORS para o esquema `asset` no contexto do WebKitGTK. O handler do Tauri
+  continua restringindo os arquivos ao escopo configurado em `tauri.conf.json`; isso permite
+  mostrar capas tanto com a origem de desenvolvimento HTTP quanto com a origem do app instalado.
 - **Fila de reprodução**: próxima/anterior, avanço automático ao fim da faixa.
 - **Registro de atividade**: abre um evento de reprodução ao iniciar a faixa e acumula o tempo
   realmente ouvido (pausa não conta) até trocar ou parar.
