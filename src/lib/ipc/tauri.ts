@@ -83,6 +83,7 @@ export function createTauriApi(): MiupyApi {
     settingsGet: () => call('settings_get'),
     settingsUpdate: (a) => call('settings_update', a),
     systemGpuStatus: () => call('system_gpu_status'),
+    systemGpuStartupConfirmed: () => call('system_gpu_startup_confirmed'), // @req RNF-09
 
     async on(event, handler) {
       const un = await listen<never>(event, (e) => handler(e.payload as never));

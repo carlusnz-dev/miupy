@@ -530,6 +530,7 @@ export function createMockApi(): MiupyApi {
       return { ...settings };
     },
     async systemGpuStatus() { return { mode: settings.gpuMode, envOverride: null, hardware: true, reason: 'GPU simulada no navegador', restartRequired: false }; },
+    async systemGpuStartupConfirmed() {}, // @req RNF-09
 
     async on(event, handler) {
       let set = listeners.get(event);
