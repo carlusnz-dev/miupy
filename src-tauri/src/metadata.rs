@@ -20,6 +20,8 @@ use crate::paths::Dirs;
 const READ_TIMEOUT: Duration = Duration::from_secs(12);
 /// Depois de uma tentativa (com ou sem sucesso), não repete a mesma consulta por este tempo.
 const RETRY_AFTER: Duration = Duration::from_secs(300);
+/// Falha temporária pode ser consultada novamente em breve, sem repetir imediatamente.
+const TEMPORARY_RETRY_AFTER: Duration = Duration::from_secs(10);
 
 pub struct MetadataService {
     db: Db,
@@ -72,23 +74,8 @@ impl MetadataService {
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
             for (i, t) in tracks.into_iter().enumerate() {
-                let mut attempts = 0;
-                loop {
-                    match this.refresh_track(&t.id).await {
-                        Ok(_) => break,
-                        Err(e)
-                            if attempts < 3
-                                && (e.to_string().contains("503")
-                                    || e.to_string().contains("reduzir o ritmo")) =>
-                        {
-                            attempts += 1;
-                            tokio::time::sleep(Duration::from_secs(2u64.pow(attempts))).await;
-                        }
-                        Err(e) => {
-                            log::warn!("reprocessamento de {}: {e}", t.id);
-                            break;
-                        }
-                    }
+                if let Err(e) = this.refresh_track(&t.id).await {
+                    log::warn!("reprocessamento de {}: {e}", t.id);
                 }
                 this.events.metadata_progress(i + 1, total);
             }
@@ -109,6 +96,15 @@ impl MetadataService {
                 true
             }
         }
+    }
+
+    // @req RF-12 RF-27
+    fn retry_soon(&self, key: &str) {
+        let mut attempts = self.attempts.lock().unwrap_or_else(|e| e.into_inner());
+        attempts.insert(
+            key.to_owned(),
+            Instant::now() - (RETRY_AFTER - TEMPORARY_RETRY_AFTER),
+        );
     }
 
     // @req RF-12
@@ -332,7 +328,23 @@ impl MetadataService {
     /// persistir. Sem rede (ou com erro), devolve o que há localmente.
     pub async fn get_artist(&self, artist_id: &str) -> AppResult<ArtistInfo> {
         let id = artist_id.to_owned();
-        let info = self.db.run(move |db| Ok(db.get_artist_info(&id)?)).await?;
+        let mut info = self.db.run(move |db| Ok(db.get_artist_info(&id)?)).await?;
+        // @req RF-27: sem MBID, encontre o artista antes de consultar a foto.
+        let incomplete = info.mbid.is_none() || (info.country.is_none() && info.genres.is_empty());
+        if incomplete && self.should_try(format!("artist:{}", info.id)) {
+            match tokio::time::timeout(READ_TIMEOUT, self.enrich_artist(&info)).await {
+                Ok(Ok(Some(updated))) => info = updated,
+                Ok(Ok(None)) => {}
+                Ok(Err(e)) => {
+                    log::info!("sem enriquecimento para o artista {}: {e}", info.name);
+                    self.retry_soon(&format!("artist:{}", info.id));
+                }
+                Err(_) => {
+                    log::info!("tempo esgotado ao enriquecer o artista {}", info.name);
+                    self.retry_soon(&format!("artist:{}", info.id));
+                }
+            }
+        }
         let photo = if info.image_path.is_none()
             && info.mbid.is_some()
             && self.should_try(format!("artist-photo:{}", info.id))
@@ -346,10 +358,12 @@ impl MetadataService {
                 Ok(Ok(found)) => found,
                 Ok(Err(e)) => {
                     log::info!("sem foto para o artista {}: {e}", info.name);
+                    self.retry_soon(&format!("artist-photo:{}", info.id));
                     None
                 }
                 Err(_) => {
                     log::info!("tempo esgotado ao buscar a foto de {}", info.name);
+                    self.retry_soon(&format!("artist-photo:{}", info.id));
                     None
                 }
             }
@@ -383,22 +397,7 @@ impl MetadataService {
                 }
             }
         }
-        let incomplete = info.mbid.is_none() || (info.country.is_none() && info.genres.is_empty());
-        if !incomplete || !self.should_try(format!("artist:{}", info.id)) {
-            return Ok(info);
-        }
-        match tokio::time::timeout(READ_TIMEOUT, self.enrich_artist(&info)).await {
-            Ok(Ok(Some(updated))) => Ok(updated),
-            Ok(Ok(None)) => Ok(info),
-            Ok(Err(e)) => {
-                log::info!("sem enriquecimento para o artista {}: {e}", info.name);
-                Ok(info)
-            }
-            Err(_) => {
-                log::info!("tempo esgotado ao enriquecer o artista {}", info.name);
-                Ok(info)
-            }
-        }
+        Ok(info)
     }
 
     async fn enrich_artist(&self, info: &ArtistInfo) -> AppResult<Option<ArtistInfo>> {
@@ -469,10 +468,12 @@ impl MetadataService {
             Ok(Ok(_)) => return Ok(stored),
             Ok(Err(e)) => {
                 log::info!("sem letra para {}: {e}", track.id);
+                self.retry_soon(&format!("lyrics:{}", track.id));
                 return Ok(stored);
             }
             Err(_) => {
                 log::info!("tempo esgotado buscando a letra de {}", track.id);
+                self.retry_soon(&format!("lyrics:{}", track.id));
                 return Ok(stored);
             }
         };
@@ -696,8 +697,14 @@ mod tests {
         *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("offline".into()));
         let l = f.svc.get_lyrics(&t.id).await.unwrap();
         assert!(l.plain.is_none() && l.synced.is_none());
-        // nova tentativa dentro do intervalo não bate na rede de novo
+        // Falha temporária só mantém um intervalo curto; ausência real mantém o longo.
         let calls = *f.fake.network_calls.lock().unwrap();
+        let key = format!("lyrics:{}", t.id);
+        let age = {
+            let attempts = f.svc.attempts.lock().unwrap();
+            attempts.get(&key).unwrap().elapsed()
+        };
+        assert!(age >= RETRY_AFTER - Duration::from_secs(10));
         f.svc.get_lyrics(&t.id).await.unwrap();
         assert_eq!(*f.fake.network_calls.lock().unwrap(), calls);
 
@@ -750,6 +757,39 @@ mod tests {
         assert_eq!(stored.country.as_deref(), Some("FR"));
     }
 
+    // @test RF-27
+    #[tokio::test]
+    async fn artista_recebe_foto_na_primeira_consulta_apos_obter_mbid() {
+        let f = fx();
+        let t = track(&f);
+        let aid = t.artist_id.unwrap();
+        *f.fake.artist.lock().unwrap() = Some(ArtistDetails {
+            mbid: "art-1".into(),
+            name: "Daft Punk".into(),
+            country: Some("FR".into()),
+            genres: vec!["electronic".into()],
+            bio: None,
+            image_url: None,
+        });
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut bytes, image::ImageFormat::Jpeg)
+            .unwrap();
+        *f.fake.photo.lock().unwrap() = Some(miupy_media::ArtistPhoto {
+            bytes: bytes.into_inner(),
+            extension: "jpg".into(),
+            credit: "Autora — CC BY".into(),
+        });
+        let info = f.svc.get_artist(&aid).await.unwrap();
+        assert_eq!(info.mbid.as_deref(), Some("art-1"));
+        assert!(
+            info.image_path
+                .as_ref()
+                .is_some_and(|p| std::path::Path::new(p).is_file())
+        );
+        assert_eq!(info.image_credit.as_deref(), Some("Autora — CC BY"));
+    }
+
     // @test RF-12
     #[tokio::test]
     async fn artista_sem_rede_devolve_o_que_ha_no_banco() {
@@ -763,6 +803,47 @@ mod tests {
         assert_eq!(
             f.svc.get_artist("nao-existe").await.unwrap_err().code(),
             "not_found"
+        );
+    }
+
+    // @test RF-27
+    #[tokio::test]
+    async fn falha_temporaria_da_foto_nao_bloqueia_por_cinco_minutos() {
+        let f = fx();
+        let t = track(&f);
+        let aid = t.artist_id.unwrap();
+        f.db.with(|db| {
+            db.update_artist(
+                &aid,
+                &ArtistPatch {
+                    mbid: Some(Some("art-1".into())),
+                    country: Some(Some("FR".into())),
+                    genres: Some(vec!["electronic".into()]),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("HTTP 503".into()));
+        let info = f.svc.get_artist(&aid).await.unwrap();
+        assert!(info.image_path.is_none());
+        let attempts = f.svc.attempts.lock().unwrap();
+        let age = attempts
+            .get(&format!("artist-photo:{aid}"))
+            .unwrap()
+            .elapsed();
+        assert!(age >= RETRY_AFTER - TEMPORARY_RETRY_AFTER);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn letra_nao_encontrada_mantem_intervalo_longo() {
+        let f = fx();
+        let t = track(&f);
+        f.svc.get_lyrics(&t.id).await.unwrap();
+        let attempts = f.svc.attempts.lock().unwrap();
+        assert!(
+            attempts.get(&format!("lyrics:{}", t.id)).unwrap().elapsed() < TEMPORARY_RETRY_AFTER
         );
     }
 }

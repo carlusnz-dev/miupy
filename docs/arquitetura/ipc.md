@@ -386,6 +386,19 @@ interface YtDlpStatus {
 - A casca busca a foto em segundo plano depois de um download ou de `metadata_get_artist`, grava
   em `covers/artistas/<artistId>.jpg` e guarda `imageCredit` (autor e licença do arquivo no
   Commons), que a interface mostra junto da foto.
+- Se o artista ainda não tiver MBID, `metadata_get_artist` tenta obtê-lo antes da foto, na mesma
+  consulta. Falhas temporárias de rede ou tempo esgotado permitem nova tentativa após 10 s;
+  ausência real de dados mantém o intervalo de 5 min.
+
+### Ritmo das APIs de metadados (RF-12)
+
+- MusicBrainz compartilha um limite de uma chamada por segundo em toda a instância da casca.
+  LRCLIB tem fila própria, com intervalo mínimo de 2 s. Respostas 503/429 e falhas de transporte
+  recebem até três tentativas, com espera crescente e respeito a `Retry-After`. Uma indicação de
+  espera acima de 8 s encerra a consulta sem antecipar nova chamada; cada operação de API tem
+  limite total de 15 s. O lote avança para a faixa seguinte quando uma consulta falha.
+- Letra e foto não encontradas são consultadas de novo após 5 min. Falhas temporárias permitem
+  nova tentativa após 10 s e preservam os dados locais.
 
 ### Busca no YouTube (RF-09, RF-23)
 
