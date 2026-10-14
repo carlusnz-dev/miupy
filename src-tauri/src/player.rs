@@ -97,10 +97,18 @@ impl Player {
     pub fn restore_prefs(&self) {
         match self.db.with(|db| db.get_settings()) {
             Ok(s) => {
-                if let Ok(eq) = self.db.with(|db| db.get_eq_preset(&s.eq_preset_id)) {
-                    let _ = self
-                        .backend
-                        .set_equalizer(eq.gains_db.try_into().unwrap_or([0.; 8]));
+                match self.db.with(|db| db.get_eq_preset(&s.eq_preset_id)) {
+                    Ok(eq) => match <[f32; 8]>::try_from(eq.gains_db) {
+                        Ok(gains) => {
+                            if let Err(e) = self.backend.set_equalizer(gains) {
+                                log::warn!("não consegui aplicar o equalizador salvo: {e}");
+                            }
+                        }
+                        Err(g) => {
+                            log::warn!("perfil de EQ salvo com {} bandas; usando Plano", g.len())
+                        }
+                    },
+                    Err(e) => log::warn!("não consegui ler o perfil de EQ salvo: {e}"),
                 }
                 if let Err(e) = self.backend.set_volume(s.volume as f32) {
                     log::warn!("não consegui aplicar o volume salvo: {e}");
@@ -628,8 +636,6 @@ impl Player {
         Ok(self.snapshot(&inner))
     }
 
-    // @req RF-02
-    // @req RF-28
     // @req RF-29
     pub fn refresh_equalizer(&self) -> AppResult<()> {
         let gains = self.db.with(|db| {
@@ -641,6 +647,8 @@ impl Player {
         Ok(())
     }
 
+    // @req RF-02
+    // @req RF-28
     pub fn refresh_normalization(&self) -> AppResult<()> {
         let current = self.lock().track.clone();
         let gain = if let Some(track) = current.filter(|t| t.file_path.is_some()) {
