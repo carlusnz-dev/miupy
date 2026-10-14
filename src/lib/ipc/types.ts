@@ -120,7 +120,10 @@ export interface Profile {
 export interface Settings {
   lavaTheme: LavaTheme;
   volume: number;
+  gpuMode: GpuMode;
 }
+export type GpuMode = 'auto' | 'on' | 'off';
+export interface GpuStatus { mode: GpuMode; envOverride: GpuMode | null; hardware: boolean; reason: string; restartRequired: boolean; }
 
 export interface RankedTrack {
   track: Track;

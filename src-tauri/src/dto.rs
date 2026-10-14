@@ -2,8 +2,8 @@
 //! serializa em camelCase).
 
 use miupy_audio::PlaybackStatus;
-use miupy_core::Track;
-use serde::Serialize;
+use miupy_core::{ShuffleMode, Track};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,6 +40,7 @@ pub struct PlayerState {
     pub queue_index: i64,
     // @req RF-18
     pub streaming: bool,
+    pub shuffle: ShuffleMode,
 }
 
 /// Payload de `player://progress`.
@@ -62,6 +63,52 @@ pub struct SearchResult {
     pub in_library: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageUpload {
+    pub data_base64: String,
+    pub mime_type: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum YtDlpState {
+    Missing,
+    Downloading,
+    Ready,
+    Error,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YtDlpStatus {
+    pub state: YtDlpState,
+    pub version: Option<String>,
+    pub path: Option<String>,
+    pub checked_at: Option<u64>,
+    pub progress: f32,
+    pub error: Option<String>,
+}
+impl From<miupy_media::YtDlpStatus> for YtDlpStatus {
+    fn from(s: miupy_media::YtDlpStatus) -> Self {
+        Self {
+            state: match s.state {
+                miupy_media::YtDlpState::Missing => YtDlpState::Missing,
+                miupy_media::YtDlpState::Downloading => YtDlpState::Downloading,
+                miupy_media::YtDlpState::Ready => YtDlpState::Ready,
+                miupy_media::YtDlpState::Error => YtDlpState::Error,
+            },
+            version: s.version,
+            path: s.path.map(|p| p.to_string_lossy().into_owned()),
+            checked_at: s.checked_at,
+            progress: s.progress,
+            error: s.error,
+        }
+    }
+}
+pub fn from_ytdlp_status(s: miupy_media::YtDlpStatus) -> YtDlpStatus {
+    s.into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,6 +126,7 @@ mod tests {
             queue: vec!["a".into()],
             queue_index: 0,
             streaming: false,
+            shuffle: ShuffleMode::Off,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["status"], "playing");

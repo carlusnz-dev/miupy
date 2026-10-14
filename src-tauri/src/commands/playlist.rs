@@ -1,10 +1,48 @@
 use miupy_core::{Playlist, PlaylistPatch, Track, TrackQuery};
 use tauri::State;
 
+use crate::dto::ImageUpload;
 use crate::error::AppError;
 use crate::state::AppState;
 
 type R<T> = Result<T, AppError>;
+
+// @req RF-22
+#[tauri::command]
+pub async fn playlist_set_cover(
+    state: State<'_, AppState>,
+    playlist_id: String,
+    image: Option<ImageUpload>,
+) -> R<Playlist> {
+    let new_path = image
+        .as_ref()
+        .map(|i| crate::paths::save_upload(i, &state.dirs.root.join("playlists"), "playlist"))
+        .transpose()?;
+    let path = new_path.as_ref().map(|p| p.to_string_lossy().into_owned());
+    let update_id = playlist_id.clone();
+    let old = state
+        .db
+        .run(move |db| Ok(db.set_playlist_cover(&update_id, path.as_deref())?))
+        .await?;
+    if let Some(old) = old {
+        let p = std::path::PathBuf::from(old);
+        if state.dirs.owns(&p) {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    state.events.library_changed("playlist_cover_updated");
+    let id = playlist_id;
+    state
+        .db
+        .run(move |db| {
+            Ok(db
+                .list_playlists()?
+                .into_iter()
+                .find(|p| p.id == id)
+                .ok_or_else(|| miupy_core::Error::NotFound("playlist".into()))?)
+        })
+        .await
+}
 
 // @req RF-06
 #[tauri::command]

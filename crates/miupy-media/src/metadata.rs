@@ -156,6 +156,9 @@ pub struct LyricsData {
 /// Fonte de metadados. Trocável/combinável (ver docs do módulo).
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
+    async fn artist_photo(&self, _mbid: Option<&str>) -> Result<Option<ArtistPhoto>> {
+        Ok(None)
+    }
     /// Melhor gravação para título (+ artista, + duração para desempate). `None` se nada
     /// atingir a pontuação mínima.
     async fn find_recording(
@@ -376,6 +379,9 @@ impl OnlineMetadata {
 
 #[async_trait]
 impl MetadataProvider for OnlineMetadata {
+    async fn artist_photo(&self, mbid: Option<&str>) -> Result<Option<ArtistPhoto>> {
+        OnlineMetadata::artist_photo(self, mbid).await
+    }
     // @req RF-12 RF-20
     async fn find_recording(
         &self,

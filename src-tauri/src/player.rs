@@ -9,10 +9,13 @@
 //! o banco, sempre nessa ordem. Nada aqui é `async`.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{
+    Arc, Mutex, MutexGuard,
+    atomic::{AtomicU64, Ordering},
+};
 
 use miupy_audio::{AudioBackend, AudioEvent, PlaybackStatus, StreamOptions};
-use miupy_core::{PlayEnd, SettingsPatch, Source, Track};
+use miupy_core::{PlayEnd, SettingsPatch, ShuffleMode, Source, Track};
 use miupy_media::{MediaResolver, StreamAudio};
 
 use crate::db::Db;
@@ -39,6 +42,8 @@ struct Inner {
     streaming: bool,
     stream_expires_at: Option<u64>,
     stream_retried: bool,
+    resolving: bool,
+    shuffle: ShuffleMode,
 }
 
 pub struct Player {
@@ -48,6 +53,7 @@ pub struct Player {
     events: Arc<dyn Events>,
     prefs_file: PathBuf,
     inner: Mutex<Inner>,
+    generation: AtomicU64,
 }
 
 impl Player {
@@ -73,7 +79,10 @@ impl Player {
                 streaming: false,
                 stream_expires_at: None,
                 stream_retried: false,
+                resolving: false,
+                shuffle: ShuffleMode::Off,
             }),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -95,6 +104,9 @@ impl Player {
         let prefs = Prefs::load(&self.prefs_file);
         if let Err(e) = self.backend.set_muted(prefs.muted) {
             log::warn!("não consegui aplicar o mudo salvo: {e}");
+        }
+        if let Ok(mode) = self.db.with(|db| db.get_shuffle_mode()) {
+            self.lock().shuffle = mode;
         }
     }
 
@@ -145,7 +157,9 @@ impl Player {
                 .with(|db| db.get_track(&t.id))
                 .unwrap_or_else(|_| t.clone())
         });
-        let status = if track.is_some() {
+        let status = if inner.resolving {
+            PlayerStatus::Loading
+        } else if track.is_some() {
             PlayerStatus::from(st.status)
         } else {
             PlayerStatus::Stopped
@@ -158,6 +172,7 @@ impl Player {
         PlayerState {
             status,
             streaming: inner.streaming && track.is_some() && status != PlayerStatus::Stopped,
+            shuffle: inner.shuffle,
             track,
             position_ms: st.position_ms,
             duration_ms,
@@ -329,9 +344,14 @@ impl Player {
     // @req RF-01 RF-03
     /// Toca `track_id`. Com `queue`, ela vira a fila (a faixa entra no começo se faltar);
     /// sem ela, usa a fila atual se a faixa estiver nela, ou uma fila só com a faixa.
-    pub fn play(&self, track_id: &str, queue: Option<Vec<String>>) -> AppResult<PlayerState> {
+    pub fn play(
+        self: &Arc<Self>,
+        track_id: &str,
+        queue: Option<Vec<String>>,
+    ) -> AppResult<PlayerState> {
         let track = self.db.with(|db| db.get_track(track_id))?;
         let mut inner = self.lock();
+        let new_queue = queue.is_some();
         let mut q = inner.queue.clone();
         match queue {
             Some(ids) => q.replace(ids, &track.id),
@@ -341,8 +361,128 @@ impl Player {
                 }
             }
         }
-        self.start_track(&mut inner, track, PlayEnd::Skipped)?;
+        if new_queue && inner.shuffle != ShuffleMode::Off {
+            // Fila nova com aleatório: a faixa pedida vai primeiro e todas as outras são sorteadas.
+            self.shuffle_after_current(&mut q, &track.id, inner.shuffle, true)?;
+        }
         inner.queue = q;
+        let is_stream = track.file_path.is_none() && track.source == Source::Youtube;
+        if is_stream {
+            let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            self.close_event(&mut inner, PlayEnd::Skipped);
+            let _ = self.backend.stop();
+            inner.track = Some(track.clone());
+            inner.status = PlaybackStatus::Loading;
+            inner.streaming = true;
+            inner.resolving = true;
+            inner.stream_expires_at = None;
+            inner.stream_retried = false;
+            inner.tracker.reset();
+            self.emit(&inner);
+            let this = Arc::clone(self);
+            std::thread::spawn(move || {
+                let resolved = this.resolve_track_stream(&track);
+                let mut inner = this.lock();
+                if this.generation.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                inner.resolving = false;
+                match resolved.and_then(|stream| {
+                    this.load_stream(&stream, &track)?;
+                    inner.event_id = this.db.with(|db| db.start_play(&track.id, None)).ok();
+                    inner.tracker.reset();
+                    inner.status = this.backend.state().status;
+                    inner.streaming = true;
+                    inner.stream_expires_at = stream.expires_at;
+                    inner.stream_retried = false;
+                    Ok(())
+                }) {
+                    Ok(()) => this.emit(&inner),
+                    Err(error) => {
+                        let _ = this.backend.stop();
+                        inner.track = None;
+                        inner.streaming = false;
+                        inner.status = PlaybackStatus::Stopped;
+                        this.events
+                            .player_error(&track.id, error.code(), &error.to_string());
+                        this.emit(&inner);
+                    }
+                }
+            });
+            return Ok(self.snapshot(&inner));
+        }
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        inner.resolving = false;
+        self.start_track(&mut inner, track, PlayEnd::Skipped)?;
+        self.emit(&inner);
+        Ok(self.snapshot(&inner))
+    }
+
+    /// Sorteia o que vem depois de `current`. Com `whole_queue`, `current` vai para o começo e
+    /// todas as outras faixas entram no sorteio (fila nova); sem ele, o que já passou fica antes.
+    fn shuffle_after_current(
+        &self,
+        queue: &mut PlayQueue,
+        current: &str,
+        mode: ShuffleMode,
+        whole_queue: bool,
+    ) -> AppResult<()> {
+        let ids = queue.ids().to_vec();
+        let Some(index) = ids.iter().position(|id| id == current) else {
+            return Ok(());
+        };
+        let (mut out, rest): (Vec<String>, Vec<String>) = if whole_queue {
+            let mut others = ids.clone();
+            others.remove(index);
+            (vec![current.to_owned()], others)
+        } else {
+            (ids[..=index].to_vec(), ids[index + 1..].to_vec())
+        };
+        let tail = rest.as_slice();
+        let seed = now_seconds();
+        let ordered = match mode {
+            ShuffleMode::Off => tail.to_vec(),
+            ShuffleMode::Random => miupy_core::random_order(tail, seed),
+            ShuffleMode::Smart => {
+                let smart = self.db.with(|db| db.smart_tracks(&ids))?;
+                let by_id = smart
+                    .into_iter()
+                    .map(|t| (t.track_id.clone(), t))
+                    .collect::<std::collections::HashMap<_, _>>();
+                let current_track = by_id.get(current);
+                if let Some(cur) = current_track {
+                    let rem = tail
+                        .iter()
+                        .filter_map(|id| by_id.get(id).cloned())
+                        .collect::<Vec<_>>();
+                    miupy_core::smart_order(cur, &rem, seed)
+                } else {
+                    miupy_core::random_order(tail, seed)
+                }
+            }
+        };
+        out.extend(ordered);
+        queue.set_ids(out, current);
+        Ok(())
+    }
+
+    // @req RF-24
+    pub fn set_shuffle(&self, mode: ShuffleMode) -> AppResult<PlayerState> {
+        let mut inner = self.lock();
+        self.db.with(|db| db.set_shuffle_mode(mode))?;
+        inner.shuffle = mode;
+        if let Some(current) = inner
+            .queue
+            .index()
+            .and_then(|i| inner.queue.id_at(i))
+            .map(str::to_owned)
+        {
+            let original = inner.queue.original_ids().to_vec();
+            let mut queue = PlayQueue::default();
+            queue.replace(original, &current);
+            self.shuffle_after_current(&mut queue, &current, mode, false)?;
+            inner.queue = queue;
+        }
         self.emit(&inner);
         Ok(self.snapshot(&inner))
     }
@@ -394,7 +534,9 @@ impl Player {
 
     // @req RF-01
     pub fn stop(&self) -> AppResult<PlayerState> {
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let mut inner = self.lock();
+        inner.resolving = false;
         self.close_event(&mut inner, PlayEnd::Stopped);
         self.backend.stop()?;
         inner.status = PlaybackStatus::Stopped;
@@ -856,6 +998,44 @@ mod tests {
         let st = f.player.play(&f.ids[0], None).unwrap();
         assert_eq!(st.queue, f.ids);
         assert_eq!(st.queue_index, 0);
+    }
+
+    // @test RF-24
+    #[test]
+    fn shuffle_reordena_depois_da_atual_persiste_e_off_restaura() {
+        let f = fx(8);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        let state = f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        assert_eq!(state.queue[0], f.ids[0]);
+        let mut sorted = state.queue.clone();
+        sorted.sort();
+        let mut expected = f.ids.clone();
+        expected.sort();
+        assert_eq!(sorted, expected);
+        assert_eq!(
+            f.db.with(|db| db.get_shuffle_mode()).unwrap(),
+            ShuffleMode::Random
+        );
+        let restored = f.player.set_shuffle(ShuffleMode::Off).unwrap();
+        assert_eq!(restored.queue, f.ids);
+    }
+
+    // @test RF-24
+    #[test]
+    fn fila_nova_com_aleatorio_poe_a_pedida_primeiro_e_sorteia_todas_as_outras() {
+        let f = fx(8);
+        f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        let state = f.player.play(&f.ids[4], Some(f.ids.clone())).unwrap();
+        assert_eq!(state.queue[0], f.ids[4]);
+        assert_eq!(state.queue_index, 0);
+        let mut sorted = state.queue.clone();
+        sorted.sort();
+        let mut expected = f.ids.clone();
+        expected.sort();
+        assert_eq!(sorted, expected, "nenhuma faixa some nem repete");
+        let off = f.player.set_shuffle(ShuffleMode::Off).unwrap();
+        assert_eq!(off.queue, f.ids, "off volta à ordem original");
+        assert_eq!(off.queue[off.queue_index as usize], f.ids[4]);
     }
 
     // @test RF-01 RF-13

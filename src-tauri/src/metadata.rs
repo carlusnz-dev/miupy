@@ -2,7 +2,10 @@
 //! `MetadataProvider`. Falha de rede nunca derruba a leitura local.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
@@ -25,6 +28,7 @@ pub struct MetadataService {
     dirs: Dirs,
     events: Arc<dyn Events>,
     attempts: Mutex<HashMap<String, Instant>>,
+    batch_running: AtomicBool,
 }
 
 impl MetadataService {
@@ -42,7 +46,56 @@ impl MetadataService {
             dirs,
             events,
             attempts: Mutex::new(HashMap::new()),
+            batch_running: AtomicBool::new(false),
         }
+    }
+
+    // @req RF-12 RF-20
+    pub fn enqueue_library_refresh(self: &Arc<Self>, only_missing: bool) -> AppResult<usize> {
+        if self.batch_running.swap(true, Ordering::AcqRel) {
+            return Err(crate::error::AppError::new(
+                "conflict",
+                "Um reprocessamento já está em andamento.",
+            ));
+        }
+        let tracks = match self
+            .db
+            .with(|db| db.tracks_for_metadata_refresh(only_missing))
+        {
+            Ok(t) => t,
+            Err(e) => {
+                self.batch_running.store(false, Ordering::Release);
+                return Err(e.into());
+            }
+        };
+        let total = tracks.len();
+        let this = self.clone();
+        tauri::async_runtime::spawn(async move {
+            for (i, t) in tracks.into_iter().enumerate() {
+                let mut attempts = 0;
+                loop {
+                    match this.refresh_track(&t.id).await {
+                        Ok(_) => break,
+                        Err(e)
+                            if attempts < 3
+                                && (e.to_string().contains("503")
+                                    || e.to_string().contains("reduzir o ritmo")) =>
+                        {
+                            attempts += 1;
+                            tokio::time::sleep(Duration::from_secs(2u64.pow(attempts))).await;
+                        }
+                        Err(e) => {
+                            log::warn!("reprocessamento de {}: {e}", t.id);
+                            break;
+                        }
+                    }
+                }
+                this.events.metadata_progress(i + 1, total);
+            }
+            this.events.library_changed("metadata_batch_finished");
+            this.batch_running.store(false, Ordering::Release);
+        });
+        Ok(total)
     }
 
     /// `true` se vale tentar a consulta `key` agora; registra a tentativa.
@@ -64,7 +117,33 @@ impl MetadataService {
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
         let id = track_id.to_owned();
-        let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
+        let mut track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
+        if let Some(path) = track
+            .cover_path
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_file())
+            && image::ImageFormat::from_path(&path).ok() == Some(image::ImageFormat::WebP)
+            && let Ok(jpeg) = crate::paths::normalize_jpeg(&path)
+        {
+            let cover = Some(jpeg.to_string_lossy().into_owned());
+            let tid = track.id.clone();
+            if let Ok(updated) = self
+                .db
+                .run(move |db| {
+                    Ok(db.update_track(
+                        &tid,
+                        &TrackPatch {
+                            cover_path: Some(cover),
+                            ..Default::default()
+                        },
+                    )?)
+                })
+                .await
+            {
+                track = updated;
+            }
+        }
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
 
         let rec = self
@@ -105,13 +184,15 @@ impl MetadataService {
         }
         let mut cover = None;
         for mbid in mbids {
-            match self
-                .provider
-                .download_cover(&mbid, &self.dirs.covers, &track.id)
-                .await
-            {
+            let album_dir = self.dirs.covers.join("albuns");
+            let cached = album_dir.join(format!("{mbid}.jpg"));
+            if cached.is_file() {
+                cover = Some(cached);
+                break;
+            }
+            match self.provider.download_cover(&mbid, &album_dir, &mbid).await {
                 Ok(path) => {
-                    cover = Some(path);
+                    cover = crate::paths::normalize_jpeg(&path).ok();
                     break;
                 }
                 Err(MediaError::NotFound(_)) => continue,
@@ -252,6 +333,56 @@ impl MetadataService {
     pub async fn get_artist(&self, artist_id: &str) -> AppResult<ArtistInfo> {
         let id = artist_id.to_owned();
         let info = self.db.run(move |db| Ok(db.get_artist_info(&id)?)).await?;
+        let photo = if info.image_path.is_none()
+            && info.mbid.is_some()
+            && self.should_try(format!("artist-photo:{}", info.id))
+        {
+            match tokio::time::timeout(
+                READ_TIMEOUT,
+                self.provider.artist_photo(info.mbid.as_deref()),
+            )
+            .await
+            {
+                Ok(Ok(found)) => found,
+                Ok(Err(e)) => {
+                    log::info!("sem foto para o artista {}: {e}", info.name);
+                    None
+                }
+                Err(_) => {
+                    log::info!("tempo esgotado ao buscar a foto de {}", info.name);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(photo) = photo
+            && let Ok(img) = image::load_from_memory(&photo.bytes)
+                .inspect_err(|e| log::warn!("foto de {} ilegível: {e}", info.name))
+        {
+            let dir = self.dirs.covers.join("artistas");
+            let path = dir.join(format!("{}.jpg", info.id));
+            if std::fs::create_dir_all(&dir).is_ok()
+                && img
+                    .save_with_format(&path, image::ImageFormat::Jpeg)
+                    .is_ok()
+            {
+                let id = info.id.clone();
+                let p = path.to_string_lossy().into_owned();
+                let credit = photo.credit;
+                if let Ok(updated) = self
+                    .db
+                    .run(move |db| {
+                        db.set_artist_image(&id, Some(&p), Some(&credit))?;
+                        Ok(db.get_artist_info(&id)?)
+                    })
+                    .await
+                {
+                    self.events.library_changed("artist_photo_updated");
+                    return Ok(updated);
+                }
+            }
+        }
         let incomplete = info.mbid.is_none() || (info.country.is_none() && info.genres.is_empty());
         if !incomplete || !self.should_try(format!("artist:{}", info.id)) {
             return Ok(info);

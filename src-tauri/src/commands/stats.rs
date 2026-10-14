@@ -1,4 +1,4 @@
-use miupy_core::{LibraryStats, TasteProfile, Wrapped};
+use miupy_core::{Dna, LibraryStats, TasteProfile, TrackScore, Wrapped};
 use tauri::State;
 
 use crate::error::AppError;
@@ -32,4 +32,23 @@ pub async fn stats_wrapped_years(state: State<'_, AppState>) -> R<Vec<i32>> {
 #[tauri::command]
 pub async fn stats_taste(state: State<'_, AppState>) -> R<TasteProfile> {
     state.db.run(|db| Ok(db.taste_profile(None)?)).await
+}
+
+// @req RF-25
+#[tauri::command]
+pub async fn stats_track_scores(
+    state: State<'_, AppState>,
+    track_ids: Option<Vec<String>>,
+) -> R<Vec<TrackScore>> {
+    state
+        .db
+        .run(move |db| Ok(db.track_scores(track_ids.as_deref())?))
+        .await
+}
+
+// @req RF-25
+#[tauri::command]
+pub async fn stats_dna(state: State<'_, AppState>, window_days: Option<u32>) -> R<Dna> {
+    let now = chrono::Utc::now().timestamp_millis();
+    state.db.run(move |db| Ok(db.dna(window_days, now)?)).await
 }

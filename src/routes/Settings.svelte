@@ -14,9 +14,13 @@
   let onlyMissing = $state(true);
   let updating = $state(false);
   let refreshing = $state(false);
+  let gpuStatus = $state<{hardware:boolean;reason:string;restartRequired:boolean;envOverride:string|null}|null>(null);
+  let gpuMode = $state<'auto'|'on'|'off'>('auto');
   $effect(() => {
     let alive = true; let unY: (() => void) | undefined; let unM: (() => void) | undefined;
     void api.ytdlpStatus().then((s) => { if (alive) ytdlp = s; }).catch(notifyError);
+    void api.settingsGet().then((s) => { if (alive) gpuMode = s.gpuMode; }).catch(notifyError);
+    void api.systemGpuStatus().then((s) => { if (alive) gpuStatus = s; }).catch(notifyError);
     void api.on('ytdlp://status', (s) => { if (alive) ytdlp = s; }).then((un) => { if (alive) unY = un; else un(); });
     void api.on('metadata://progress', (p) => { if (alive) metadata = p; }).then((un) => { if (alive) unM = un; else un(); });
     return () => { alive = false; unY?.(); unM?.(); };
@@ -33,6 +37,7 @@
   async function pick(id: LavaTheme) {
     try { await settings.setLava(id); } catch (e) { notifyError(e); }
   }
+  async function setGpu(mode: 'auto'|'on'|'off') { try { const s=await api.settingsUpdate({settings:{gpuMode:mode}}); gpuMode=s.gpuMode; gpuStatus=await api.systemGpuStatus(); } catch(e) { notifyError(e); } }
   const keys = [['Espaço', 'tocar/pausar'], ['← →', 'voltar/avançar 5 s'], ['↑ ↓', 'volume'], ['M', 'silenciar']];
 </script>
 
@@ -78,6 +83,16 @@
   {#if ytdlp?.state === 'downloading'}<progress max="1" value={ytdlp.progress} class="w-full" aria-label="Progresso do yt-dlp"></progress>{/if}
   {#if ytdlp?.error}<p class="text-sm text-danger">{ytdlp.error}</p>{/if}
   <button class="btn mt-3" disabled={updating || ytdlp?.state === 'downloading'} onclick={updateYtdlp}>Procurar atualização</button>
+</section>
+<section class="mb-8 card p-5" aria-labelledby="h-gpu">
+  <h2 id="h-gpu" class="text-lg font-semibold">Aceleração de hardware</h2>
+  <label class="mt-3 block text-sm">Modo
+    <select class="input mt-1 block" value={gpuMode} onchange={(e) => setGpu(e.currentTarget.value as 'auto'|'on'|'off')}>
+      <option value="auto">Automático</option><option value="on">Ativada</option><option value="off">Desativada</option>
+    </select>
+  </label>
+  {#if gpuStatus}<p class="mt-3 text-sm text-muted">{gpuStatus.hardware ? 'hardware' : 'software'} · {gpuStatus.reason}</p>{/if}
+  {#if gpuStatus?.restartRequired}<p class="mt-1 text-sm">Reinicie o app para aplicar.</p>{/if}
 </section>
 <section class="mb-8 card p-5" aria-labelledby="h-metadata">
   <h2 id="h-metadata" class="text-lg font-semibold">Metadados</h2>
