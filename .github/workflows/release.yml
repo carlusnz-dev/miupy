@@ -1,0 +1,166 @@
+# Release e deploy: constrói os instaladores e os anexa à release vX.Y.Z do GitHub.
+# Não há servidor nem nuvem; "deploy" é publicar os instaladores na release.
+# Disparo: push de tag anotada vX.Y.Z feita sobre um commit da main (ver docs/contribuicao/git.md).
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag existente a refazer (vX.Y.Z)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  preparar:
+    name: preparar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # cria a release em rascunho
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+      rascunho: ${{ steps.release.outputs.rascunho }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Confere a tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::A tag '$TAG' não é vX.Y.Z."; exit 1
+          fi
+          git fetch --force --tags origin
+          if [ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]; then
+            echo "::error::A tag '$TAG' não é anotada. Use git tag -a."; exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$(git rev-parse "$TAG^{commit}")" origin/main; then
+            echo "::error::O commit da tag '$TAG' não está na main."; exit 1
+          fi
+          node scripts/ci/verificar-versoes.mjs --tag "$TAG"
+
+      - name: Notas da tag
+        run: |
+          # Mensagem da tag sem a primeira linha ("miupy vX.Y.Z"), que o título da release já traz.
+          git tag --list --format='%(contents)' "$TAG" \
+            | awk 'NR==1 && /^miupy v/ {next} !iniciou && /^[[:space:]]*$/ {next} {iniciou=1; print}' > notas.md
+          if [ ! -s notas.md ]; then
+            echo "::error::A tag '$TAG' não tem mensagem; escreva as notas (Novidades, Correções, Conhecido)."; exit 1
+          fi
+          cat notas.md
+
+      - name: Cria a release (rascunho) ou reaproveita a existente
+        id: release
+        run: |
+          if gh release view "$TAG" --json databaseId,isDraft > release.json 2>/dev/null; then
+            echo "A release $TAG já existe; os instaladores serão anexados a ela."
+          else
+            gh release create "$TAG" --verify-tag --draft --title "miupy $TAG" --notes-file notas.md
+            gh release view "$TAG" --json databaseId,isDraft > release.json
+          fi
+          echo "id=$(jq -r .databaseId release.json)" >> "$GITHUB_OUTPUT"
+          echo "rascunho=$(jq -r .isDraft release.json)" >> "$GITHUB_OUTPUT"
+
+  construir:
+    name: construir (${{ matrix.nome }})
+    needs: preparar
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: write # anexa os instaladores à release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nome: linux
+            os: ubuntu-22.04 # glibc mais antiga: o AppImage roda em mais distribuições
+            args: --bundles appimage,deb
+            targets: ''
+          - nome: windows
+            os: windows-latest
+            args: --bundles nsis,msi
+            targets: ''
+          # Universal: um único .dmg serve Macs Apple Silicon e Intel, sem dois instaladores.
+          # O custo é compilar duas vezes (aarch64 e x86_64) no mesmo job.
+          - nome: macos
+            os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+
+      - name: Dependências de sistema (Linux)
+        if: ${{ matrix.nome == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl wget file patchelf \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libgtk-3-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libasound2-dev
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NO_STRIP: 'true' # linuxdeploy não consegue strip em binários com .relr.dyn
+        with:
+          releaseId: ${{ needs.preparar.outputs.release-id }}
+          # A action exige que releaseDraft bata com o estado real da release.
+          releaseDraft: ${{ needs.preparar.outputs.rascunho == 'true' }}
+          args: ${{ matrix.args }}
+          # Sem plugin de atualização nem chave de assinatura.
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+
+  publicar:
+    name: publicar
+    needs: [preparar, construir]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # publica a release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Confere os instaladores
+        run: |
+          gh release view "$TAG" --json assets --jq '.assets[].name' | tee assets.txt
+          for padrao in '\.AppImage$' '\.deb$' '\.exe$' '\.msi$' '\.dmg$'; do
+            grep -Eq "$padrao" assets.txt || { echo "::error::Falta instalador $padrao na release."; exit 1; }
+          done
+      - name: Publica como última versão
+        run: gh release edit "$TAG" --draft=false --prerelease=false --latest
