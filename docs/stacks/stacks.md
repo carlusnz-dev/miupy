@@ -69,7 +69,8 @@ MusicBrainz + Cover Art Archive + LRCLIB, e a regra de nunca bloquear o callback
 
 ## Ferramentas do ambiente de desenvolvimento
 
-- Rust 1.99 em `~/.cargo/bin` (não está no `PATH` do shell não interativo: use
-  `export PATH="$HOME/.cargo/bin:$PATH"`).
+- Rust 1.99 do rustup em `~/.cargo/bin`, na frente do `PATH` pelo `~/.zshenv` (o pacote `rust`
+  do Arch em `/usr/bin` também existe e não deve ser usado). Compilação com sccache e clang + mold:
+  ver [`compilacao.md`](../contribuicao/compilacao.md).
 - Node 26 + npm. CLI do Tauri via `@tauri-apps/cli` (devDependency), não `cargo-tauri`.
 - Android: **SDK, NDK e targets Rust ainda não instalados** nesta máquina.

@@ -7,8 +7,15 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
+# Compilação no dia a dia: ver docs/contribuicao/compilacao.md.
+[profile.dev]
+# só linhas nos backtraces: debuginfo bem menor e link mais rápido
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
+# dependências otimizadas (decodificar áudio sem otimização engasga) e sem debuginfo
 opt-level = 2
+debug = false
 
 [profile.release]
 lto = "thin"
