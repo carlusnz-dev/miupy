@@ -1,6 +1,8 @@
 <script lang="ts">
+  // @req RF-18
   // Linha de faixa: capa, título/artista, álbum, duração e ações. @req RF-04 RF-05 RF-10
   import type { Track } from '../ipc';
+  import { player } from '../stores/player.svelte';
   import { downloads } from '../stores/downloads.svelte';
   import { href, paths } from '../stores/router.svelte';
   import { downloadTracks, toggleFavorite } from '../actions';
@@ -23,7 +25,7 @@
 </script>
 
 <div
-  class="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
+  class="group motion-item flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
   {draggable} {ondragstart} {ondragover} {ondrop} role="listitem"
 >
   {#if selectable}
@@ -36,7 +38,7 @@
     <span class="tnum hidden w-6 shrink-0 text-right text-xs text-faint md:block">{current && playing ? '♪' : index + 1}</span>
   {/if}
 
-  <button class="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left" onclick={onplay} aria-label="Tocar {track.title}{track.artistName ? `, de ${track.artistName}` : ''}">
+  <button class="motion-bounce flex min-w-0 flex-1 items-center gap-3 rounded-md text-left" onclick={onplay} aria-label="Tocar {track.title}{track.artistName ? `, de ${track.artistName}` : ''}">
     <span class="relative shrink-0">
       <Cover path={track.coverPath} seed={track.id} size={44} rounded="0.375rem" />
       <span class="absolute inset-0 grid place-items-center rounded-md bg-black/50 text-fg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -45,7 +47,7 @@
     </span>
     <span class="min-w-0">
       <span class="block truncate text-sm font-medium {current ? 'text-lava-text' : ''}">{track.title}</span>
-      <span class="block truncate text-xs text-muted">{track.artistName ?? 'Artista desconhecido'}</span>
+      <span class="block truncate text-xs text-muted">{track.artistName ?? 'Artista desconhecido'}{#if current && player.state.streaming} · {player.isLoading ? 'Conectando…' : 'Streaming'}{:else if track.source === 'youtube' && !track.filePath} · Disponível por streaming{/if}</span>
     </span>
   </button>
 
@@ -53,7 +55,7 @@
     {#if track.artistId && track.album}<a class="hover:underline" href={href(paths.artist(track.artistId))}>{track.album}</a>{:else}{track.album ?? '—'}{/if}
   </span>
 
-  <button class="icon-btn {track.isFavorite ? 'on' : ''}" aria-pressed={track.isFavorite} aria-label={track.isFavorite ? `Remover ${track.title} das favoritas` : `Favoritar ${track.title}`} onclick={() => toggleFavorite(track)}>
+  <button class="icon-btn motion-bounce {track.isFavorite ? 'on' : ''}" aria-pressed={track.isFavorite} aria-label={track.isFavorite ? `Remover ${track.title} das favoritas` : `Favoritar ${track.title}`} onclick={() => toggleFavorite(track)}>
     <Icon name="heart" size={18} fill={track.isFavorite} />
   </button>
 

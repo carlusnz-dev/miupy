@@ -1,9 +1,10 @@
+// @req RF-18 RF-19 RF-20
 // Mock em memória do contrato IPC, para navegar a UI sem backend (npm run dev no navegador).
 // Mesma interface (MiupyApi) do cliente real. Dados fictícios.
 import type { MiupyApi } from './api';
 import type {
   ArtistInfo, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist,
-  Profile, RankedArtist, RankedTrack, SearchResult, Settings, Track, TrackQuery, Wrapped,
+  Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
 } from './types';
 
 const MIN = 60_000;
@@ -88,6 +89,7 @@ function buildTracks(): Track[] {
       isFavorite: r() < 0.25,
       downloadStatus: dl === 'queued' ? 'none' : dl,
       addedAt: now - Math.floor(r() * 200) * DAY,
+      genres: [...a.genres], releaseYear: 2018 + i % 8,
     } satisfies Track;
   });
 }
@@ -115,6 +117,7 @@ export function createMockApi(): MiupyApi {
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
   let settings: Settings = { lavaTheme: 'orange', volume: 0.8 };
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
+  const dismissed = new Set<string>(); // @req RF-19
 
   const listeners = new Map<string, Set<(p: never) => void>>();
   const emit = <E extends EventName>(e: E, p: EventMap[E]) => listeners.get(e)?.forEach((h) => h(p as never));
@@ -136,7 +139,19 @@ export function createMockApi(): MiupyApi {
     return rest;
   };
   const getPl = (id: string) => playlists.find((p) => p.id === id) ?? err('not_found', 'Playlist não encontrada.');
-  const changed = (reason: string) => emit('library://changed', { reason });
+  const changed = (reason: string) => { emit('library://changed', { reason }); emit('recommendations://changed', { count: 0 }); };
+  const recommendations = (playlistId?: string, limit = 20): Recommendation[] => {
+    const basis = playlistId ? getPl(playlistId).ids.map(byId) : tracks;
+    if (!basis.length) return [];
+    return YT_POOL.filter((p) => !dismissed.has(p.sourceId) && !tracks.some((t) => t.sourceId === p.sourceId))
+      .slice(0, Math.min(100, limit)).map((p, i) => {
+        const match = basis.find((t) => t.artistName === p.artist) ?? basis[i % basis.length];
+        return { ...p, score: Math.max(0.2, 0.94 - i * 0.07), reasons: [
+          { kind: 'artist' as const, label: match.artistName ?? p.artist },
+          ...(match.genres[0] ? [{ kind: 'genre' as const, label: match.genres[0] }] : []),
+        ] };
+      });
+  };
 
   function applyQuery(list: Track[], q?: TrackQuery): Track[] {
     let out = [...list];
@@ -155,7 +170,7 @@ export function createMockApi(): MiupyApi {
   }
 
   // --- Player simulado ---
-  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], queueIndex: -1 };
+  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], queueIndex: -1, streaming: false };
   let timer: ReturnType<typeof setInterval> | null = null;
   const snap = (): PlayerState => ({ ...player, queue: [...player.queue] });
   const pushState = () => { emit('player://state', snap()); return snap(); };
@@ -177,11 +192,13 @@ export function createMockApi(): MiupyApi {
     const t = byId(player.queue[idx]);
     player.queueIndex = idx;
     player.track = t;
+    player.streaming = t.source === 'youtube' && !t.filePath;
     player.durationMs = t.durationMs;
     player.positionMs = 0;
-    player.status = 'playing';
-    startTimer();
+    player.status = player.streaming ? 'loading' : 'playing';
     pushState();
+    if (player.streaming) setTimeout(() => { if (player.track?.id === t.id && player.status === 'loading') { player.status = 'playing'; startTimer(); pushState(); } }, 450);
+    else startTimer();
   }
 
   // --- Downloads simulados ---
@@ -229,7 +246,8 @@ export function createMockApi(): MiupyApi {
     async playerGetState() { await wait(20); return snap(); },
     async playerPlay({ trackId, queue }) {
       await wait(30);
-      byId(trackId);
+      const target = byId(trackId);
+      if (target.source === 'local' && !target.filePath) err('unavailable', 'Arquivo local indisponível.');
       const q = queue && queue.length ? queue : player.queue.includes(trackId) ? player.queue : [trackId];
       player.queue = q.includes(trackId) ? [...q] : [trackId, ...q];
       loadAt(player.queue.indexOf(trackId));
@@ -251,9 +269,11 @@ export function createMockApi(): MiupyApi {
     },
     async playerSetVolume({ volume }) { player.volume = Math.max(0, Math.min(1, volume)); settings.volume = player.volume; return pushState(); },
     async playerSetMuted({ muted }) { player.muted = muted; return pushState(); },
+    async playerGetQueue() { return player.queue.map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t).map((t) => ({ ...t })); },
 
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },
     async libraryGetTrack({ trackId }) { return { ...byId(trackId) }; },
+    async libraryListTracksByArtist({ artistId, query }) { return applyQuery(artistTracks(artistId), query).map((t) => ({ ...t })); },
     async librarySetFavorite({ trackId, favorite }) {
       const t = byId(trackId);
       t.isFavorite = favorite;
@@ -335,7 +355,7 @@ export function createMockApi(): MiupyApi {
         if (ex) { out.push({ ...ex }); continue; }
         const src = YT_POOL.find((p) => p.sourceId === sid) ?? err('not_found', 'Resultado não encontrado.');
         const art = ARTISTS.find((a) => a.name === src.artist);
-        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now() };
+        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null };
         tracks.push(t);
         youtubeIds.set(sid, t.id);
         out.push({ ...t });
@@ -348,6 +368,7 @@ export function createMockApi(): MiupyApi {
     async downloadEnqueue({ trackIds }) { await wait(40); return enqueue(trackIds); },
     async downloadEnqueuePlaylist({ playlistId }) { await wait(40); return enqueue(getPl(playlistId).ids); },
     async downloadList() { await wait(30); return jobs.map((j) => ({ ...j })); },
+    async downloadClearFinished() { const n = jobs.filter((j) => j.status === 'done' || j.status === 'error').length; jobs = jobs.filter((j) => j.status !== 'done' && j.status !== 'error'); return n; },
     async downloadCancel({ jobId }) {
       const j = jobs.find((x) => x.id === jobId) ?? err('not_found', 'Download não encontrado.');
       if (j.status === 'queued' || j.status === 'downloading') {
@@ -424,6 +445,15 @@ export function createMockApi(): MiupyApi {
         busiestDay: { date: `${year}-11-${String(8 + Math.floor(r() * 18)).padStart(2, '0')}`, listenedMs: Math.round(3.5 * 60 * MIN) },
       } satisfies Wrapped;
     },
+    async statsWrappedYears() { return [new Date().getFullYear(), new Date().getFullYear() - 1]; },
+    async statsTaste() {
+      const artists = ARTISTS.map((a) => ({ artistId: a.id, name: a.name, score: artistTracks(a.id).reduce((s, t) => s + (plays.get(t.id) ?? 0), 0) })).sort((a, b) => b.score - a.score);
+      const genres = [...new Set(tracks.flatMap((t) => t.genres))].map((genre) => ({ genre, score: tracks.filter((t) => t.genres.includes(genre)).reduce((s, t) => s + (plays.get(t.id) ?? 0), 0) })).sort((a, b) => b.score - a.score);
+      return { topArtists: artists.slice(0, 5), topGenres: genres.slice(0, 5), totalListenedMs: tracks.reduce((s, t) => s + (plays.get(t.id) ?? 0) * t.durationMs * 0.85, 0), skipRate: 0.12 };
+    },
+    async recommendationsList(a) { return recommendations(a?.playlistId, a?.limit); },
+    async recommendationsRefresh(a) { await wait(400); const out = recommendations(a?.playlistId); emit('recommendations://changed', { count: out.length }); return out; },
+    async recommendationsDismiss({ sourceId }) { dismissed.add(sourceId); emit('recommendations://changed', { count: recommendations().length }); },
 
     async profileGet() { await wait(30); return { ...profile }; },
     async profileUpdate({ profile: p }) {

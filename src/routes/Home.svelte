@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @req RF-19
   // Início: resumo da discoteca e atalhos. @req RF-14 RF-05
   import { api, errorMessage, type LibraryStats, type Track } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
@@ -11,6 +12,7 @@
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import Recommendations from '../lib/components/Recommendations.svelte';
 
   let stats = $state<LibraryStats | null>(null);
   let recent = $state<Track[]>([]);
@@ -31,7 +33,7 @@
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const shortcuts = [
-    { label: 'Biblioteca', icon: 'library', path: paths.library, text: 'Todas as faixas' },
+    { label: 'Discoteca', icon: 'library', path: paths.library, text: 'Todas as faixas' },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, text: 'Suas listas' },
     { label: 'Buscar no YouTube', icon: 'search', path: paths.youtube, text: 'Achar e baixar' },
     { label: 'Retrospectiva', icon: 'sparkle', path: paths.wrapped, text: 'Seu ano em música' },
@@ -60,7 +62,7 @@
 
 <section class="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Atalhos">
   {#each shortcuts as s}
-    <a href={href(s.path)} class="card flex flex-col gap-3 p-4 transition-colors hover:border-line-strong hover:bg-s2">
+    <a href={href(s.path)} class="card flex flex-col gap-3 p-4 hover:border-line-strong hover:bg-s2">
       <span class="grid h-9 w-9 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name={s.icon} size={18} /></span>
       <span><span class="block font-semibold">{s.label}</span><span class="text-xs text-muted">{s.text}</span></span>
     </a>
@@ -72,7 +74,7 @@
 {:else if error}
   <State kind="error" text={error} onretry={load} />
 {:else if stats && stats.trackCount === 0}
-  <State kind="empty" title="Sua biblioteca está vazia" text="Busque músicas no YouTube e baixe para ouvir offline.">
+  <State kind="empty" title="Sua discoteca está vazia" text="Busque músicas no YouTube e baixe para ouvir offline.">
     <a class="btn btn-primary" href={href(paths.youtube)}>Buscar no YouTube</a>
   </State>
 {:else}
@@ -114,3 +116,5 @@
     {/if}
   </div>
 {/if}
+
+<Recommendations />

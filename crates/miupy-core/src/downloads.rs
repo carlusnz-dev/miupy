@@ -207,11 +207,12 @@ impl Database {
     }
 
     // @req RF-10
-    /// Remove da lista os jobs concluídos. Devolve quantos.
+    /// Remove da lista os jobs concluídos ou com erro. Não altera faixas nem arquivos.
     pub fn clear_finished_downloads(&self) -> Result<usize> {
-        Ok(self
-            .conn
-            .execute("DELETE FROM download_jobs WHERE status = 'done'", [])?)
+        Ok(self.conn.execute(
+            "DELETE FROM download_jobs WHERE status IN ('done', 'error')",
+            [],
+        )?)
     }
 
     // @req RF-10
@@ -246,6 +247,45 @@ mod tests {
     use super::*;
     use crate::model::{NewTrack, TrackQuery};
     use crate::testutil::*;
+
+    // @test RF-10
+    #[test]
+    fn limpar_jobs_done_e_error_preserva_faixas_e_arquivos() {
+        let db = db();
+        let done = yt(&db, "done-clear");
+        let error = yt(&db, "error-clear");
+        let queued = yt(&db, "queued-clear");
+        let jobs = db
+            .enqueue_downloads(&[done.id.clone(), error.id.clone(), queued.id.clone()])
+            .unwrap();
+        db.mark_downloaded(
+            &done.id,
+            &DownloadedFile {
+                file_path: "/tmp/miupy-done-clear.m4a".into(),
+                codec: None,
+                bitrate: None,
+                cover_path: None,
+                duration_ms: None,
+            },
+        )
+        .unwrap();
+        db.update_download(
+            &jobs[1].id,
+            &upd(DownloadStatus::Error, None, Some("falhou")),
+        )
+        .unwrap();
+        assert_eq!(db.clear_finished_downloads().unwrap(), 2);
+        assert_eq!(db.clear_finished_downloads().unwrap(), 0);
+        assert_eq!(db.list_downloads().unwrap().len(), 1);
+        assert_eq!(
+            db.get_track(&done.id).unwrap().file_path.as_deref(),
+            Some("/tmp/miupy-done-clear.m4a")
+        );
+        assert_eq!(
+            db.get_track(&error.id).unwrap().download_status,
+            DownloadStatus::Error
+        );
+    }
 
     fn yt(db: &Database, sid: &str) -> Track {
         db.upsert_track(&NewTrack::youtube(sid, sid, Some("Art".into()), 1000, None))

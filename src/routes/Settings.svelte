@@ -29,7 +29,7 @@
   <div class="grid gap-3 md:grid-cols-3" role="radiogroup" aria-labelledby="h-lava">
     {#each options as o}
       <button role="radio" aria-checked={settings.lava === o.id} data-lava-preview={o.id} onclick={() => pick(o.id)}
-        class="card overflow-hidden p-0 text-left transition-colors {settings.lava === o.id ? '!border-lava-text' : 'hover:border-line-strong'}">
+        class="card overflow-hidden p-0 text-left {settings.lava === o.id ? '!border-lava-text' : 'hover:border-line-strong'}">
         <div class="h-24" style="background:{ramp}"></div>
         <div class="flex items-center gap-3 p-3">
           <span class="grid h-5 w-5 place-items-center rounded-full border {settings.lava === o.id ? 'border-transparent' : 'border-line-strong'}" style={settings.lava === o.id ? `background:${ramp};color:var(--lava-ink)` : ''}>

@@ -1,6 +1,6 @@
 ---
 name: revisar-pr
-description: Revisa um PR do miupy antes do merge. Lê o diff inteiro, roda a verificação do projeto no worktree do branch e só então aprova e faz o merge. Use quando um agente terminar uma frente, quando pedirem "revise o PR", "pode dar merge?" ou antes de qualquer merge na main.
+description: Revisa um PR do miupy antes do merge. Lê o diff inteiro, roda a verificação do projeto no worktree do branch e só então aprova e faz o merge. Use quando um agente terminar uma frente, quando pedirem "revise o PR", "pode dar merge?" ou antes de qualquer merge em develop ou main.
 ---
 
 # Revisar PR do miupy
@@ -16,7 +16,12 @@ git fetch upstream
 git worktree list            # o branch do PR já tem worktree? rode a verificação lá
 ```
 
-Se o branch estiver atrás da `main`, atualize antes de verificar (`git merge upstream/main` no
+Confira o fluxo de `docs/contribuicao/git.md`: o nome do branch tem um tipo válido (`feat/`,
+`fix/`, `chore/`, `docs/`, `refactor/`, `test/`, `hotfix/`), a base é `develop` (ou `main` só para
+`hotfix/*` e para o PR de versão vindo de `develop`), e o título do PR e os commits estão em
+Conventional Commits. Corrija o título com `gh pr edit <pr> --title` se precisar.
+
+Se o branch estiver atrás da base, atualize antes de verificar (`git merge upstream/develop` no
 worktree do branch) e resolva os conflitos você. Verificar um branch desatualizado não prova nada
 sobre o resultado do merge.
 
@@ -77,11 +82,12 @@ ignorado é "não rodado", não "passou".
 
   ```sh
   gh pr comment <pr> --body "<o que foi verificado e o resultado>"
-  gh pr merge <pr> --merge --delete-branch
+  gh pr merge <pr> --squash --delete-branch     # feat/fix/chore/docs/refactor/test -> develop
+  gh pr merge <pr> --merge                      # develop -> main (versão)
   ```
 
-  Depois: `git pull` na `main`, rode `cargo test --workspace` de novo na `main` se outro PR entrou
-  no meio, e remova o worktree integrado.
+  Depois: `git pull` na base, rode `cargo test --workspace` de novo nela se outro PR entrou no
+  meio, e remova o worktree integrado.
 
 - **Problema pequeno e óbvio** (formatação, warning, anotação faltando): corrija no branch, faça o
   commit, rode o passo 3 de novo.

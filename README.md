@@ -1,6 +1,6 @@
 # miupy
 
-Player de música offline, pessoal e de código aberto: biblioteca local em SQLite, playlists,
+Player de música offline, pessoal e de código aberto: discoteca local em SQLite, playlists,
 busca e download a partir do YouTube, estatísticas e retrospectiva anual, com visual "magma".
 Rust + Tauri 2, para desktop (Linux, Windows, macOS) e Android.
 

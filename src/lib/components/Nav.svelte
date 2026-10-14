@@ -10,7 +10,7 @@
   type Item = { label: string; icon: string; path: string; names: RouteName[] };
   const main: Item[] = [
     { label: 'Início', icon: 'home', path: paths.home, names: ['home'] },
-    { label: 'Biblioteca', icon: 'library', path: paths.library, names: ['library', 'artist'] },
+    { label: 'Discoteca', icon: 'library', path: paths.library, names: ['library', 'artist'] },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, names: ['playlists', 'playlist'] },
     { label: 'Buscar no YouTube', icon: 'search', path: paths.youtube, names: ['youtube'] },
     { label: 'Downloads', icon: 'download', path: paths.downloads, names: ['downloads'] },
@@ -25,7 +25,7 @@
   ];
   const tabs: Item[] = [
     { label: 'Início', icon: 'home', path: paths.home, names: ['home'] },
-    { label: 'Biblioteca', icon: 'library', path: paths.library, names: ['library', 'artist'] },
+    { label: 'Discoteca', icon: 'library', path: paths.library, names: ['library', 'artist'] },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, names: ['playlists', 'playlist'] },
     { label: 'Buscar', icon: 'search', path: paths.youtube, names: ['youtube'] },
   ];

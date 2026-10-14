@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Artista: dados de metadata_get_artist + faixas dele na biblioteca. @req RF-12 RF-05
+  // Artista: dados de metadata_get_artist + faixas dele na discoteca. @req RF-12 RF-05
   import { api, errorMessage, type ArtistInfo, type Track } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
   import { player } from '../lib/stores/player.svelte';
@@ -21,7 +21,7 @@
     try {
       [info, tracks] = await Promise.all([
         api.metadataGetArtist({ artistId: id }),
-        api.libraryListTracks({ query: { sortBy: 'album', sortDir: 'asc' } }).then((l) => l.filter((t) => t.artistId === id)),
+        api.libraryListTracksByArtist({ artistId: id, query: { sortBy: 'album', sortDir: 'asc' } }),
       ]);
     } catch (e) { error = errorMessage(e); } finally { loading = false; }
   }
@@ -29,7 +29,7 @@
   const queue = $derived(tracks.map((t) => t.id));
 </script>
 
-<a class="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg" href={href(paths.library)}><Icon name="left" size={16} />Biblioteca</a>
+<a class="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg" href={href(paths.library)}><Icon name="left" size={16} />Discoteca</a>
 
 {#if loading}
   <State kind="loading" />
@@ -62,7 +62,7 @@
     <button class="btn btn-primary btn-sm ml-auto" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={14} fill />Tocar</button>
   </div>
   {#if tracks.length === 0}
-    <State kind="empty" title="Nenhuma faixa deste artista na biblioteca" />
+    <State kind="empty" title="Nenhuma faixa deste artista na discoteca" />
   {:else}
     <div role="list">
       {#each tracks as t, i (t.id)}
