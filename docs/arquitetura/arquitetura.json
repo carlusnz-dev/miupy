@@ -2,7 +2,7 @@
   "projeto": "miupy",
   "versao": "0.2.1",
   "atualizadoEm": "2026-10-14",
-  "sessao": "2026-10-14_sessao-04",
+  "sessao": "2026-10-14_sessao-05",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -138,7 +138,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações, escolha do renderizador (GPU) e configuração de CORS do protocolo asset no WebKitGTK.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -146,11 +146,12 @@
       ],
       "tecnologias": [
         "tauri 2",
-        "tauri-plugin-log"
+        "tauri-plugin-log",
+        "webkit2gtk (Linux)"
       ],
       "status": "parcial",
       "testes": {
-        "passando": 83,
+        "passando": 95,
         "falhando": 0,
         "ignorados": 2,
         "nota": "Os ignorados são provas reais (streaming, yt-dlp, sugestões, foto); passaram à mão em 2026-10-14 (a de foto 2 de 3, 503 do MusicBrainz)."
@@ -174,7 +175,7 @@
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
         "Fotos de artista e letras sofrem 503 do MusicBrainz/LRCLIB em sequência; conferir o limite de requisições.",
-        "Exibição das capas pelo protocolo asset não vista pela orquestração."
+        "Exibição das capas pelo protocolo asset ainda precisa de verificação visual com dados reais; o binário abriu no sandbox com dados temporários."
       ]
     },
     {
@@ -195,7 +196,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 18,
+        "passando": 20,
         "falhando": 0,
         "nota": "Vitest com cliente falso; validado na versão web por agente Sonnet + Playwright (12 itens, transições medidas)."
       },
