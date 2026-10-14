@@ -20,14 +20,14 @@ index.html            script inline aplica data-lava antes da primeira pintura
 src/main.ts, App.svelte   casca: layout responsivo, init das stores, atalhos de teclado
 src/app.css           design tokens "magma" (variáveis CSS) + utilitários (.btn, .card, .field...)
 src/lib/ipc/          types.ts (contrato), api.ts (interface MiupyApi), tauri.ts (real), mock.ts, index.ts
-src/lib/stores/       router, player, library, downloads, settings (tema), profile, toast, ui, selection
+src/lib/stores/       router, player, library, downloads, recommendations, settings (tema), profile, toast, ui, selection
 src/lib/components/   Icon, MeshGradient, Cover, TrackRow, Nav, PlayerBar, MiniPlayer, Modal, ...
 src/lib/actions.ts    ações compartilhadas (favoritar, baixar) com aviso por toast
 src/routes/           uma tela por rota (Home, Library, Playlists, PlaylistDetail, YouTube, Downloads,
                       NowPlaying, Artist, Stats, Wrapped, Profile, Settings)
 ```
 
-Rotas (hash): `#/`, `#/biblioteca`, `#/playlists`, `#/playlists/:id`, `#/youtube`, `#/downloads`,
+Rotas (hash): `#/`, Discoteca (`#/biblioteca`), `#/playlists`, `#/playlists/:id`, `#/youtube`, `#/downloads`,
 `#/tocando`, `#/artista/:id`, `#/estatisticas`, `#/retrospectiva`, `#/perfil`, `#/configuracoes`.
 
 ## Cliente IPC e mock

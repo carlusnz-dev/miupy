@@ -1,6 +1,7 @@
+// @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
   ArtistInfo, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist,
-  Profile, SearchResult, Settings, Track, TrackQuery, Wrapped,
+  Profile, Recommendation, SearchResult, Settings, TasteProfile, Track, TrackQuery, Wrapped,
 } from './types';
 
 /** Interface única implementada pelo cliente real (Tauri) e pelo mock em memória. */
@@ -17,9 +18,11 @@ export interface MiupyApi {
   playerPrevious(): Promise<PlayerState>;
   playerSetVolume(a: { volume: number }): Promise<PlayerState>;
   playerSetMuted(a: { muted: boolean }): Promise<PlayerState>;
+  playerGetQueue(): Promise<Track[]>; // @req RF-03
 
   libraryListTracks(a?: { query?: TrackQuery }): Promise<Track[]>;
   libraryGetTrack(a: { trackId: string }): Promise<Track>;
+  libraryListTracksByArtist(a: { artistId: string; query?: TrackQuery }): Promise<Track[]>;
   librarySetFavorite(a: { trackId: string; favorite: boolean }): Promise<Track>;
   libraryDeleteTrack(a: { trackId: string; deleteFile: boolean }): Promise<void>;
 
@@ -39,6 +42,7 @@ export interface MiupyApi {
   downloadEnqueuePlaylist(a: { playlistId: string }): Promise<DownloadJob[]>;
   downloadList(): Promise<DownloadJob[]>;
   downloadCancel(a: { jobId: string }): Promise<void>;
+  downloadClearFinished(): Promise<number>;
 
   metadataRefreshTrack(a: { trackId: string }): Promise<Track>;
   metadataGetArtist(a: { artistId: string }): Promise<ArtistInfo>;
@@ -46,6 +50,11 @@ export interface MiupyApi {
 
   statsLibrary(): Promise<LibraryStats>;
   statsWrapped(a: { year: number }): Promise<Wrapped>;
+  statsWrappedYears(): Promise<number[]>;
+  statsTaste(): Promise<TasteProfile>; // @req RF-19
+  recommendationsList(a?: { playlistId?: string; limit?: number }): Promise<Recommendation[]>;
+  recommendationsRefresh(a?: { playlistId?: string }): Promise<Recommendation[]>;
+  recommendationsDismiss(a: { sourceId: string }): Promise<void>;
 
   profileGet(): Promise<Profile>;
   profileUpdate(a: { profile: Profile }): Promise<Profile>;

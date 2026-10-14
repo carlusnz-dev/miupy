@@ -2,7 +2,7 @@
 import { api, type PlayerState, type Track } from '../ipc';
 import { notifyError } from './toast.svelte';
 
-const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1 };
+const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1, streaming: false };
 
 class PlayerStore {
   state = $state<PlayerState>({ ...EMPTY });
@@ -38,11 +38,8 @@ class PlayerStore {
   }
 
   private async resolveQueue(ids: string[]) {
-    const out: Track[] = [];
-    for (const id of ids) {
-      try { out.push(await api.libraryGetTrack({ trackId: id })); } catch { /* faixa removida */ }
-    }
-    if (ids.join(',') === this.lastQueueKey) this.queueTracks = out;
+    try { const out = await api.playerGetQueue(); if (ids.join(',') === this.lastQueueKey) this.queueTracks = out; }
+    catch (e) { notifyError(e); }
   }
 
   private async refreshCurrent() {
@@ -56,7 +53,10 @@ class PlayerStore {
   }
 
   private async run(p: Promise<PlayerState>) {
-    try { this.apply(await p); } catch (e) { notifyError(e); }
+    try { this.apply(await p); } catch (e) {
+      if (e && typeof e === 'object' && 'code' in e && e.code === 'network') notifyError({ message: 'Sem conexão: baixe a faixa para ouvir offline.' });
+      else notifyError(e);
+    }
   }
 
   play(trackId: string, queue?: string[]) { return this.run(api.playerPlay({ trackId, queue })); }

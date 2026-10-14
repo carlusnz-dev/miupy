@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @req RF-19
   // Detalhe da playlist: faixas, busca/ordenação, reordenar, remover, baixar tudo.
   // @req RF-06 RF-07 RF-08 RF-11
   import { api, errorMessage, type Playlist, type SortDir, type Track, type TrackSort } from '../lib/ipc';
@@ -15,6 +16,7 @@
   import PlaylistForm from '../lib/components/PlaylistForm.svelte';
   import Cover from '../lib/components/Cover.svelte';
   import State from '../lib/components/State.svelte';
+  import Recommendations from '../lib/components/Recommendations.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
 
@@ -56,7 +58,7 @@
     try { await api.playlistMoveTrack({ playlistId: id, trackId, newPosition }); } catch (e) { notifyError(e); }
   }
   async function destroy() {
-    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na biblioteca.`, 'Apagar', true))) return;
+    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: id }); navigate(paths.playlists); } catch (e) { notifyError(e); }
   }
 
@@ -107,8 +109,8 @@
     {#if search.trim() || favoritesOnly}
       <State kind="empty" icon="search" title="Nenhuma faixa encontrada" text="Ajuste a busca ou o filtro." />
     {:else}
-      <State kind="empty" title="Playlist vazia" text="Adicione faixas pela biblioteca (seleção múltipla) ou pela busca do YouTube.">
-        <a class="btn btn-primary" href={href(paths.library)}>Ir para a biblioteca</a>
+      <State kind="empty" title="Playlist vazia" text="Adicione faixas pela discoteca (seleção múltipla) ou pela busca do YouTube.">
+        <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
       </State>
     {/if}
   {:else}
@@ -137,3 +139,5 @@
 {/if}
 
 <PlaylistForm state={editing} onclose={() => (editing = null)} />
+
+<Recommendations playlistId={id} />

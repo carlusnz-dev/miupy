@@ -10,18 +10,20 @@
   import State from '../lib/components/State.svelte';
 
   const thisYear = new Date().getFullYear();
-  const years = [thisYear, thisYear - 1, thisYear - 2];
+  let years = $state<number[]>([]);
+  let yearsLoading = $state(true);
   let year = $state(thisYear);
   let w = $state<Wrapped | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let card = $state(0);
+  $effect(() => { void api.statsWrappedYears().then((found) => { years = found; if (found.length && !found.includes(year)) year = found[0]; }).catch((e) => { error = errorMessage(e); }).finally(() => { yearsLoading = false; }); });
 
   async function load() {
     loading = true; error = null; card = 0;
     try { w = await api.statsWrapped({ year }); } catch (e) { error = errorMessage(e); } finally { loading = false; }
   }
-  $effect(() => { year; void load(); });
+  $effect(() => { year; if (years.includes(year)) void load(); else loading = false; });
 
   const empty = $derived(!!w && w.totalPlays === 0);
   const TOTAL = 6;
@@ -41,7 +43,13 @@
   </div>
 </div>
 
-{#if loading}
+{#if yearsLoading}
+  <State kind="loading" title="Buscando anos…" />
+{:else if error && !years.length}
+  <State kind="error" text={error} />
+{:else if !years.length}
+  <State kind="empty" icon="sparkle" title="Ainda sem retrospectiva" text="Ouça músicas para criar sua primeira retrospectiva." />
+{:else if loading}
   <State kind="loading" title="Montando sua retrospectiva…" />
 {:else if error}
   <State kind="error" text={error} onretry={load} />
@@ -147,7 +155,7 @@
       <button class="btn" onclick={() => go(-1)} disabled={card === 0} aria-label="Cartão anterior"><Icon name="left" size={16} />Anterior</button>
       <div class="flex gap-1.5" role="tablist" aria-label="Cartões">
         {#each Array(TOTAL) as _, i}
-          <button role="tab" aria-selected={i === card} aria-label="Ir para o cartão {i + 1}" class="h-2 rounded-full border-0 transition-all {i === card ? 'w-6' : 'w-2'}" style="background:{i === card ? 'var(--lava)' : 'var(--surface-3)'}" onclick={() => (card = i)}></button>
+          <button role="tab" aria-selected={i === card} aria-label="Ir para o cartão {i + 1}" class="h-2 w-6 origin-left rounded-full border-0 transition-transform {i === card ? 'scale-x-100' : 'scale-x-35'}" style="background:{i === card ? 'var(--lava)' : 'var(--surface-3)'}" onclick={() => (card = i)}></button>
         {/each}
       </div>
       <button class="btn btn-primary" onclick={() => go(1)} disabled={card === TOTAL - 1} aria-label="Próximo cartão">Próximo<Icon name="down" size={16} class="-rotate-90" /></button>
