@@ -574,8 +574,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
 - 8 bandas em 60, 170, 310, 600, 1000, 3000, 6000 e 12000 Hz: *low shelf* em 60 Hz, *high shelf*
   em 12 kHz e 6 *peaking* entre elas, aplicadas em `miupy-audio` antes do limitador. O motor
-  aplica um pré-ganho igual ao
-  maior ganho positivo do perfil, com sinal trocado, para não clipar.
+  aplica um pré-ganho igual ao maior ganho positivo do perfil, com sinal trocado, para não clipar.
 - Perfis prontos (dB, da banda mais grave à mais aguda), fixos e não editáveis:
 
   | id | Nome | Ganhos |
@@ -614,8 +613,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 - `favorites_set_playlist { playlistId }` marca outra playlist: as faixas da marcada antes são
   copiadas para o fim da nova, sem repetir as que ela já tem; a antiga continua como playlist comum.
   Marcar a mesma playlist não faz nada; `playlistId` inexistente é `not_found`. Apagar a playlist
-  marcada deixa `favoritesPlaylistId`
-  nulo (a interface avisa antes de apagar).
+  marcada deixa `favoritesPlaylistId` nulo (a interface avisa antes de apagar).
 - Favoritar um resultado da busca no YouTube que não está na discoteca é
   `youtube_add_to_library { sourceIds: [id] }` seguido de `library_set_favorite`. `youtube_search`
   preenche `trackId` e `isFavorite` dos resultados que já estão na discoteca.
