@@ -8,9 +8,11 @@ use rusqlite::{OptionalExtension, params};
 use crate::db::Database;
 use crate::error::{Error, Result};
 use crate::model::{
-    Recommendation, RecommendationCandidate, RecommendationReason, RecommendationReasonKind,
-    RecommendationSeed, TasteArtist, TasteGenre, TasteProfile,
+    Dna, DnaTrend, DnaTrendKind, Recommendation, RecommendationCandidate, RecommendationReason,
+    RecommendationReasonKind, RecommendationSeed, SmartTrack, TasteArtist, TasteGenre,
+    TasteProfile, TrackScore,
 };
+use crate::stats::PLAY_THRESHOLD_MS;
 use crate::tracks::normalized_genres;
 
 // @req RF-19
@@ -33,6 +35,9 @@ struct ScoredTrack {
     artist_name: Option<String>,
     genres: Vec<String>,
     score: f64,
+    plays: i64,
+    skips: i64,
+    last_played_at: Option<i64>,
 }
 
 #[derive(Default)]
@@ -47,11 +52,23 @@ struct TasteData {
 
 impl Database {
     fn taste_data(&self, playlist_id: Option<&str>) -> Result<TasteData> {
+        self.taste_data_window(playlist_id, None, None, self.now_ms(), true)
+    }
+
+    // @req RF-19 RF-25
+    /// Mesmo cálculo para gosto, pontuação e DNA. Janelas usam início inclusivo e fim exclusivo.
+    fn taste_data_window(
+        &self,
+        playlist_id: Option<&str>,
+        start: Option<i64>,
+        end: Option<i64>,
+        now: i64,
+        recency: bool,
+    ) -> Result<TasteData> {
         if let Some(id) = playlist_id {
             self.get_playlist(id)?;
         }
         let mut data = TasteData::default();
-        let now = self.now_ms();
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.title, t.source_id, t.artist_id, a.name, t.genres,
                     f.track_id IS NOT NULL, t.duration_ms,
@@ -59,12 +76,14 @@ impl Database {
              FROM tracks t
              LEFT JOIN artists a ON a.id = t.artist_id
              LEFT JOIN favorites f ON f.track_id = t.id
-             JOIN play_events e ON e.track_id = t.id AND e.ended_at IS NOT NULL
+             LEFT JOIN play_events e ON e.track_id = t.id AND e.ended_at IS NOT NULL
+                 AND (?2 IS NULL OR e.started_at >= ?2)
+                 AND (?3 IS NULL OR e.started_at < ?3)
              WHERE (?1 IS NULL OR EXISTS (
                  SELECT 1 FROM playlist_tracks pt WHERE pt.playlist_id = ?1 AND pt.track_id = t.id))
-             ORDER BY t.id, e.started_at",
+             ORDER BY t.id, e.started_at, e.id",
         )?;
-        let mut rows = stmt.query([playlist_id])?;
+        let mut rows = stmt.query(params![playlist_id, start, end])?;
         let mut completed_count = 0_i64;
         while let Some(r) = rows.next()? {
             let id: String = r.get(0)?;
@@ -84,10 +103,19 @@ impl Database {
                     artist_id: r.get(3)?,
                     artist_name: r.get(4)?,
                     genres,
-                    score: 0.0,
+                    score: if r.get::<_, bool>(6)? {
+                        FAVORITE_BONUS
+                    } else {
+                        0.0
+                    },
+                    plays: 0,
+                    skips: 0,
+                    last_played_at: None,
                 });
             }
-            let started: i64 = r.get(8)?;
+            let Some(started) = r.get::<_, Option<i64>>(8)? else {
+                continue;
+            };
             let listened: i64 = r.get(9)?;
             let completed: bool = r.get(10)?;
             let skipped: bool = r.get(11)?;
@@ -98,7 +126,11 @@ impl Database {
                 0.0
             };
             let age_days = (now.saturating_sub(started) as f64 / DAY_MS).max(0.0);
-            let recency = 2.0_f64.powf(-age_days / RECENCY_HALF_LIFE_DAYS);
+            let recency_weight = if recency {
+                2.0_f64.powf(-age_days / RECENCY_HALF_LIFE_DAYS)
+            } else {
+                1.0
+            };
             let event = LISTEN_WEIGHT * fraction + if completed { COMPLETE_WEIGHT } else { 0.0 }
                 - if skipped {
                     SKIP_BASE_PENALTY - SKIP_LATE_DISCOUNT * fraction
@@ -106,11 +138,11 @@ impl Database {
                     0.0
                 };
             let track = data.tracks.last_mut().expect("faixa recém-criada");
-            track.score += event * recency;
-            if first_event && r.get::<_, bool>(6)? {
-                // O bônus de favorito é aplicado uma vez por faixa, no primeiro evento.
-                track.score += FAVORITE_BONUS;
-            }
+            track.score += event * recency_weight;
+            track.plays += i64::from(completed || listened >= PLAY_THRESHOLD_MS);
+            track.skips += i64::from(skipped);
+            track.last_played_at =
+                Some(track.last_played_at.map_or(started, |old| old.max(started)));
             completed_count += i64::from(completed);
             data.total_listened_ms = data.total_listened_ms.saturating_add(listened);
             data.skipped += i64::from(skipped);
@@ -132,6 +164,178 @@ impl Database {
             }
         }
         Ok(data)
+    }
+
+    // @req RF-25
+    /// Pontuação das faixas na ordem de ID; `None` inclui a biblioteca inteira. IDs ausentes
+    /// são ignorados e IDs repetidos aparecem uma única vez.
+    pub fn track_scores(&self, track_ids: Option<&[String]>) -> Result<Vec<TrackScore>> {
+        let selected = track_ids.map(|ids| ids.iter().collect::<HashSet<_>>());
+        Ok(self
+            .taste_data(None)?
+            .tracks
+            .into_iter()
+            .filter(|t| selected.as_ref().is_none_or(|ids| ids.contains(&t.id)))
+            .map(|t| TrackScore {
+                track_id: t.id,
+                score: t.score,
+                plays: t.plays,
+                skips: t.skips,
+                last_played_at: t.last_played_at,
+            })
+            .collect())
+    }
+
+    // @req RF-24
+    /// Prepara as faixas para `smart_order` na mesma ordem dos IDs pedidos. IDs ausentes
+    /// são ignorados; a casca pode conferir a fila antes de sortear.
+    pub fn smart_tracks(&self, track_ids: &[String]) -> Result<Vec<SmartTrack>> {
+        let scores: HashMap<_, _> = self
+            .track_scores(Some(track_ids))?
+            .into_iter()
+            .map(|s| (s.track_id, s.score))
+            .collect();
+        Ok(self
+            .get_tracks_by_ids(track_ids)?
+            .into_iter()
+            .map(|t| SmartTrack {
+                score: scores.get(&t.id).copied().unwrap_or(0.0),
+                track_id: t.id,
+                artist_id: t.artist_id,
+                genres: t.genres,
+            })
+            .collect())
+    }
+
+    // @req RF-25
+    /// Compara duas janelas consecutivas. `None` usa 30 dias; aceita 7 a 365.
+    pub fn dna(&self, window_days: Option<u32>, now: i64) -> Result<Dna> {
+        let days = window_days.unwrap_or(30);
+        if !(7..=365).contains(&days) {
+            return Err(Error::invalid("janela do DNA deve ter 7 a 365 dias"));
+        }
+        let span = i64::from(days) * 86_400_000;
+        let current =
+            self.taste_data_window(None, Some(now.saturating_sub(span)), Some(now), now, false)?;
+        let previous = self.taste_data_window(
+            None,
+            Some(now.saturating_sub(2 * span)),
+            Some(now.saturating_sub(span)),
+            now,
+            false,
+        )?;
+        let mut top_artists: Vec<_> = current
+            .artists
+            .iter()
+            .filter_map(|(id, (name, score))| {
+                (*score > 0.0).then_some(TasteArtist {
+                    artist_id: id.clone(),
+                    name: name.clone(),
+                    score: *score,
+                })
+            })
+            .collect();
+        top_artists.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        top_artists.truncate(10);
+        let mut top_genres: Vec<_> = current
+            .genres
+            .iter()
+            .filter_map(|(genre, score)| {
+                (*score > 0.0).then_some(TasteGenre {
+                    genre: genre.clone(),
+                    score: *score,
+                })
+            })
+            .collect();
+        top_genres.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.genre.cmp(&b.genre))
+        });
+        top_genres.truncate(10);
+        let mut trends = Vec::new();
+        for (id, (name, current_score)) in &current.artists {
+            let old = previous.artists.get(id).map_or(0.0, |(_, s)| *s);
+            trends.push(DnaTrend {
+                kind: DnaTrendKind::Artist,
+                id: Some(id.clone()),
+                label: name.clone(),
+                current: *current_score,
+                previous: old,
+                delta: current_score - old,
+            });
+        }
+        for (id, (name, old)) in &previous.artists {
+            if !current.artists.contains_key(id) {
+                trends.push(DnaTrend {
+                    kind: DnaTrendKind::Artist,
+                    id: Some(id.clone()),
+                    label: name.clone(),
+                    current: 0.0,
+                    previous: *old,
+                    delta: -old,
+                });
+            }
+        }
+        for (genre, current_score) in &current.genres {
+            let old = previous.genres.get(genre).copied().unwrap_or(0.0);
+            trends.push(DnaTrend {
+                kind: DnaTrendKind::Genre,
+                id: None,
+                label: genre.clone(),
+                current: *current_score,
+                previous: old,
+                delta: current_score - old,
+            });
+        }
+        for (genre, old) in &previous.genres {
+            if !current.genres.contains_key(genre) {
+                trends.push(DnaTrend {
+                    kind: DnaTrendKind::Genre,
+                    id: None,
+                    label: genre.clone(),
+                    current: 0.0,
+                    previous: *old,
+                    delta: -old,
+                });
+            }
+        }
+        let mut rising: Vec<_> = trends.iter().filter(|t| t.delta >= 0.1).cloned().collect();
+        rising.sort_by(|a, b| {
+            b.delta
+                .total_cmp(&a.delta)
+                .then_with(|| a.label.cmp(&b.label))
+        });
+        rising.truncate(5);
+        let mut falling: Vec<_> = trends.into_iter().filter(|t| t.delta <= -0.1).collect();
+        falling.sort_by(|a, b| {
+            a.delta
+                .total_cmp(&b.delta)
+                .then_with(|| a.label.cmp(&b.label))
+        });
+        falling.truncate(5);
+        let rate = |d: &TasteData| {
+            if d.ended == 0 {
+                0.0
+            } else {
+                d.skipped as f64 / d.ended as f64
+            }
+        };
+        Ok(Dna {
+            window_days: days,
+            top_artists,
+            top_genres,
+            skip_rate: rate(&current),
+            previous_skip_rate: rate(&previous),
+            listened_ms: current.total_listened_ms,
+            previous_listened_ms: previous.total_listened_ms,
+            rising,
+            falling,
+        })
     }
 
     // @req RF-19
@@ -308,7 +512,7 @@ impl Database {
         if limit == 0 {
             return Ok(Vec::new());
         }
-        if data.ended == 0 {
+        if !data.tracks.iter().any(|t| t.score > 0.0) {
             return Ok(Vec::new());
         }
         let max_track = data
@@ -501,6 +705,98 @@ mod tests {
         assert!(
             !db.upsert_recommendation_candidate(&candidate("future", "A", "rock"))
                 .unwrap()
+        );
+    }
+
+    // @test RF-19 RF-25
+    #[test]
+    fn favorita_sem_reproducao_alimenta_perfil_sementes_ranking_e_dna() {
+        let mut db = db();
+        db.set_clock(|| NOW);
+        let mut n = NewTrack::youtube("fav-video", "Favorita", Some("Ana".into()), 60000, None);
+        n.genres = vec!["rock".into()];
+        let track = db.upsert_track(&n).unwrap().track;
+        db.set_favorite(&track.id, true).unwrap();
+        let profile = db.taste_profile(None).unwrap();
+        assert_eq!(profile.top_artists[0].name, "Ana");
+        assert_eq!(profile.top_genres[0].genre, "rock");
+        assert_eq!(profile.total_listened_ms, 0);
+        let seeds = db.recommendation_seeds(None, 1, 1, 1).unwrap();
+        assert_eq!(seeds.len(), 3);
+        assert_eq!(seeds[0].source_id.as_deref(), Some("fav-video"));
+        db.upsert_recommendation_candidate(&candidate("other-video", "Ana", "rock"))
+            .unwrap();
+        assert_eq!(
+            db.list_recommendations(None, None).unwrap()[0].source_id,
+            "other-video"
+        );
+        let score = &db.track_scores(None).unwrap()[0];
+        assert_eq!(
+            (score.plays, score.skips, score.last_played_at),
+            (0, 0, None)
+        );
+        assert_eq!(score.score, FAVORITE_BONUS);
+        let dna = db.dna(None, NOW).unwrap();
+        assert_eq!(dna.top_artists[0].score, FAVORITE_BONUS);
+        assert!(dna.rising.is_empty(), "favorito entra em ambas as janelas");
+    }
+
+    // @test RF-25
+    #[test]
+    fn pontuacao_conta_plays_pulos_recencia_e_filtro() {
+        let mut db = db();
+        db.set_clock(|| NOW);
+        let a = add_track(&db, "A", "Ana", 60000);
+        let b = add_track(&db, "B", "Bia", 60000);
+        heard(&db, &a.id, NOW - 1000, PlayEnd::Completed);
+        heard(&db, &a.id, NOW - 500, PlayEnd::Skipped);
+        let scores = db.track_scores(None).unwrap();
+        assert_eq!(scores.len(), 2);
+        let s = scores.iter().find(|s| s.track_id == a.id).unwrap();
+        assert_eq!(
+            (s.plays, s.skips, s.last_played_at),
+            (1, 1, Some(NOW - 500))
+        );
+        assert!(s.score > 0.0 && s.score < 1.0);
+        let empty = scores.iter().find(|s| s.track_id == b.id).unwrap();
+        assert_eq!((empty.score, empty.plays), (0.0, 0));
+        assert_eq!(
+            db.track_scores(Some(&[b.id.clone(), b.id.clone(), "missing".into()]))
+                .unwrap()
+                .len(),
+            1
+        );
+        let ready = db.smart_tracks(&[a.id.clone(), b.id.clone()]).unwrap();
+        assert_eq!(
+            ready.iter().map(|t| &t.track_id).collect::<Vec<_>>(),
+            [&a.id, &b.id]
+        );
+        assert_eq!(ready[0].score, s.score);
+    }
+
+    // @test RF-25
+    #[test]
+    fn dna_compara_janelas_limites_e_ausencia_de_eventos() {
+        let mut db = db();
+        db.set_clock(|| NOW);
+        assert!(db.dna(None, NOW).unwrap().top_artists.is_empty());
+        for days in [0, 6, 366] {
+            assert_eq!(db.dna(Some(days), NOW).unwrap_err().code(), "invalid_input");
+        }
+        let old = add_track(&db, "Antiga", "Ana", 60000);
+        let new = add_track(&db, "Nova", "Bia", 60000);
+        heard(&db, &old.id, NOW - 45 * 86_400_000, PlayEnd::Completed);
+        heard(&db, &new.id, NOW - 5 * 86_400_000, PlayEnd::Skipped);
+        heard(&db, &new.id, NOW - 4 * 86_400_000, PlayEnd::Completed);
+        let dna = db.dna(None, NOW).unwrap();
+        assert_eq!(dna.window_days, 30);
+        assert_eq!((dna.listened_ms, dna.previous_listened_ms), (62000, 60000));
+        assert_eq!((dna.skip_rate, dna.previous_skip_rate), (0.5, 0.0));
+        assert!(dna.rising.iter().any(|t| t.label == "Bia" && t.delta > 0.1));
+        assert!(
+            dna.falling
+                .iter()
+                .any(|t| t.label == "Ana" && t.delta < -0.1)
         );
     }
 

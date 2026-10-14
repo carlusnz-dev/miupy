@@ -16,6 +16,7 @@ fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(include_str!("../migrations/0001_init.sql")),
         M::up(include_str!("../migrations/0002_recommendations.sql")),
+        M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
     ])
 }
 
@@ -120,7 +121,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -161,7 +162,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -215,11 +216,63 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
         assert_eq!(db.get_play_event("e").unwrap().listened_ms, 60_000);
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
+
+    // @test RF-24 RF-27 RNF-01
+    #[test]
+    fn migra_versao_2_com_dados_sem_perda() {
+        let path = std::env::temp_dir().join(format!("miupy-v2-{}.db", new_id()));
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            register_collation(&conn).unwrap();
+            Migrations::new(vec![
+                M::up(include_str!("../migrations/0001_init.sql")),
+                M::up(include_str!("../migrations/0002_recommendations.sql")),
+            ])
+            .to_latest(&mut conn)
+            .unwrap();
+            conn.execute(
+                "INSERT INTO artists (id,name,name_key,created_at) VALUES ('a','Ana','ana',42)",
+                [],
+            )
+            .unwrap();
+            conn.execute("INSERT INTO tracks (id,title,artist_id,duration_ms,source,source_id,genres,release_year,added_at) VALUES ('t','Faixa','a',60000,'youtube','video','[\"rock\"]',2020,43)", []).unwrap();
+            conn.execute(
+                "INSERT INTO favorites (track_id,created_at) VALUES ('t',44)",
+                [],
+            )
+            .unwrap();
+            conn.execute("INSERT INTO play_events (id,track_id,started_at,ended_at,listened_ms,completed) VALUES ('e','t',45,46,60000,1)", []).unwrap();
+            conn.execute("UPDATE settings SET lava_theme='blue', volume=0.4", [])
+                .unwrap();
+            conn.execute("UPDATE profile SET display_name='Autor'", [])
+                .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert_eq!(db.schema_version().unwrap(), 3);
+        let track = db.get_track("t").unwrap();
+        assert_eq!(
+            (
+                track.title.as_str(),
+                track.genres.as_slice(),
+                track.release_year,
+                track.is_favorite
+            ),
+            ("Faixa", ["rock".to_string()].as_slice(), Some(2020), true)
+        );
+        assert_eq!(db.get_play_event("e").unwrap().listened_ms, 60000);
+        assert_eq!(db.get_profile().unwrap().display_name, "Autor");
+        assert_eq!(db.get_settings().unwrap().volume, 0.4);
+        assert_eq!(db.get_shuffle_mode().unwrap(), crate::ShuffleMode::Off);
+        assert_eq!(db.get_gpu_mode().unwrap(), crate::GpuMode::Auto);
+        assert_eq!(db.get_artist_info("a").unwrap().image_credit, None);
         drop(db);
         let _ = std::fs::remove_file(path);
     }

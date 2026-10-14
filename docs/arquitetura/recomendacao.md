@@ -24,7 +24,8 @@ são constantes nomeadas em `recommendations.rs`.
 O perfil soma as pontuações das faixas por artista e gênero. Artistas com saldo negativo não
 entram nos `topArtists`, mas o saldo negativo reduz candidatas desse artista. `skipRate` é
 `eventos encerrados e pulados / eventos encerrados`; `totalListenedMs` soma todo o tempo ouvido
-desses eventos. Sem eventos encerrados, perfil vazio e lista de recomendações vazia.
+desses eventos. Sem eventos encerrados e sem favoritas, perfil e recomendações vazios. Só
+favoritas, mesmo nunca tocadas, já formam um perfil.
 
 ## Sementes e candidatas
 
@@ -77,4 +78,6 @@ peso = 0,10 + 0,60 × pontuação_normalizada + 0,30 × proximidade
 `stats_dna` aplica a mesma pontuação de faixa só aos eventos de cada janela (a atual e a
 anterior, de `windowDays` cada), sem o decaimento de recência dentro da janela, e soma por artista
 e por gênero. O bônus de favorita entra nas duas janelas. `rising` e `falling` ordenam a diferença
-entre as janelas, ignorando diferenças abaixo de `0,1`.
+entre as janelas, ignorando diferenças abaixo de `0,1`. Os eventos entram pela data de início:
+`[agora − 2 × janela, agora − janela)` e `[agora − janela, agora)`; eventos abertos ficam fora.
+Repetição, pulos e tempo ouvido são calculados separadamente em cada janela.
