@@ -27,6 +27,9 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-15 | Retrospectiva anual | S | "Anual" do usuário: top faixas/artistas, minutos ouvidos, por mês, no estilo do Wrapped. |
 | RF-16 | Perfil | M | Gerenciar perfil: nome, nome de usuário, e-mail e telefone. |
 | RF-17 | Tema da lava | M | Trocar a cor da lava entre laranja/vermelho (padrão), roxo e azul. |
+| RF-18 | Tocar sem baixar | S | Tocar uma faixa do YouTube que ainda não foi baixada, por streaming, quando há rede. Sem rede, o erro é claro e a discoteca baixada continua funcionando. |
+| RF-19 | Recomendações | S | Sugerir faixas para adicionar à discoteca ou a uma playlist a partir do que o usuário ouviu: tempo ouvido, conclusões, pulos, favoritos, artistas e gêneros. A pontuação é calculada localmente, no SQLite. |
+| RF-20 | Metadados da faixa no banco | S | Gêneros, ano de lançamento e identificadores externos ficam gravados na tabela de faixas, para alimentar as recomendações sem rede. |
 
 ## Requisitos não funcionais
 
@@ -39,6 +42,8 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RNF-05 | Gradientes | S | Gradientes bonitos, alguns em *mesh* animado, respeitando `prefers-reduced-motion`. |
 | RNF-06 | Documentação viva | M | `docs/` com README por pasta, arquitetura, stacks, requisitos, relatórios de sessão, matriz gerada e JSON da arquitetura. |
 | RNF-07 | Integrações externas | C | Núcleo desacoplado da UI para permitir integrar serviços externos do usuário no futuro. |
+| RNF-08 | Animações | S | Movimento com física de mola (*spring*): entrada, saída, bounce, hover e fade-in/out, sempre respeitando `prefers-reduced-motion`. |
+| RNF-09 | Aceleração de hardware | S | A interface é composta pela GPU quando o sistema permite, com recuo automático para renderização por software onde a GPU derruba o app. |
 
 ## Fora de escopo (por enquanto)
 
