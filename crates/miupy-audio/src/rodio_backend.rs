@@ -1377,8 +1377,13 @@ mod tests {
             let _ = was_playing;
             assert!(error.is_some(), "queda de rede não emitiu Error");
             assert_eq!(b.state().status, PlaybackStatus::Stopped);
-            b.load(&fixture("tone.m4a")).unwrap();
-            assert_eq!(b.state().status, PlaybackStatus::Paused);
+            match b.load(&fixture("tone.m4a")) {
+                Ok(()) => assert_eq!(b.state().status, PlaybackStatus::Paused),
+                Err(AudioError::NoOutputDevice(why)) => {
+                    eprintln!("PULADO: recarga depois da queda com saída real ({why})")
+                }
+                Err(e) => panic!("recarga falhou: {e}"),
+            }
         }
         stop.store(true, Ordering::Relaxed);
         server.join().unwrap();
