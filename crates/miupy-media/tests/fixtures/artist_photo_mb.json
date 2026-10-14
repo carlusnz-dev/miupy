@@ -1,0 +1,23 @@
+{
+  "id": "056e4f3e-d505-4dad-8ec1-d04f521cbb56",
+  "relations": [
+    {
+      "url": {
+        "id": "ea4d1683-896f-4bb7-8332-9d71b9564695",
+        "resource": "https://www.wikidata.org/wiki/Q185828"
+      },
+      "direction": "forward",
+      "end": null,
+      "attributes": [],
+      "attribute-ids": {},
+      "target-credit": "",
+      "begin": null,
+      "ended": false,
+      "attribute-values": {},
+      "type-id": "689870a4-a1e4-4912-b17f-7b2664215698",
+      "target-type": "url",
+      "type": "wikidata",
+      "source-credit": ""
+    }
+  ]
+}

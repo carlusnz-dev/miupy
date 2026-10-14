@@ -4,9 +4,9 @@
 //! 1 requisição por segundo ao MusicBrainz (implementado em [`crate::ratelimit`]) e timeouts em
 //! tudo. Falha de rede devolve [`MediaError`], nunca `panic`.
 //!
-//! Biografia e foto de artista NÃO existem no MusicBrainz: [`ArtistDetails::bio`] e
-//! [`ArtistDetails::image_url`] ficam `None`. Ponto de extensão: implementar [`MetadataProvider`]
-//! com TheAudioDB/Last.fm (exigem chave) ou Wikidata/Wikipedia (sem chave) e combinar com este.
+//! Biografia e foto não vêm do MusicBrainz: [`ArtistDetails::bio`] e
+//! [`ArtistDetails::image_url`] ficam `None`. [`OnlineMetadata::artist_photo`] consulta Wikidata e
+//! Wikimedia Commons quando há MBID e relação disponível.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -20,6 +20,8 @@ use crate::ratelimit::RateLimiter;
 
 const MAX_IMAGE_BYTES: usize = 15 * 1024 * 1024;
 const MIN_MATCH_SCORE: u64 = 70;
+const WIKIDATA_ENDPOINT: &str = "https://www.wikidata.org/w/api.php";
+const COMMONS_ENDPOINT: &str = "https://commons.wikimedia.org/w/api.php";
 
 /// Gravação encontrada no MusicBrainz.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +55,93 @@ pub struct ArtistDetails {
     pub genres: Vec<String>,
     pub bio: Option<String>,
     pub image_url: Option<String>,
+}
+
+// @req RF-27
+/// Foto e crédito prontos para gravar em `covers/artistas/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtistPhoto {
+    pub bytes: Vec<u8>,
+    pub extension: String,
+    /// `Autor — Licença`, sem marcação HTML.
+    pub credit: String,
+}
+
+// @req RF-27
+fn wikidata_id(mb: &Value) -> Option<String> {
+    let url = mb
+        .get("relations")?
+        .as_array()?
+        .iter()
+        .find(|r| r.get("type").and_then(Value::as_str) == Some("wikidata"))?
+        .pointer("/url/resource")?
+        .as_str()?;
+    let id = url.rsplit('/').next()?;
+    (id.starts_with('Q') && id[1..].bytes().all(|b| b.is_ascii_digit()) && id.len() > 1)
+        .then(|| id.to_string())
+}
+
+// @req RF-27
+fn wikidata_image(wd: &Value, id: &str) -> Option<String> {
+    wd.pointer(&format!(
+        "/entities/{id}/claims/P18/0/mainsnak/datavalue/value"
+    ))?
+    .as_str()
+    .map(String::from)
+}
+
+// @req RF-27
+fn commons_image(commons: &Value) -> Option<(String, String)> {
+    let page = commons
+        .pointer("/query/pages")?
+        .as_object()?
+        .values()
+        .next()?;
+    let info = page.pointer("/imageinfo/0")?;
+    let url = info
+        .get("thumburl")
+        .or_else(|| info.get("url"))?
+        .as_str()?
+        .to_string();
+    let meta = info.get("extmetadata")?;
+    let artist = meta
+        .pointer("/Artist/value")
+        .and_then(Value::as_str)
+        .map(plain_text)
+        .unwrap_or_default();
+    let license = meta
+        .pointer("/LicenseShortName/value")
+        .and_then(Value::as_str)
+        .map(plain_text)
+        .unwrap_or_default();
+    let credit = match (artist.is_empty(), license.is_empty()) {
+        (false, false) => format!("{artist} — {license}"),
+        (false, true) => artist,
+        (true, false) => license,
+        (true, true) => "Wikimedia Commons".into(),
+    };
+    Some((url, credit))
+}
+
+// @req RF-27
+fn plain_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for c in html.chars() {
+        match c {
+            '<' => inside = true,
+            '>' => inside = false,
+            _ if !inside => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&amp;", "&")
+        .replace("&nbsp;", " ")
+        .replace("&#39;", "'")
+        .replace("&quot;", "\"")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Letra de uma música.
@@ -138,6 +227,74 @@ pub struct OnlineMetadata {
 }
 
 impl OnlineMetadata {
+    // @req RF-27
+    /// Busca foto pelo MBID e devolve bytes, extensão e crédito. Ausência de vínculo ou
+    /// imagem devolve `None`; chamadas ao MusicBrainz compartilham o limitador existente.
+    pub async fn artist_photo(&self, mbid: Option<&str>) -> Result<Option<ArtistPhoto>> {
+        let Some(mbid) = mbid.filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        validate_mbid(mbid)?;
+        let mb = self
+            .mb_get(
+                &format!("artist/{mbid}"),
+                &[("inc", "url-rels"), ("fmt", "json")],
+            )
+            .await?;
+        let Some(item) = wikidata_id(&mb) else {
+            return Ok(None);
+        };
+        let mut wd_url = reqwest::Url::parse(WIKIDATA_ENDPOINT)
+            .map_err(|e| MediaError::Internal(format!("URL do Wikidata inválida: {e}")))?;
+        wd_url.query_pairs_mut().extend_pairs([
+            ("action", "wbgetentities"),
+            ("ids", item.as_str()),
+            ("props", "claims"),
+            ("format", "json"),
+        ]);
+        let wd = self.http.get(wd_url).send().await?;
+        let wd: Value = Self::check(wd, "Wikidata").await?.json().await?;
+        let Some(file) = wikidata_image(&wd, &item) else {
+            return Ok(None);
+        };
+        let mut commons_url = reqwest::Url::parse(COMMONS_ENDPOINT)
+            .map_err(|e| MediaError::Internal(format!("URL do Commons inválida: {e}")))?;
+        commons_url.query_pairs_mut().extend_pairs([
+            ("action", "query"),
+            ("titles", format!("File:{file}").as_str()),
+            ("prop", "imageinfo"),
+            ("iiprop", "url|extmetadata"),
+            ("iiurlwidth", "500"),
+            ("format", "json"),
+        ]);
+        let commons = self.http.get(commons_url).send().await?;
+        let commons: Value = Self::check(commons, "Commons").await?.json().await?;
+        let Some((url, credit)) = commons_image(&commons) else {
+            return Ok(None);
+        };
+        let parsed = reqwest::Url::parse(&url).map_err(|e| MediaError::Internal(e.to_string()))?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err(MediaError::Internal("URL da foto inválida".into()));
+        }
+        let response = Self::check(self.http.get(parsed).send().await?, "foto do artista").await?;
+        if response
+            .content_length()
+            .is_some_and(|n| n > MAX_IMAGE_BYTES as u64)
+        {
+            return Err(MediaError::InvalidInput("foto grande demais".into()));
+        }
+        let bytes = response.bytes().await?;
+        if bytes.len() > MAX_IMAGE_BYTES {
+            return Err(MediaError::InvalidInput("foto grande demais".into()));
+        }
+        let extension = image_extension(&bytes, None)
+            .ok_or_else(|| MediaError::Internal("foto em formato desconhecido".into()))?;
+        Ok(Some(ArtistPhoto {
+            bytes: bytes.to_vec(),
+            extension: extension.into(),
+            credit,
+        }))
+    }
     // @req RF-12
     /// Falha com `InvalidInput` se o contato for vazio (o User-Agent identificado é obrigatório).
     pub fn new(cfg: MetadataConfig) -> Result<Self> {
@@ -787,6 +944,27 @@ mod tests {
             image_extension(b"xx", Some("image/jpeg; charset=x")),
             Some("jpg")
         );
+    }
+
+    // @test RF-27
+    #[test]
+    fn fixtures_wikidata_e_commons_extraem_imagem_e_credito_sem_html() {
+        let mb: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/artist_photo_mb.json")).unwrap();
+        let wd: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/artist_photo_wikidata.json"))
+                .unwrap();
+        let commons: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/artist_photo_commons.json"))
+                .unwrap();
+        let id = wikidata_id(&mb).unwrap();
+        assert!(id.starts_with('Q'));
+        let file = wikidata_image(&wd, &id).unwrap();
+        assert_eq!(file, "Daft Punk in 2013.jpg");
+        let (url, credit) = commons_image(&commons).unwrap();
+        assert!(url.contains("500px"));
+        assert_eq!(credit, "Sony Music Entertainment — CC BY 4.0");
+        assert!(!credit.contains('<'));
     }
 
     // @test RF-12
