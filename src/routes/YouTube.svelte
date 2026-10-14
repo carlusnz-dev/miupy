@@ -9,8 +9,18 @@
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import { SuggestionsStore } from '../lib/stores/suggestions.svelte';
 
   let query = $state('');
+  const suggestions = new SuggestionsStore();
+  $effect(() => { suggestions.update(query); return () => suggestions.dispose(); }); // @req RF-23
+  function pick(text: string) { suggestions.close(text); query = text; void search(); }
+  function onSearchKey(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); suggestions.move(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); suggestions.move(-1); }
+    else if (e.key === 'Escape') suggestions.close();
+    else if (e.key === 'Enter' && suggestions.open && suggestions.active >= 0) { e.preventDefault(); pick(suggestions.items[suggestions.active]); }
+  }
   let results = $state<SearchResult[] | null>(null);
   let searching = $state(false);
   let error = $state<string | null>(null);
@@ -20,6 +30,7 @@
     e?.preventDefault();
     const q = query.trim();
     if (!q) return;
+    suggestions.close(q);
     searching = true; error = null;
     try { results = await api.youtubeSearch({ query: q, limit: 20 }); }
     catch (ex) { error = errorMessage(ex); results = null; }
@@ -43,7 +54,10 @@
 <form class="mb-5 flex gap-2" onsubmit={search} role="search">
   <div class="relative flex-1">
     <Icon name="search" size={16} class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-    <input class="field !pl-9" type="search" placeholder="Nome da música ou artista" aria-label="Buscar no YouTube" bind:value={query} />
+    <input class="field !pl-9" type="search" placeholder="Nome da música ou artista" aria-label="Buscar no YouTube" bind:value={query} onkeydown={onSearchKey} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.open} aria-controls="yt-suggestions" aria-activedescendant={suggestions.open && suggestions.active >= 0 ? `yt-suggestion-${suggestions.active}` : undefined} />
+    {#if suggestions.open}<ul id="yt-suggestions" role="listbox" aria-label="Sugestões de busca" class="absolute z-20 mt-1 w-full rounded-lg border border-line bg-s2 p-1">
+      {#each suggestions.items as item, i}<li id="yt-suggestion-{i}" role="option" aria-selected={suggestions.active === i}><button type="button" class="w-full rounded px-3 py-2 text-left text-sm hover:bg-s3 {suggestions.active === i ? 'bg-s3' : ''}" onpointerdown={(e) => e.preventDefault()} onclick={() => pick(item)}>{item}</button></li>{/each}
+    </ul>{/if}
   </div>
   <button class="btn btn-primary" disabled={searching || !query.trim()}>Buscar</button>
 </form>

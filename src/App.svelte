@@ -26,6 +26,7 @@
   import NowPlaying from './routes/NowPlaying.svelte';
   import Artist from './routes/Artist.svelte';
   import Stats from './routes/Stats.svelte';
+  import Dna from './routes/Dna.svelte';
   import Wrapped from './routes/Wrapped.svelte';
   import Profile from './routes/Profile.svelte';
   import SettingsPage from './routes/Settings.svelte';
@@ -89,6 +90,7 @@
           {:else if name === 'downloads'}<Downloads />
           {:else if name === 'artist'}{#key router.current.params.id}<Artist id={router.current.params.id} />{/key}
           {:else if name === 'stats'}<Stats />
+          {:else if name === 'dna'}<Dna />
           {:else if name === 'wrapped'}<Wrapped />
           {:else if name === 'profile'}<Profile />
           {:else if name === 'settings'}<SettingsPage />

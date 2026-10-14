@@ -24,11 +24,11 @@ src/lib/stores/       router, player, library, downloads, recommendations, setti
 src/lib/components/   Icon, MeshGradient, Cover, TrackRow, Nav, PlayerBar, MiniPlayer, Modal, ...
 src/lib/actions.ts    ações compartilhadas (favoritar, baixar) com aviso por toast
 src/routes/           uma tela por rota (Home, Library, Playlists, PlaylistDetail, YouTube, Downloads,
-                      NowPlaying, Artist, Stats, Wrapped, Profile, Settings)
+                      NowPlaying, Artist, Stats, Dna, Wrapped, Profile, Settings)
 ```
 
 Rotas (hash): `#/`, Discoteca (`#/biblioteca`), `#/playlists`, `#/playlists/:id`, `#/youtube`, `#/downloads`,
-`#/tocando`, `#/artista/:id`, `#/estatisticas`, `#/retrospectiva`, `#/perfil`, `#/configuracoes`.
+`#/tocando`, `#/artista/:id`, `#/estatisticas`, `#/dna`, `#/retrospectiva`, `#/perfil`, `#/configuracoes`.
 
 ## Cliente IPC e mock
 
@@ -69,4 +69,4 @@ cheia `#/tocando`. Atalhos: espaço, setas (seek/volume), `M`; ignorados em camp
 
 ## Rastreabilidade
 
-Componentes e stores levam `@req RF-NN` / `RNF-NN`. Não há testes automatizados no frontend ainda.
+Componentes e stores levam `@req RF-NN` / `RNF-NN`. Testes de stores e utilitários: `npm test` (Vitest).

@@ -14,7 +14,8 @@
   import TrackToolbar from '../lib/components/TrackToolbar.svelte';
   import TrackRow from '../lib/components/TrackRow.svelte';
   import PlaylistForm from '../lib/components/PlaylistForm.svelte';
-  import Cover from '../lib/components/Cover.svelte';
+  import PlaylistCover from '../lib/components/PlaylistCover.svelte';
+  import { readImageUpload } from '../lib/util/imageUpload';
   import State from '../lib/components/State.svelte';
   import Recommendations from '../lib/components/Recommendations.svelte';
   import Icon from '../lib/components/Icon.svelte';
@@ -63,6 +64,11 @@
   }
 
   // arrastar e soltar (desktop; no toque, use os botões subir/descer)
+  let coverInput = $state<HTMLInputElement>();
+  async function setCover(file: File | null) { // @req RF-22
+    try { await api.playlistSetCover({ playlistId: id, image: file ? await readImageUpload(file) : null }); await library.reloadPlaylists(); notify(file ? 'Capa atualizada.' : 'Capa removida.'); }
+    catch (e) { notifyError(e); }
+  }
   let dragId = $state<string | null>(null);
 </script>
 
@@ -71,7 +77,7 @@
 {:else}
   <MeshGradient class="mb-5 rounded-2xl border border-line" intensity={0.8}>
     <div class="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-end md:p-6">
-      <Cover path={pl?.coverPath} seed={id} size={144} rounded="0.75rem" />
+      {#if pl}<PlaylistCover playlist={pl} size={144} />{/if}
       <div class="min-w-0 flex-1">
         <p class="eyebrow !text-fg/70">Playlist</p>
         <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl">{pl?.name ?? '…'}</h1>
@@ -85,6 +91,9 @@
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar</button>
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
     <button class="btn" onclick={() => (editing = { playlist: pl ?? null })} disabled={!pl}><Icon name="edit" size={16} />Renomear</button>
+    <input bind:this={coverInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher capa" onchange={(e) => { const file = e.currentTarget.files?.[0]; if (file) void setCover(file); e.currentTarget.value = ''; }} />
+    <button class="btn" disabled={!pl} onclick={() => coverInput?.click()}>Escolher capa</button>
+    {#if pl?.coverPath}<button class="btn" onclick={() => setCover(null)}>Remover capa</button>{/if}
     <button class="btn btn-danger" onclick={destroy} disabled={!pl}><Icon name="trash" size={16} />Apagar</button>
     <a class="btn ml-auto" href={href(paths.playlists)}><Icon name="left" size={16} />Playlists</a>
   </div>

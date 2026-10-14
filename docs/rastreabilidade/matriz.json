@@ -1,10 +1,10 @@
 {
   "summary": {
     "total": 37,
-    "verificado": 22,
-    "implementado": 4,
+    "verificado": 27,
+    "implementado": 6,
     "soTeste": 0,
-    "pendente": 11
+    "pendente": 4
   },
   "unknownIds": [],
   "requirements": [
@@ -128,7 +128,7 @@
         "src/lib/components/Seek.svelte:2",
         "src/lib/components/Transport.svelte:3",
         "src/lib/ipc/api.ts:1",
-        "src/lib/ipc/api.ts:21",
+        "src/lib/ipc/api.ts:22",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/stores/player.svelte.ts:1",
         "src/routes/NowPlaying.svelte:4"
@@ -467,8 +467,12 @@
         "src-tauri/src/metadata.rs:61",
         "src-tauri/src/metadata.rs:249",
         "src-tauri/src/metadata.rs:311",
+        "src/lib/ipc/api.ts:52",
+        "src/lib/ipc/mock.ts:422",
+        "src/lib/ipc/tauri.ts:66",
         "src/routes/Artist.svelte:2",
-        "src/routes/NowPlaying.svelte:4"
+        "src/routes/NowPlaying.svelte:4",
+        "src/routes/Settings.svelte:23"
       ],
       "tests": [
         "crates/miupy-core/src/artists.rs:164",
@@ -670,8 +674,10 @@
         "src/lib/components/PlayerBar.svelte:2",
         "src/lib/components/TrackRow.svelte:2",
         "src/lib/ipc/mock.ts:1",
+        "src/lib/ipc/mock.ts:211",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:57",
+        "src/lib/ipc/types.ts:60",
+        "src/lib/stores/player.svelte.ts:31",
         "src/routes/NowPlaying.svelte:2"
       ],
       "tests": [
@@ -724,12 +730,12 @@
         "src-tauri/src/youtube.rs:182",
         "src/lib/components/Recommendations.svelte:2",
         "src/lib/ipc/api.ts:1",
-        "src/lib/ipc/api.ts:54",
+        "src/lib/ipc/api.ts:62",
         "src/lib/ipc/mock.ts:1",
-        "src/lib/ipc/mock.ts:120",
+        "src/lib/ipc/mock.ts:127",
         "src/lib/ipc/tauri.ts:1",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:60",
+        "src/lib/ipc/types.ts:64",
         "src/lib/stores/recommendations.svelte.ts:1",
         "src/routes/Home.svelte:2",
         "src/routes/PlaylistDetail.svelte:2",
@@ -770,9 +776,12 @@
         "src-tauri/src/downloads.rs:245",
         "src-tauri/src/metadata.rs:75",
         "src-tauri/src/metadata.rs:143",
+        "src/lib/ipc/api.ts:52",
         "src/lib/ipc/mock.ts:1",
+        "src/lib/ipc/mock.ts:422",
+        "src/lib/ipc/tauri.ts:66",
         "src/lib/ipc/types.ts:1",
-        "src/lib/ipc/types.ts:26",
+        "src/lib/ipc/types.ts:28",
         "src/routes/NowPlaying.svelte:2"
       ],
       "tests": [
@@ -796,63 +805,135 @@
       "title": "Foto do perfil",
       "priority": "S",
       "description": "Escolher, trocar e remover a foto do usuário no perfil.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/Avatar.svelte:2",
+        "src/lib/ipc/api.ts:68",
+        "src/lib/ipc/mock.ts:520",
+        "src/lib/ipc/tauri.ts:82",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/stores/profile.svelte.ts:8",
+        "src/lib/util/imageUpload.ts:1",
+        "src/routes/Profile.svelte:15"
+      ],
+      "tests": [
+        "src/lib/util/features.test.ts:25",
+        "src/lib/util/features.test.ts:31"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RF-22",
       "title": "Capa da playlist",
       "priority": "S",
       "description": "Escolher uma capa para a playlist; sem capa escolhida, a playlist mostra um mosaico dos 4 artistas com mais faixas nela.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/PlaylistCover.svelte:2",
+        "src/lib/ipc/api.ts:37",
+        "src/lib/ipc/mock.ts:12",
+        "src/lib/ipc/mock.ts:139",
+        "src/lib/ipc/mock.ts:346",
+        "src/lib/ipc/tauri.ts:51",
+        "src/lib/ipc/types.ts:37",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/util/imageUpload.ts:1",
+        "src/lib/util/mosaic.ts:1",
+        "src/routes/PlaylistDetail.svelte:68"
+      ],
+      "tests": [
+        "src/lib/util/features.test.ts:15",
+        "src/lib/util/features.test.ts:25",
+        "src/lib/util/features.test.ts:31"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RF-23",
       "title": "Sugestões de busca",
       "priority": "C",
       "description": "Sugerir o texto da busca no YouTube enquanto o usuário digita.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/ipc/api.ts:41",
+        "src/lib/ipc/mock.ts:371",
+        "src/lib/ipc/tauri.ts:54",
+        "src/lib/stores/suggestions.svelte.ts:1",
+        "src/routes/YouTube.svelte:16"
+      ],
+      "tests": [
+        "src/lib/stores/newStores.test.ts:11",
+        "src/lib/stores/newStores.test.ts:26",
+        "src/lib/stores/newStores.test.ts:75"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RF-24",
       "title": "Aleatório e *smart random*",
       "priority": "S",
       "description": "Tocar a fila em ordem aleatória, ou em sorteio ponderado que puxa para as faixas mais bem pontuadas e próximas da que está tocando.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/ShuffleButton.svelte:2",
+        "src/lib/ipc/api.ts:21",
+        "src/lib/ipc/mock.ts:287",
+        "src/lib/ipc/tauri.ts:35",
+        "src/lib/ipc/types.ts:8",
+        "src/lib/ipc/types.ts:61",
+        "src/lib/stores/player.svelte.ts:66",
+        "src/lib/util/shuffle.ts:1"
+      ],
+      "tests": [
+        "src/lib/util/features.test.ts:7"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RF-25",
       "title": "Pontuação e DNA",
       "priority": "S",
       "description": "Mostrar a pontuação de cada faixa e uma tela \"DNA\" com o estilo atual do usuário: artistas, gêneros, taxa de pulos, o que subiu e o que caiu.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/TrackRow.svelte:13",
+        "src/lib/ipc/api.ts:60",
+        "src/lib/ipc/mock.ts:499",
+        "src/lib/ipc/mock.ts:503",
+        "src/lib/ipc/tauri.ts:74",
+        "src/lib/ipc/types.ts:162",
+        "src/lib/stores/dna.svelte.ts:1",
+        "src/lib/stores/scores.svelte.ts:1",
+        "src/routes/Dna.svelte:2"
+      ],
+      "tests": [
+        "src/lib/stores/newStores.test.ts:40",
+        "src/lib/stores/newStores.test.ts:56"
+      ],
+      "status": "verificado"
     },
     {
       "id": "RF-26",
       "title": "yt-dlp gerenciado pelo app",
       "priority": "S",
       "description": "O app baixa, confere e atualiza o yt-dlp sozinho, sem depender de instalação no sistema.",
-      "implementation": [],
+      "implementation": [
+        "src/lib/ipc/api.ts:42",
+        "src/lib/ipc/mock.ts:125",
+        "src/lib/ipc/mock.ts:378",
+        "src/lib/ipc/tauri.ts:55",
+        "src/lib/ipc/types.ts:162",
+        "src/routes/Settings.svelte:23"
+      ],
       "tests": [],
-      "status": "pendente"
+      "status": "implementado"
     },
     {
       "id": "RF-27",
       "title": "Foto de artista",
       "priority": "S",
       "description": "Mostrar a foto do artista, vinda do Wikimedia Commons pelo Wikidata, com o crédito de autor e licença.",
-      "implementation": [],
+      "implementation": [
+        "src/lib/ipc/mock.ts:12",
+        "src/lib/ipc/types.ts:102"
+      ],
       "tests": [],
-      "status": "pendente"
+      "status": "implementado"
     },
     {
       "id": "RNF-01",
@@ -908,7 +989,8 @@
       "description": "Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca.",
       "implementation": [
         "src/App.svelte:4",
-        "src/app.css:7"
+        "src/app.css:7",
+        "src/routes/Dna.svelte:2"
       ],
       "tests": [],
       "status": "implementado"

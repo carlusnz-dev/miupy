@@ -3,12 +3,18 @@
 // Mesma interface (MiupyApi) do cliente real. Dados fictícios.
 import type { MiupyApi } from './api';
 import type {
-  ArtistInfo, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist,
+  ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist, YtDlpStatus,
   Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
 } from './types';
 
 const MIN = 60_000;
 const DAY = 86_400_000;
+// @req RF-22 RF-27: capas locais simuladas como data URL para o navegador puro.
+function mockArt(seed: number): string {
+  const colors = ['#ed7149', '#7d60bf', '#388fb0', '#efae5c', '#765375', '#5a9a8f', '#c76572', '#9a674d'];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="${colors[seed % colors.length]}"/><circle cx="${80 + seed * 14}" cy="100" r="105" fill="#ffffff" opacity=".18"/><path d="M0 230 Q 90 ${90 + seed * 8} 170 210 T 300 180 V300 H0" fill="#171821" opacity=".38"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 function err(code: string, message: string): never {
   throw { code, message };
@@ -81,7 +87,7 @@ function buildTracks(): Track[] {
       album,
       durationMs: secs * 1000,
       filePath: dl === 'done' ? `/dados/miupy/audio/trk-${i + 1}.m4a` : null,
-      coverPath: null,
+      coverPath: i % 4 === 0 ? null : mockArt(ai),
       source: i % 7 === 6 ? 'local' : 'youtube',
       sourceId: `yt${i}abc${(i * 37) % 997}`,
       codec: dl === 'done' ? 'aac' : null,
@@ -109,13 +115,14 @@ export function createMockApi(): MiupyApi {
   let tracks = buildTracks();
   const now = Date.now();
   let playlists: (Playlist & { ids: string[] })[] = [
-    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
-    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
-    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
+    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
+    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
+    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
   ];
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
   let settings: Settings = { lavaTheme: 'orange', volume: 0.8 };
+  let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
 
@@ -129,6 +136,8 @@ export function createMockApi(): MiupyApi {
   const byId = (id: string) => tracks.find((t) => t.id === id) ?? err('not_found', 'Faixa não encontrada.');
   const refreshPl = (p: Playlist & { ids: string[] }) => {
     const ts = p.ids.map((i) => tracks.find((t) => t.id === i)).filter(Boolean) as Track[];
+    // @req RF-22: uma imagem representativa por artista, até quatro.
+    p.mosaicPaths = [...new Map(ts.filter((t) => t.artistId && t.coverPath).map((t) => [t.artistId, t.coverPath!])).values()].slice(0, 4);
     p.trackCount = ts.length;
     p.totalDurationMs = ts.reduce((s, t) => s + t.durationMs, 0);
   };
@@ -170,7 +179,7 @@ export function createMockApi(): MiupyApi {
   }
 
   // --- Player simulado ---
-  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], queueIndex: -1, streaming: false };
+  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], queueIndex: -1, streaming: false, shuffle: 'off' };
   let timer: ReturnType<typeof setInterval> | null = null;
   const snap = (): PlayerState => ({ ...player, queue: [...player.queue] });
   const pushState = () => { emit('player://state', snap()); return snap(); };
@@ -197,7 +206,13 @@ export function createMockApi(): MiupyApi {
     player.positionMs = 0;
     player.status = player.streaming ? 'loading' : 'playing';
     pushState();
-    if (player.streaming) setTimeout(() => { if (player.track?.id === t.id && player.status === 'loading') { player.status = 'playing'; startTimer(); pushState(); } }, 450);
+    if (player.streaming) setTimeout(() => {
+      if (player.track?.id !== t.id || player.status !== 'loading') return;
+      if (t.id === 'trk-009') { // @req RF-18: falha tardia de streaming no mock.
+        player.status = 'stopped'; pushState();
+        emit('player://error', { trackId: t.id, code: 'unavailable', message: 'Este vídeo não está disponível para reprodução.' });
+      } else { player.status = 'playing'; startTimer(); pushState(); }
+    }, 450);
     else startTimer();
   }
 
@@ -269,6 +284,7 @@ export function createMockApi(): MiupyApi {
     },
     async playerSetVolume({ volume }) { player.volume = Math.max(0, Math.min(1, volume)); settings.volume = player.volume; return pushState(); },
     async playerSetMuted({ muted }) { player.muted = muted; return pushState(); },
+    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24
     async playerGetQueue() { return player.queue.map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t).map((t) => ({ ...t })); },
 
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },
@@ -293,7 +309,7 @@ export function createMockApi(): MiupyApi {
     async playlistCreate({ name, description }) {
       if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.');
       if (playlists.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) err('conflict', 'Já existe uma playlist com esse nome.');
-      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
       playlists.push(p);
       changed('playlist');
       return plOut(p);
@@ -327,6 +343,11 @@ export function createMockApi(): MiupyApi {
       changed('playlist');
       return plOut(p);
     },
+    async playlistSetCover({ playlistId, image }) { // @req RF-22
+      const p = getPl(playlistId);
+      p.coverPath = image ? `data:${image.mimeType};base64,${image.dataBase64}` : null;
+      p.updatedAt = Date.now(); changed('playlist'); return plOut(p);
+    },
     async playlistMoveTrack({ playlistId, trackId, newPosition }) {
       const p = getPl(playlistId);
       const from = p.ids.indexOf(trackId);
@@ -346,6 +367,23 @@ export function createMockApi(): MiupyApi {
       const rest = pool.filter((p) => `${p.title} ${p.artist}`.toLowerCase().includes(q));
       const extra = rest.length ? [] : pool.slice(0, 3); // consulta sem correspondência: sugere algo
       return [...fromLib, ...rest, ...extra].slice(0, limit ?? 20);
+    },
+    async youtubeSuggest({ query }) { // @req RF-23
+      await wait(90);
+      const q = query.trim().toLocaleLowerCase('pt-BR');
+      if (!q) return [];
+      return [...new Set([...tracks.map((t) => t.title), ...ARTISTS.map((a) => a.name), ...YT_POOL.map((t) => t.title)])]
+        .filter((x) => x.toLocaleLowerCase('pt-BR').includes(q)).slice(0, 6);
+    },
+    async ytdlpStatus() { return { ...ytdlp }; }, // @req RF-26
+    async ytdlpUpdate() {
+      ytdlp = { ...ytdlp, state: 'downloading', progress: 0, error: null }; emit('ytdlp://status', { ...ytdlp });
+      const id = setInterval(() => {
+        ytdlp.progress = Math.min(1, ytdlp.progress + 0.25);
+        if (ytdlp.progress === 1) { clearInterval(id); ytdlp.state = 'ready'; ytdlp.checkedAt = Date.now(); }
+        emit('ytdlp://status', { ...ytdlp });
+      }, 300);
+      return { ...ytdlp };
     },
     async youtubeAddToLibrary({ sourceIds, playlistId }) {
       await wait(200);
@@ -381,10 +419,17 @@ export function createMockApi(): MiupyApi {
     },
 
     async metadataRefreshTrack({ trackId }) { await wait(400); const t = byId(trackId); if (!t.album) t.album = 'Single'; changed('metadata'); return { ...t }; },
+    async metadataRefreshLibrary({ onlyMissing = true }) { // @req RF-12 RF-20
+      const total = onlyMissing ? tracks.filter((t) => !t.album).length : tracks.length;
+      for (let done = 1; done <= total; done++) {
+        await wait(50); emit('metadata://progress', { done, total });
+      }
+      changed('metadata'); return total;
+    },
     async metadataGetArtist({ artistId }) {
       await wait();
       const a = ARTISTS.find((x) => x.id === artistId) ?? err('not_found', 'Artista não encontrado.');
-      const info: ArtistInfo = { id: a.id, name: a.name, mbid: null, country: a.country, genres: a.genres, bio: a.bio, imagePath: null, trackCount: artistTracks(a.id).length };
+      const info: ArtistInfo = { id: a.id, name: a.name, mbid: null, country: a.country, genres: a.genres, bio: a.bio, imagePath: mockArt(Number(a.id.slice(-1)) - 1), imageCredit: 'Arte de demonstração · miupy', trackCount: artistTracks(a.id).length };
       return info;
     },
     async metadataGetLyrics({ trackId }) {
@@ -451,6 +496,17 @@ export function createMockApi(): MiupyApi {
       const genres = [...new Set(tracks.flatMap((t) => t.genres))].map((genre) => ({ genre, score: tracks.filter((t) => t.genres.includes(genre)).reduce((s, t) => s + (plays.get(t.id) ?? 0), 0) })).sort((a, b) => b.score - a.score);
       return { topArtists: artists.slice(0, 5), topGenres: genres.slice(0, 5), totalListenedMs: tracks.reduce((s, t) => s + (plays.get(t.id) ?? 0) * t.durationMs * 0.85, 0), skipRate: 0.12 };
     },
+    async statsTrackScores(a) { // @req RF-25
+      const list = a?.trackIds ? tracks.filter((t) => a.trackIds!.includes(t.id)) : tracks;
+      return list.map((t, i) => ({ trackId: t.id, score: Math.round((plays.get(t.id) ?? 0) * 0.8 - i % 4 * 3), plays: plays.get(t.id) ?? 0, skips: i % 4, lastPlayedAt: Date.now() - (i + 1) * DAY }));
+    },
+    async statsDna({ windowDays = 30 } = {}) { // @req RF-25
+      const taste = await api.statsTaste();
+      const scale = windowDays / 30;
+      const trends = taste.topArtists.slice(0, 5).map((a, i) => ({ kind: 'artist' as const, id: a.artistId, label: a.name, current: Math.round(a.score * scale), previous: Math.round(a.score * scale * (i % 2 ? 1.25 : 0.7)), delta: 0 }));
+      trends.forEach((t) => { t.delta = t.current - t.previous; });
+      return { windowDays, topArtists: taste.topArtists.map((a) => ({ ...a, score: Math.round(a.score * scale) })), topGenres: taste.topGenres.map((g) => ({ ...g, score: Math.round(g.score * scale) })), skipRate: 0.12, previousSkipRate: 0.16, listenedMs: Math.round(taste.totalListenedMs * scale / 6), previousListenedMs: Math.round(taste.totalListenedMs * scale / 7), rising: trends.filter((t) => t.delta > 0).sort((a, b) => b.delta - a.delta), falling: trends.filter((t) => t.delta < 0).sort((a, b) => a.delta - b.delta) } satisfies Dna;
+    },
     async recommendationsList(a) { return recommendations(a?.playlistId, a?.limit); },
     async recommendationsRefresh(a) { await wait(400); const out = recommendations(a?.playlistId); emit('recommendations://changed', { count: out.length }); return out; },
     async recommendationsDismiss({ sourceId }) { dismissed.add(sourceId); emit('recommendations://changed', { count: recommendations().length }); },
@@ -459,6 +515,10 @@ export function createMockApi(): MiupyApi {
     async profileUpdate({ profile: p }) {
       if (!p.displayName.trim()) err('invalid_input', 'O nome é obrigatório.');
       profile = { ...p };
+      return { ...profile };
+    },
+    async profileSetAvatar({ image }) { // @req RF-21
+      profile.avatarPath = image ? `data:${image.mimeType};base64,${image.dataBase64}` : null;
       return { ...profile };
     },
     async settingsGet() { await wait(20); return { ...settings }; },

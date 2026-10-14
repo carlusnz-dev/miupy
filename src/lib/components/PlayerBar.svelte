@@ -9,13 +9,14 @@
   import Transport from './Transport.svelte';
   import Seek from './Seek.svelte';
   import Volume from './Volume.svelte';
+  import ShuffleButton from './ShuffleButton.svelte';
   const t = $derived(player.track);
 </script>
 
 <footer class="motion-player grid h-[var(--player-h)] grid-cols-[1fr_minmax(20rem,2fr)_1fr] items-center gap-4 border-t border-line bg-s1 px-4" aria-label="Player">
   <div class="flex min-w-0 items-center gap-3">
     {#if t}
-      <a href={href(paths.nowPlaying)} aria-label="Abrir tocando agora"><Cover path={t.coverPath} seed={t.id} size={56} rounded="0.375rem" /></a>
+      <a href={href(paths.nowPlaying)} aria-label="Abrir tocando agora"><span class="relative block"><Cover path={t.coverPath} seed={t.id} size={56} rounded="0.375rem" />{#if player.isLoading}<span class="absolute inset-0 grid place-items-center rounded-md bg-black/60 text-xs text-white" role="status">…</span>{/if}</span></a>
       <div class="min-w-0">
         <p class="truncate text-sm font-medium">{t.title}</p>
         {#if t.artistId}
@@ -32,7 +33,7 @@
   </div>
 
   <div class="flex flex-col items-center gap-0.5">
-    <Transport />
+    <div class="flex items-center"><ShuffleButton /><Transport /></div>
     <div class="w-full"><Seek /></div>
   </div>
 

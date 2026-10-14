@@ -38,7 +38,7 @@
 {:else}
   <MeshGradient class="mb-6 rounded-2xl border border-line" intensity={0.85}>
     <div class="flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-end md:p-8">
-      <Cover path={info.imagePath} seed={info.id} size={128} rounded="999px" />
+      <div><Cover path={info.imagePath} seed={info.id} size={128} rounded="999px" />{#if info.imagePath && info.imageCredit}<p class="mt-1 max-w-32 text-center text-xs text-faint">{info.imageCredit}</p>{/if}</div>
       <div class="min-w-0">
         <p class="eyebrow !text-fg/70">Artista</p>
         <h1 class="text-3xl font-bold tracking-tight md:text-5xl">{info.name}</h1>

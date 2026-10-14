@@ -4,6 +4,7 @@
   let { name, size = 20, fill = false, class: cls = '' }: Props = $props();
 
   const P: Record<string, string> = {
+    shuffle: 'M4 7h3c5 0 5 10 10 10h3m-3-3 3 3-3 3M4 17h3c2 0 3-1.5 4-3M14 9c1-1.5 2-2 3-2h3m-3-3 3 3-3 3',
     home: 'M3 11.5 12 4l9 7.5M5.5 10v9.5h4.5V14h4v5.5h4.5V10',
     library: 'M4 5v14M9 5v14M14 6l5 13M14 6l-1 .3',
     playlist: 'M4 6h12M4 11h12M4 16h7M18 14v6m0-6 3 1M15 20a3 3 0 1 0 3-3',
