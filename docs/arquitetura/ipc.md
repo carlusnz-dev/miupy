@@ -309,6 +309,10 @@ interface YtDlpStatus {
   resolução terminar, o resultado da anterior é descartado. Faixa `local` sem arquivo devolve
   `unavailable` na hora. Streaming não grava arquivo nem muda `downloadStatus`; o registro de
   atividade conta igual. `player_seek` funciona em streaming.
+- `player_pause` durante a resolução guarda o pedido e mantém `status = loading` até a faixa estar
+  carregada; quando pronta, emite `player://state` com `status = paused` e posição 0, sem iniciar o
+  áudio. `player_resume` durante a resolução cancela esse pedido e mantém `loading`; a faixa toca
+  quando estiver pronta. `player_resume` depois de pronta e pausada inicia a reprodução.
 - `coverPath`, `mosaicPaths`, `imagePath` e `avatarPath` são caminhos locais. O frontend converte
   com `convertFileSrc`, então `src-tauri` habilita o protocolo `asset` com escopo no diretório de
   dados (`audio/`, `covers/`, `avatars/`, `playlists/`).
