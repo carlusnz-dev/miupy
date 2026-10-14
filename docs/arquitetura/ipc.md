@@ -434,7 +434,8 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
 - `profile_set_avatar` e `playlist_set_cover` recebem a imagem inteira em base64, até 10 MB. A
   casca decodifica (JPEG, PNG ou WebP; outro formato é `invalid_input`), recorta o centro em
-  quadrado, reduz para 512×512 e grava em WebP com perda, qualidade 82 (RNF-12), em `avatars/` ou `playlists/`, com um nome novo a
+  quadrado, reduz para 512×512 e grava em WebP com perda, qualidade 82 (RNF-12), em `avatars/`
+  ou `playlists/`, com um nome novo a
   cada envio para não reaproveitar cache. O arquivo anterior é apagado. `image: null` remove a
   imagem (o avatar volta ao padrão; a playlist volta ao mosaico).
 - `Playlist.mosaicPaths`: os 4 artistas com mais faixas na playlist (empate pelo nome); para cada
@@ -522,7 +523,8 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
 ### Recomendações (RF-19)
 
-- A pontuação é calculada localmente, a partir de `play_events` e `favorites`: tempo ouvido e
+- A pontuação é calculada localmente, a partir de `play_events` e das favoritas (playlist marcada,
+  RF-30): tempo ouvido e
   faixas concluídas somam, pulos subtraem, favorito soma, e o que foi ouvido há pouco pesa mais. A
   fórmula e os pesos ficam em [`recomendacao.md`](recomendacao.md).
 - `recommendations_list` nunca usa rede: ordena as candidatas já guardadas no banco contra o gosto
@@ -540,9 +542,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 ### Capas na interface (RF-05)
 
 - Toda imagem local passa por `api.resolveAsset` (`convertFileSrc`) e precisa carregar tanto no
-  `npx tauri dev` (página em `http://localhost:1420`) quanto no app empacotado. Na v0.2.1, em dev,
-  o WebKitGTK recusa todas as capas com "Unsafe attempt to load URL asset://localhost/… from origin
-  http://localhost:1420" (captura do autor, 2026-10-14). Corrigido em `fix/capas-agora-tocando`.
+  `npx tauri dev` (página em `http://localhost:1420`) quanto no app empacotado.
 
 ### Imagens compactas (RNF-12)
 
@@ -560,8 +560,10 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   Padrão `normal`. O ganho é por faixa: `alvo − loudnessLufs`, limitado a [−20, +12] dB.
 - Em `quiet` e `normal`, o ganho positivo é cortado para o pico verdadeiro (*true peak*) da faixa
   não passar de −1 dBTP. Em `loud`, o ganho vale inteiro e um limitador no motor segura a saída em
-  −1 dBTP. O limitador fica sempre no fim da cadeia (também protege o equalizador).
-- A medição (loudness integrado e pico verdadeiro, EBU R128) roda em `miupy-audio` sobre o arquivo
+  −1 dBTP. O limitador fica sempre no fim da cadeia (também protege o equalizador) e é de pico
+  verdadeiro (com sobreamostragem), não de amostra.
+- A medição (loudness integrado e pico verdadeiro, EBU R128; o pico fica no banco e não vai no
+  `Track`) roda em `miupy-audio` sobre o arquivo
   local: logo depois do download e, para faixas antigas sem medida, numa fila de baixa prioridade
   em segundo plano, uma faixa por vez, que nunca segura o player. Faixa sem medida (inclusive por
   streaming) toca a 0 dB. A medida fica no banco; `Track.loudnessLufs` a expõe.
@@ -570,8 +572,9 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
 ### Equalizador (RF-29)
 
-- 8 bandas *peaking* em 60, 170, 310, 600, 1000, 3000, 6000 e 12000 Hz (a primeira e a última em
-  *shelf*), aplicadas em `miupy-audio` antes do limitador. O motor aplica um pré-ganho igual ao
+- 8 bandas em 60, 170, 310, 600, 1000, 3000, 6000 e 12000 Hz: *low shelf* em 60 Hz, *high shelf*
+  em 12 kHz e 6 *peaking* entre elas, aplicadas em `miupy-audio` antes do limitador. O motor
+  aplica um pré-ganho igual ao
   maior ganho positivo do perfil, com sinal trocado, para não clipar.
 - Perfis prontos (dB, da banda mais grave à mais aguda), fixos e não editáveis:
 
@@ -589,22 +592,29 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 - `equalizer_list_presets` devolve os 8 prontos, nessa ordem, e depois os personalizados, por data
   de criação. Até 3 personalizados: criar o quarto devolve `conflict`. Nome vazio ou acima de 30
   caracteres, `gainsDb` sem exatamente 8 valores ou fora de [−12, +12], ou `id` de perfil pronto:
-  `invalid_input`. Nome repetido (sem diferenciar caixa) é `conflict`.
+  `invalid_input`. Nome repetido (sem diferenciar caixa) é `conflict`. `id` de personalizado que
+  não existe, em salvar ou apagar: `not_found`.
 - `settings_update { eqPresetId }` com id inexistente devolve `not_found`. A troca vale na hora,
   sem cortar o áudio. Salvar o perfil ativo aplica os novos ganhos na hora. Apagar o perfil ativo
   volta para `flat`.
 
 ### Favoritas em playlist (RF-04, RF-30)
 
-- `Track.isFavorite` é verdadeiro quando a faixa está na playlist marcada (`Settings.favoritesPlaylistId`).
-  `library_set_favorite { favorite: true }` adiciona a faixa ao fim dessa playlist; `false` a
-  remove. Sem playlist marcada, o primeiro `favorite: true` cria uma playlist "Favoritas" e a marca.
+- A playlist marcada (`Settings.favoritesPlaylistId`) é a **fonte única** das favoritas.
+  `Track.isFavorite` é verdadeiro quando a faixa está nela; `TrackQuery.favoritesOnly` filtra por
+  ela; `LibraryStats.favoriteCount` conta as faixas dela.
+- `library_set_favorite { favorite: true }` adiciona a faixa ao fim dessa playlist; `false` a
+  remove. Sem playlist marcada (nunca houve, ou a marcada foi apagada), o primeiro
+  `favorite: true` cria uma playlist nova "Favoritas" e a marca.
 - A migração cria "Favoritas" com as favoritas atuais (ordem de `favorites.created_at`) e a marca.
-  A pontuação, o gosto e o DNA continuam contando favoritas como antes, agora a partir dessa
-  playlist (com a data em que a faixa entrou nela).
+  Se já existir uma playlist com esse nome (sem diferenciar caixa), a migração usa essa, somando as
+  favoritas ao fim sem repetir. A tabela `favorites` vira uma *view* sobre as faixas da playlist
+  marcada (`track_id`, `created_at = added_at`), para a pontuação, o gosto e o DNA continuarem
+  contando favoritas como antes.
 - `favorites_set_playlist { playlistId }` marca outra playlist: as faixas da marcada antes são
   copiadas para o fim da nova, sem repetir as que ela já tem; a antiga continua como playlist comum.
-  Marcar a mesma playlist não faz nada. Apagar a playlist marcada deixa `favoritesPlaylistId`
+  Marcar a mesma playlist não faz nada; `playlistId` inexistente é `not_found`. Apagar a playlist
+  marcada deixa `favoritesPlaylistId`
   nulo (a interface avisa antes de apagar).
 - Favoritar um resultado da busca no YouTube que não está na discoteca é
   `youtube_add_to_library { sourceIds: [id] }` seguido de `library_set_favorite`. `youtube_search`
@@ -641,9 +651,13 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
 ### Dados de artista em segundo plano (RF-35)
 
+- `ArtistInfo.fetchedAt` é a data da última busca **concluída**, com ou sem dados (artista sem
+  MBID, sem foto ou não encontrado também conta). Falha temporária (rede, 503/429, tempo esgotado)
+  não muda `fetchedAt` e segue os intervalos de "Ritmo das APIs de metadados" (10 s; 5 min para
+  erro definitivo), sem nova tentativa antes disso.
 - `metadata_get_artist` sempre volta na hora com o que está no banco (nunca espera rede). Se
-  `artistAutoRefresh` está ligado e os dados nunca foram buscados ou `fetchedAt` passa de 30 dias,
-  a casca agenda a busca em segundo plano e emite `artist://changed` quando algo muda.
+  `artistAutoRefresh` está ligado e `fetchedAt` é nulo ou passa de 30 dias, a casca agenda a busca
+  em segundo plano e emite `artist://changed` quando algo muda.
 - Com `artistAutoRefresh` desligado, nada de artista é buscado sozinho, nem depois de download;
   `metadata_refresh_track` e o lote continuam funcionando quando o usuário pede.
 

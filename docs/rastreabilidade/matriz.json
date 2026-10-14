@@ -1355,7 +1355,7 @@
       "id": "RNF-13",
       "title": "Fluidez",
       "priority": "S",
-      "description": "Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms.",
+      "description": "Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`, criado pela frente que implementa este requisito), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms.",
       "implementation": [],
       "tests": [],
       "status": "pendente"

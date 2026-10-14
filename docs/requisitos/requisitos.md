@@ -64,7 +64,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RNF-10 | Transições com elementos compartilhados | S | Na troca de tela, elementos presentes nas duas (capa, título, player) animam da posição antiga para a nova (*layout presence*); modais abrem centralizados com animação de pop-up. Respeita `prefers-reduced-motion`. |
 | RNF-11 | Carregamento sem espera | S | Toda tela mostra *skeleton* em vez de spinner enquanto não tem dados. Os dados ficam em cache entre telas: ao voltar a uma tela, o cache aparece na hora e é atualizado em segundo plano. |
 | RNF-12 | Imagens compactas | S | Imagens guardadas em WebP com perda (qualidade 82): capas e fotos de artista até 600 px no maior lado, avatar e capa de playlist em 512×512. As imagens antigas são convertidas e os originais apagados. |
-| RNF-13 | Fluidez | S | Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms. |
+| RNF-13 | Fluidez | S | Sem engasgos ao trocar de tela ou ao mudar dados: no roteiro de medição (`docs/contribuicao/desempenho.md`, criado pela frente que implementa este requisito), nenhum quadro acima de 50 ms e pelo menos 95% dos quadros abaixo de 16,7 ms. |
 
 ## Fora de escopo (por enquanto)
 
