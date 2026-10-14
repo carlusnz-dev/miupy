@@ -166,11 +166,12 @@ pub fn run() {
 
     app.run(|handle, event| {
         // @req RF-13: ao fechar o app, a reprodução em curso é registrada como `Stopped`.
-        if let RunEvent::Exit = event
-            && let Some(state) = handle.try_state::<AppState>()
-        {
-            state.player.shutdown();
-            // @req RNF-09: uma saída normal durante a espera também conclui a abertura.
+        if let RunEvent::Exit = event {
+            if let Some(state) = handle.try_state::<AppState>() {
+                state.player.shutdown();
+            }
+            // @req RNF-09: uma saída normal durante a espera também conclui a abertura, mesmo
+            // se o estado do app não chegou a ser montado.
             if let Err(error) = gpu::confirm_startup() {
                 log::warn!("Falha ao remover a sentinela da GPU: {error}");
             }
