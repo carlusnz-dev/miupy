@@ -7,7 +7,7 @@ camada de cima (`src-tauri`). Não depende de Tauri nem das outras crates.
 
 - `trait AudioBackend: Send + Sync` (métodos com `&self`, serve em `Box`/`Arc`):
   `load(path)`, `load_url(url, options)`, `play`, `pause`, `resume`, `stop`, `seek(ms)`, `set_volume(0.0..=1.0)`,
-  `set_muted`, `state() -> PlaybackState`, `events() -> Receiver<AudioEvent>`.
+  `set_muted`, `set_normalization_gain_db(db)`, `state() -> PlaybackState`, `events() -> Receiver<AudioEvent>`.
 - `StreamOptions { headers: Vec<(String, String)>, duration_ms: u64 }`. A casca fornece a URL HTTP
   já resolvida, seus cabeçalhos e a duração conhecida; `0` significa duração desconhecida.
 - `PlaybackState { status, path, url, position_ms, duration_ms, volume, muted }`;
@@ -21,6 +21,9 @@ camada de cima (`src-tauri`). Não depende de Tauri nem das outras crates.
   backend em `Stopped`. `state().url` identifica a faixa remota.
 - `RodioBackend::new()` (desktop), `NullBackend::new()` (testes/Android), `create_default_backend()`.
 - Volume: curva perceptual (ganho = volume²) em `volume_to_gain`.
+- `measure_file(path)` mede loudness integrado e pico verdadeiro EBU R128 sem dispositivo de áudio;
+  silêncio devolve `None`. No desktop, o rodio aplica normalização com rampa de 10 ms, EQ plano,
+  volume e limitador de pico verdadeiro no fim da cadeia.
 
 ## Implementações
 

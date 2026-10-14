@@ -4,6 +4,7 @@
   import { isMock } from '../lib/ipc';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import LavaSection from '../lib/components/settings/LavaSection.svelte';
+  import AudioSection from '../lib/components/settings/AudioSection.svelte';
   import YtDlpSection from '../lib/components/settings/YtDlpSection.svelte';
   import GpuSection from '../lib/components/settings/GpuSection.svelte';
   import MetadataSection from '../lib/components/settings/MetadataSection.svelte';
@@ -13,6 +14,7 @@
 <PageHeader title="Configurações" />
 
 <LavaSection />
+<AudioSection />
 <YtDlpSection />
 <GpuSection />
 <MetadataSection />

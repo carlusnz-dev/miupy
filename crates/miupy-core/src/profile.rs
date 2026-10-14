@@ -150,12 +150,13 @@ impl Database {
     // @req RF-17 RF-02
     pub fn get_settings(&self) -> Result<Settings> {
         Ok(self.conn.query_row(
-            "SELECT lava_theme, volume FROM settings WHERE id = 1",
+            "SELECT lava_theme, volume, normalization FROM settings WHERE id = 1",
             [],
             |r| {
                 Ok(Settings {
                     lava_theme: r.get(0)?,
                     volume: r.get(1)?,
+                    normalization: r.get(2)?,
                 })
             },
         )?)
@@ -172,10 +173,11 @@ impl Database {
         self.in_tx(|| {
             let cur = self.get_settings()?;
             self.conn.execute(
-                "UPDATE settings SET lava_theme = ?1, volume = ?2, updated_at = ?3 WHERE id = 1",
+                "UPDATE settings SET lava_theme = ?1, volume = ?2, normalization = ?3, updated_at = ?4 WHERE id = 1",
                 params![
                     patch.lava_theme.unwrap_or(cur.lava_theme),
                     patch.volume.unwrap_or(cur.volume),
+                    patch.normalization.unwrap_or(cur.normalization),
                     self.now_ms()
                 ],
             )?;
@@ -271,6 +273,7 @@ mod tests {
             .update_settings(&SettingsPatch {
                 lava_theme: Some(LavaTheme::Blue),
                 volume: None,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!((s.lava_theme, s.volume), (LavaTheme::Blue, 0.8));
@@ -278,6 +281,7 @@ mod tests {
             .update_settings(&SettingsPatch {
                 lava_theme: None,
                 volume: Some(0.25),
+                ..Default::default()
             })
             .unwrap();
         assert_eq!((s.lava_theme, s.volume), (LavaTheme::Blue, 0.25));
@@ -287,6 +291,7 @@ mod tests {
             let r = db.update_settings(&SettingsPatch {
                 lava_theme: Some(LavaTheme::Purple),
                 volume: Some(v),
+                ..Default::default()
             });
             assert_eq!(r.unwrap_err().code(), "invalid_input");
         }
@@ -338,5 +343,42 @@ mod tests {
             .conn
             .execute("UPDATE settings SET gpu_mode = 'turbo' WHERE id = 1", []);
         assert!(invalid.is_err(), "CHECK recusa modo desconhecido");
+    }
+}
+
+#[cfg(test)]
+mod loudness_tests {
+    use crate::{Database, NewTrack, Normalization, SettingsPatch};
+    // @test RF-28
+    #[test]
+    fn defaults_and_measurements_survive_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("miupy.db");
+        let id = {
+            let db = Database::open(&path).unwrap();
+            assert_eq!(
+                db.get_settings().unwrap().normalization,
+                Normalization::Normal
+            );
+            let id = db
+                .upsert_track(&NewTrack::youtube("x", "Teste", None, 1000, None))
+                .unwrap()
+                .track
+                .id;
+            db.set_loudness(&id, -16.0, -2.0).unwrap();
+            db.update_settings(&SettingsPatch {
+                normalization: Some(Normalization::Quiet),
+                ..Default::default()
+            })
+            .unwrap();
+            id
+        };
+        let db = Database::open(&path).unwrap();
+        assert_eq!(
+            db.get_settings().unwrap().normalization,
+            Normalization::Quiet
+        );
+        assert_eq!(db.get_track(&id).unwrap().loudness_lufs, Some(-16.0));
+        assert_eq!(db.get_true_peak_db(&id).unwrap(), Some(-2.0));
     }
 }

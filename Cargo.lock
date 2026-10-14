@@ -691,6 +691,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dasp_frame"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a3937f5fe2135702897535c8d4a5553f8b116f76c1529088797f2eee7c5cd6"
+dependencies = [
+ "dasp_sample",
+]
+
+[[package]]
 name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -912,6 +921,18 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "ebur128"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e227cc62d64d6fe01abbef48134b9c1f17d470cef1e7a56337ad05b1f81df7f9"
+dependencies = [
+ "bitflags 1.3.2",
+ "dasp_frame",
+ "dasp_sample",
+ "smallvec",
+]
 
 [[package]]
 name = "educe"
@@ -2327,6 +2348,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "image",
+ "libc",
  "log",
  "miupy-audio",
  "miupy-core",
@@ -2349,9 +2371,11 @@ name = "miupy-audio"
 version = "0.2.1"
 dependencies = [
  "crossbeam-channel",
+ "ebur128",
  "hound",
  "rodio",
  "stream-download",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -2364,6 +2388,7 @@ dependencies = [
  "rusqlite_migration",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "uuid",
 ]

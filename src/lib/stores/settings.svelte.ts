@@ -1,5 +1,5 @@
 // @req RF-17
-import { api, type LavaTheme, type Settings } from '../ipc';
+import { api, type LavaTheme, type Normalization, type Settings } from '../ipc';
 
 const KEY = 'miupy.lava';
 
@@ -14,6 +14,7 @@ export function applyLava(t: LavaTheme) {
 
 class SettingsStore {
   lava = $state<LavaTheme>('orange');
+  normalization = $state<Normalization>('normal');
   loaded = $state(false);
 
   /** Carrega as configurações salvas. O cache de localStorage já evitou o flash inicial. */
@@ -23,9 +24,16 @@ class SettingsStore {
     try {
       const s = await api.settingsGet();
       this.lava = s.lavaTheme;
+      this.normalization = s.normalization;
       applyLava(s.lavaTheme);
     } catch { /* mantém o cache */ }
     this.loaded = true;
+  }
+
+  // @req RF-28
+  async setNormalization(value: Normalization) {
+    const saved = await api.settingsUpdate({ settings: { normalization: value } });
+    this.normalization = saved.normalization;
   }
 
   /** Aplica na hora (pré-visualização imediata) e persiste em seguida. */

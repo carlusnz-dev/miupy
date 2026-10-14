@@ -126,6 +126,8 @@ pub struct Track {
     // @req RF-20
     pub genres: Vec<String>,
     pub release_year: Option<i32>,
+    // @req RF-28
+    pub loudness_lufs: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -609,12 +611,45 @@ pub struct Profile {
     pub avatar_path: Option<String>,
 }
 
+// @req RF-28
+text_enum!(Normalization { Off => "off", Quiet => "quiet", Normal => "normal", Loud => "loud" });
+#[allow(clippy::derivable_impls)] // o macro text_enum não suporta #[default]
+impl Default for Normalization {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+impl Normalization {
+    pub fn gain_db(self, loudness: Option<f64>, peak: Option<f64>) -> f32 {
+        let (Some(loudness), Some(peak)) = (loudness, peak) else {
+            return 0.0;
+        };
+        if !loudness.is_finite() || !peak.is_finite() {
+            return 0.0;
+        }
+        let target = match self {
+            Self::Off => return 0.0,
+            Self::Quiet => -19.0,
+            Self::Normal => -14.0,
+            Self::Loud => -11.0,
+        };
+        let mut gain = (target - loudness).clamp(-20.0, 12.0);
+        if self != Self::Loud && gain > 0.0 {
+            gain = gain.min((-1.0 - peak).max(0.0));
+        }
+        gain as f32
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub lava_theme: LavaTheme,
     /// 0.0 a 1.0
     pub volume: f64,
+    // @req RF-28
+    pub normalization: Normalization,
 }
 
 /// `Partial<Settings>` do ipc.
@@ -623,6 +658,7 @@ pub struct Settings {
 pub struct SettingsPatch {
     pub lava_theme: Option<LavaTheme>,
     pub volume: Option<f64>,
+    pub normalization: Option<Normalization>,
 }
 
 #[cfg(test)]
@@ -635,11 +671,12 @@ mod tests {
         let s = Settings {
             lava_theme: LavaTheme::Purple,
             volume: 0.5,
+            normalization: Normalization::Normal,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5 })
+            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal" })
         );
         assert_eq!(LavaTheme::default(), LavaTheme::Orange);
     }
@@ -667,5 +704,21 @@ mod tests {
         assert_eq!(p.description, Some(None));
         let p: PlaylistPatch = serde_json::from_str(r#"{"description":"x"}"#).unwrap();
         assert_eq!(p.description, Some(Some("x".into())));
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::Normalization;
+    // @test RF-28
+    #[test]
+    fn gain_modes_peak_and_limits() {
+        assert_eq!(Normalization::Off.gain_db(Some(-30.0), Some(-20.0)), 0.0);
+        assert_eq!(Normalization::Quiet.gain_db(Some(-20.0), Some(-10.0)), 1.0);
+        assert_eq!(Normalization::Normal.gain_db(Some(-20.0), Some(-2.0)), 1.0);
+        assert_eq!(Normalization::Loud.gain_db(Some(-20.0), Some(-2.0)), 9.0);
+        assert_eq!(Normalization::Loud.gain_db(Some(-40.0), Some(-20.0)), 12.0);
+        assert_eq!(Normalization::Normal.gain_db(Some(10.0), Some(0.0)), -20.0);
+        assert_eq!(Normalization::Normal.gain_db(None, Some(-2.0)), 0.0);
     }
 }

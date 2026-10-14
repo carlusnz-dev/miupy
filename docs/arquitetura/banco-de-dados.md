@@ -153,7 +153,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 
 | Número | Frente | Conteúdo |
 |---|---|---|
-| `0004_loudness.sql` | `feat/normalizacao-volume` | `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` |
+| `0004_loudness.sql` | `feat/normalizacao-volume` | **Implementada:** `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` (`normal` por padrão) |
 | `0005_equalizer.sql` | `feat/equalizador` | `eq_presets` (personalizados); `settings.eq_preset_id` |
 | `0006_sidebar_width.sql` | `feat/visual-flat` | `settings.sidebar_width` |
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | `settings.favorites_playlist_id`; cria "Favoritas" a partir de `favorites` |
