@@ -17,6 +17,20 @@ pub async fn library_list_tracks(
     state.db.run(move |db| Ok(db.list_tracks(&query)?)).await
 }
 
+// @req RF-05 RF-08
+#[tauri::command]
+pub async fn library_list_tracks_by_artist(
+    state: State<'_, AppState>,
+    artist_id: String,
+    query: Option<TrackQuery>,
+) -> R<Vec<Track>> {
+    let query = query.unwrap_or_default();
+    state
+        .db
+        .run(move |db| Ok(db.list_tracks_by_artist(&artist_id, &query)?))
+        .await
+}
+
 // @req RF-05
 #[tauri::command]
 pub async fn library_get_track(state: State<'_, AppState>, track_id: String) -> R<Track> {

@@ -11,8 +11,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use miupy_audio::{AudioBackend, AudioEvent, PlaybackStatus};
-use miupy_core::{PlayEnd, SettingsPatch, Track};
+use miupy_audio::{AudioBackend, AudioEvent, PlaybackStatus, StreamOptions};
+use miupy_core::{PlayEnd, SettingsPatch, Source, Track};
+use miupy_media::{MediaResolver, StreamAudio};
 
 use crate::db::Db;
 use crate::dto::{PlayerState, PlayerStatus, Progress};
@@ -35,11 +36,15 @@ struct Inner {
     tracker: ListenTracker,
     /// Último status informado pelo motor (espelho, atualizado pela thread de eventos).
     status: PlaybackStatus,
+    streaming: bool,
+    stream_expires_at: Option<u64>,
+    stream_retried: bool,
 }
 
 pub struct Player {
     db: Db,
     backend: Arc<dyn AudioBackend>,
+    resolver: Arc<dyn MediaResolver>,
     events: Arc<dyn Events>,
     prefs_file: PathBuf,
     inner: Mutex<Inner>,
@@ -49,12 +54,14 @@ impl Player {
     pub fn new(
         db: Db,
         backend: Arc<dyn AudioBackend>,
+        resolver: Arc<dyn MediaResolver>,
         events: Arc<dyn Events>,
         prefs_file: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Player {
             db,
             backend,
+            resolver,
             events,
             prefs_file,
             inner: Mutex::new(Inner {
@@ -63,6 +70,9 @@ impl Player {
                 event_id: None,
                 tracker: ListenTracker::default(),
                 status: PlaybackStatus::Stopped,
+                streaming: false,
+                stream_expires_at: None,
+                stream_retried: false,
             }),
         })
     }
@@ -121,6 +131,12 @@ impl Player {
         self.snapshot(&inner)
     }
 
+    // @req RF-03
+    pub fn queue_tracks(&self) -> AppResult<Vec<Track>> {
+        let ids = self.state().queue;
+        Ok(self.db.with(|db| db.get_tracks_by_ids(&ids))?)
+    }
+
     fn snapshot(&self, inner: &Inner) -> PlayerState {
         let st = self.backend.state();
         // Relê a faixa: favorito e capa podem ter mudado desde que ela começou a tocar.
@@ -141,6 +157,7 @@ impl Player {
         };
         PlayerState {
             status,
+            streaming: inner.streaming && track.is_some() && status != PlayerStatus::Stopped,
             track,
             position_ms: st.position_ms,
             duration_ms,
@@ -196,13 +213,30 @@ impl Player {
 
     /// Carrega e toca `track`, fechando o evento da faixa anterior com `end_prev`.
     fn start_track(&self, inner: &mut Inner, track: Track, end_prev: PlayEnd) -> AppResult<()> {
-        let path = playable_path(&track)?;
+        let stream = if track.file_path.is_none() && track.source == Source::Youtube {
+            Some(self.resolve_track_stream(&track)?)
+        } else {
+            None
+        };
+        let path = if stream.is_none() {
+            Some(playable_path(&track)?)
+        } else {
+            None
+        };
         self.close_event(inner, end_prev);
-        if let Err(e) = self.backend.load(&path).and_then(|_| self.backend.play()) {
+        let loaded = if let Some(stream) = &stream {
+            self.load_stream(stream, &track)
+        } else {
+            self.backend
+                .load(path.as_deref().expect("caminho validado"))
+                .and_then(|_| self.backend.play())
+                .map_err(AppError::from)
+        };
+        if let Err(e) = loaded {
             let _ = self.backend.stop();
             inner.track = None;
             inner.status = PlaybackStatus::Stopped;
-            return Err(e.into());
+            return Err(e);
         }
         inner.event_id = match self.db.with(|db| db.start_play(&track.id, None)) {
             Ok(id) => Some(id),
@@ -212,8 +246,40 @@ impl Player {
             }
         };
         inner.tracker.reset();
-        inner.status = PlaybackStatus::Playing;
+        inner.status = self.backend.state().status;
+        inner.streaming = stream.is_some();
+        inner.stream_expires_at = stream.and_then(|s| s.expires_at);
+        inner.stream_retried = false;
         inner.track = Some(track);
+        Ok(())
+    }
+
+    // @req RF-18
+    fn resolve_track_stream(&self, track: &Track) -> AppResult<StreamAudio> {
+        let id = track
+            .source_id
+            .clone()
+            .ok_or_else(|| AppError::unavailable("Faixa sem origem para streaming."))?;
+        let resolver = self.resolver.clone();
+        std::thread::spawn(move || tauri::async_runtime::block_on(resolver.resolve_stream(&id)))
+            .join()
+            .map_err(|_| AppError::internal("Resolução do streaming interrompida."))?
+            .map_err(AppError::from)
+    }
+
+    fn load_stream(&self, stream: &StreamAudio, track: &Track) -> AppResult<()> {
+        let options = StreamOptions {
+            headers: stream
+                .http_headers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            duration_ms: stream
+                .duration_ms
+                .unwrap_or(track.duration_ms.max(0) as u64),
+        };
+        self.backend.load_url(&stream.url, options)?;
+        self.backend.play()?;
         Ok(())
     }
 
@@ -292,6 +358,27 @@ impl Player {
     /// Retoma. Se a faixa já terminou ou foi parada, recomeça a faixa atual da fila.
     pub fn resume(&self) -> AppResult<PlayerState> {
         let mut inner = self.lock();
+        if inner.streaming
+            && inner
+                .stream_expires_at
+                .is_some_and(|expires| now_seconds() >= expires)
+        {
+            let track = inner
+                .track
+                .clone()
+                .ok_or_else(|| AppError::unavailable("Não há faixa para retomar."))?;
+            let position = self.backend.state().position_ms;
+            let stream = self.resolve_track_stream(&track)?;
+            self.load_stream(&stream, &track)?;
+            if position > 0 {
+                self.backend.seek(position)?;
+            }
+            inner.stream_expires_at = stream.expires_at;
+            inner.stream_retried = false;
+            inner.status = self.backend.state().status;
+            self.emit(&inner);
+            return Ok(self.snapshot(&inner));
+        }
         if self.backend.state().status == PlaybackStatus::Stopped {
             let idx = match (inner.queue.index(), inner.track.is_some()) {
                 (Some(i), true) => i,
@@ -450,9 +537,32 @@ impl Player {
             AudioEvent::Error { message } => {
                 log::warn!("erro do motor de áudio: {message}");
                 let mut inner = self.lock();
+                if inner.track.is_none() {
+                    return;
+                }
+                if inner.streaming && !inner.stream_retried {
+                    inner.stream_retried = true;
+                    if let Some(track) = inner.track.clone()
+                        && let Ok(stream) = self.resolve_track_stream(&track)
+                        && self.load_stream(&stream, &track).is_ok()
+                    {
+                        inner.stream_expires_at = stream.expires_at;
+                        inner.status = self.backend.state().status;
+                        self.emit(&inner);
+                        return;
+                    }
+                }
                 self.close_event(&mut inner, PlayEnd::Stopped);
+                let _ = self.backend.stop();
                 inner.status = PlaybackStatus::Stopped;
+                inner.track = None;
                 self.emit(&inner);
+                if let Some(cur) = inner.queue.index() {
+                    match self.walk(&mut inner, cur, true, PlayEnd::Stopped) {
+                        Ok(_) => self.emit(&inner),
+                        Err(e) => log::warn!("falha ao avançar após erro de áudio: {e}"),
+                    }
+                }
             }
         }
     }
@@ -480,6 +590,13 @@ impl Player {
     pub fn current_event_id(&self) -> Option<String> {
         self.lock().event_id.clone()
     }
+}
+
+fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Caminho do arquivo tocável da faixa, ou `unavailable` (RF-01).
@@ -554,6 +671,7 @@ mod tests {
         let player = Player::new(
             db.clone(),
             backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
             events.clone(),
             dir.path().join("prefs.json"),
         );
@@ -583,9 +701,93 @@ mod tests {
         }
     }
 
-    // @test RF-01
+    // @test RF-18
+    /// Prova real, de ponta a ponta na casca: yt-dlp do sistema resolve a URL e o backend rodio
+    /// toca (mudo). `cargo test -p miupy streaming_real -- --ignored --nocapture`
     #[test]
-    fn faixa_sem_arquivo_devolve_unavailable() {
+    #[ignore = "rede + yt-dlp instalado + dispositivo de saída"]
+    fn streaming_real_toca_avanca_e_registra_atividade() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let track = db
+            .with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "dQw4w9WgXcQ",
+                    "Never Gonna Give You Up",
+                    Some("Rick Astley".into()),
+                    213_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        let backend: Arc<dyn AudioBackend> = Arc::new(miupy_audio::RodioBackend::new().unwrap());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(miupy_media::YtDlpResolver::new()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.spawn_event_loop();
+        player.set_muted(true).unwrap();
+        let started = std::time::Instant::now();
+        let state = player.play(&track.id, None).unwrap();
+        println!(
+            "play devolveu em {} ms com status {:?}, streaming={}",
+            started.elapsed().as_millis(),
+            state.status,
+            state.streaming
+        );
+        assert!(state.streaming);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while player.state().status != PlayerStatus::Playing && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        println!(
+            "tocando {} ms depois do clique",
+            started.elapsed().as_millis()
+        );
+        assert_eq!(player.state().status, PlayerStatus::Playing);
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        let st = player.state();
+        println!("posição depois de 8 s: {} ms", st.position_ms);
+        assert!(st.streaming && st.status == PlayerStatus::Playing);
+        assert!(
+            (6_500..=9_500).contains(&st.position_ms),
+            "{}",
+            st.position_ms
+        );
+        player.seek(60_000).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let st = player.state();
+        println!(
+            "posição 3 s depois do seek para 60 s: {} ms",
+            st.position_ms
+        );
+        assert!(
+            (62_000..=64_500).contains(&st.position_ms),
+            "{}",
+            st.position_ms
+        );
+        let event_id = player
+            .current_event_id()
+            .expect("evento de reprodução aberto");
+        player.stop().unwrap();
+        let event = db.with(|db| db.get_play_event(&event_id)).unwrap();
+        println!(
+            "evento: ouvido {} ms, encerrado={}",
+            event.listened_ms,
+            event.ended_at.is_some()
+        );
+        assert!(event.ended_at.is_some());
+        assert!(event.listened_ms >= 9_000, "{}", event.listened_ms);
+    }
+
+    // @test RF-18
+    #[test]
+    fn youtube_sem_arquivo_toca_em_streaming() {
         let f = fx(1);
         let t =
             f.db.with(|db| {
@@ -599,10 +801,9 @@ mod tests {
             })
             .unwrap()
             .track;
-        let err = f.player.play(&t.id, None).unwrap_err();
-        assert_eq!(err.code(), "unavailable");
-        assert_eq!(f.player.state().status, PlayerStatus::Stopped);
-        assert!(f.player.current_event_id().is_none());
+        let state = f.player.play(&t.id, None).unwrap();
+        assert!(state.streaming);
+        assert_eq!(state.track.unwrap().id, t.id);
     }
 
     // @test RF-01
@@ -832,6 +1033,7 @@ mod tests {
         let p2 = Player::new(
             f.db.clone(),
             backend2.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
             Arc::new(RecordingEvents::default()),
             f.dir.path().join("prefs.json"),
         );

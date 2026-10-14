@@ -38,6 +38,8 @@ pub struct PlayerState {
     pub queue: Vec<String>,
     /// -1 se a fila está vazia.
     pub queue_index: i64,
+    // @req RF-18
+    pub streaming: bool,
 }
 
 /// Payload de `player://progress`.
@@ -76,6 +78,7 @@ mod tests {
             muted: false,
             queue: vec!["a".into()],
             queue_index: 0,
+            streaming: false,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["status"], "playing");
