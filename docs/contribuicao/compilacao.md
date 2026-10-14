@@ -73,7 +73,9 @@ git worktree add ../miupy-<nome> -b fix/<nome> develop   # ou orca worktree crea
 scripts/semear-target.sh ../miupy-<nome>
 ```
 
-Compile o checkout principal antes (o script copia o que estiver lá). Depois de semear, o
+Compile o checkout principal antes, com `cargo build --workspace` e `cargo test --workspace --no-run`
+e sem outra compilação em andamento: o script copia o que estiver lá, e um `target/` incompleto
+(depois de um `cargo clean -p`, por exemplo) faz o worktree recompilar as crates que faltam. Depois de semear, o
 worktree tem o próprio `target/`. **Nunca** aponte `CARGO_TARGET_DIR` de um worktree para o
 `target/` de outro: o cargo já reaproveitou um `miupy-core` do checkout errado assim.
 
