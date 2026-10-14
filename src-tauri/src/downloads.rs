@@ -12,7 +12,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use miupy_core::{DownloadJob, DownloadStatus, DownloadUpdate, DownloadedFile, Source, Track};
+use miupy_core::{
+    DownloadJob, DownloadStatus, DownloadUpdate, DownloadedFile, Source, Track, TrackPatch,
+};
 use miupy_media::{DownloadRequest, MediaResolver, MetadataProvider, TagUpdate, tagger};
 use tokio::sync::{Notify, Semaphore, watch};
 use tokio_util::sync::CancellationToken;
@@ -20,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
+use crate::metadata::MetadataService;
 use crate::paths::Dirs;
 
 /// Downloads simultâneos.
@@ -31,6 +34,7 @@ pub struct Downloads {
     db: Db,
     resolver: Arc<dyn MediaResolver>,
     metadata: Arc<dyn MetadataProvider>,
+    artist_metadata: Arc<MetadataService>,
     events: Arc<dyn Events>,
     dirs: Dirs,
     max_concurrent: usize,
@@ -43,6 +47,7 @@ impl Downloads {
         db: Db,
         resolver: Arc<dyn MediaResolver>,
         metadata: Arc<dyn MetadataProvider>,
+        artist_metadata: Arc<MetadataService>,
         events: Arc<dyn Events>,
         dirs: Dirs,
     ) -> Arc<Self> {
@@ -50,6 +55,7 @@ impl Downloads {
             db,
             resolver,
             metadata,
+            artist_metadata,
             events,
             dirs,
             max_concurrent: MAX_CONCURRENT,
@@ -205,7 +211,7 @@ impl Downloads {
 
     async fn run_job(&self, job: &DownloadJob, token: &CancellationToken) -> AppResult<()> {
         let track_id = job.track_id.clone();
-        let track = self.db.run(move |db| Ok(db.get_track(&track_id)?)).await?;
+        let mut track = self.db.run(move |db| Ok(db.get_track(&track_id)?)).await?;
         let video_id = match (&track.source, &track.source_id) {
             (Source::Youtube, Some(id)) => id.clone(),
             _ => return Err(AppError::invalid("A faixa não tem origem para baixar.")),
@@ -223,11 +229,12 @@ impl Downloads {
             stop.clone(),
             token.clone(),
         ));
-        let request = DownloadRequest::new(video_id, self.dirs.audio.clone(), track.id.clone())
-            .with_progress(Arc::new(move |p| {
-                tx.send_replace(p);
-            }))
-            .with_cancel(token.clone());
+        let request =
+            DownloadRequest::new(video_id.clone(), self.dirs.audio.clone(), track.id.clone())
+                .with_progress(Arc::new(move |p| {
+                    tx.send_replace(p);
+                }))
+                .with_cancel(token.clone());
         let result = self.resolver.download_audio(request).await;
         // Espera o relator terminar: nenhuma gravação de progresso pode chegar depois do fim.
         stop.cancel();
@@ -239,14 +246,103 @@ impl Downloads {
             return Err(miupy_media::MediaError::Cancelled.into());
         }
 
+        // @req RF-20: MusicBrainz prevalece; título, artista, álbum e ano do vídeo
+        // complementam apenas o que faltar. Categorias do YouTube não são gêneros musicais.
+        let recording = match self
+            .metadata
+            .find_recording(
+                &track.title,
+                track.artist_name.as_deref(),
+                Some(audio.duration_ms),
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(e) => {
+                log::info!("MusicBrainz indisponível para {}: {e}", track.id);
+                None
+            }
+        };
+        let video = if recording.is_none()
+            || recording
+                .as_ref()
+                .is_some_and(|r| r.album.is_none() || r.release_year.is_none())
+        {
+            self.resolver.video_metadata(&video_id).await.ok()
+        } else {
+            None
+        };
+        if recording.is_some() || video.is_some() {
+            let patch = TrackPatch {
+                title: recording
+                    .as_ref()
+                    .map(|r| r.title.clone())
+                    .or_else(|| video.as_ref().and_then(|v| v.track.clone())),
+                artist_name: recording
+                    .as_ref()
+                    .map(|r| Some(r.artist.clone()))
+                    .or_else(|| video.as_ref().and_then(|v| v.artist.clone().map(Some))),
+                album: recording
+                    .as_ref()
+                    .and_then(|r| r.album.clone())
+                    .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+                    .map(Some),
+                genres: recording.as_ref().map(|r| r.genres.clone()),
+                release_year: recording
+                    .as_ref()
+                    .and_then(|r| r.release_year.map(|y| y as i32))
+                    .or_else(|| {
+                        video
+                            .as_ref()
+                            .and_then(|v| v.release_year.map(|y| y as i32))
+                    })
+                    .map(Some),
+                mbid: recording.as_ref().map(|r| Some(r.mbid.clone())),
+                isrc: recording.as_ref().and_then(|r| r.isrc.clone()).map(Some),
+                ..Default::default()
+            };
+            let id = track.id.clone();
+            match self
+                .db
+                .run(move |db| Ok(db.update_track(&id, &patch)?))
+                .await
+            {
+                Ok(updated) => track = updated,
+                Err(e) => log::warn!("metadados do download de {}: {e}", track.id),
+            }
+        }
+        if let (Some(aid), Some(artist_mbid)) = (
+            track.artist_id.clone(),
+            recording.as_ref().and_then(|r| r.artist_mbid.clone()),
+        ) {
+            let _ = self
+                .db
+                .run(move |db| {
+                    db.update_artist(
+                        &aid,
+                        &miupy_core::ArtistPatch {
+                            mbid: Some(Some(artist_mbid)),
+                            ..Default::default()
+                        },
+                    )?;
+                    Ok(())
+                })
+                .await;
+        }
+
         // Capa (miniatura do YouTube). Falha aqui não invalida o download.
-        let cover = self.download_cover(&track).await;
+        let cover = self
+            .download_album_cover(&recording)
+            .await
+            .or(self.download_cover(&track).await);
 
         // Tags e capa embutida, em thread de bloqueio. Também não é fatal.
         let update = TagUpdate {
             title: Some(track.title.clone()),
             artist: track.artist_name.clone(),
             album: track.album.clone(),
+            genres: Some(track.genres.clone()),
+            release_year: track.release_year.and_then(|y| u32::try_from(y).ok()),
             cover: cover.as_deref().and_then(|p| std::fs::read(p).ok()),
         };
         let audio_path = audio.path.clone();
@@ -276,6 +372,9 @@ impl Downloads {
             self.events.download_progress(&job);
         }
         self.events.library_changed("download_done");
+        if let Some(artist_id) = track.artist_id.as_deref() {
+            let _ = self.artist_metadata.get_artist(artist_id).await;
+        }
         Ok(())
     }
 
@@ -298,12 +397,39 @@ impl Downloads {
             .download_image(&url, &self.dirs.covers, &track.id)
             .await
         {
-            Ok(path) => Some(path),
+            Ok(path) => crate::paths::normalize_jpeg(&path).ok(),
             Err(e) => {
                 log::warn!("não consegui baixar a capa de {}: {e}", track.id);
                 None
             }
         }
+    }
+
+    async fn download_album_cover(
+        &self,
+        recording: &Option<miupy_media::RecordingMatch>,
+    ) -> Option<PathBuf> {
+        let recording = recording.as_ref()?;
+        let mut ids = recording.release_mbids.clone();
+        if ids.is_empty() {
+            ids.extend(recording.release_mbid.clone());
+        }
+        let dir = self.dirs.covers.join("albuns");
+        for id in ids {
+            let cached = dir.join(format!("{id}.jpg"));
+            if cached.is_file() {
+                return Some(cached);
+            }
+            match self.metadata.download_cover(&id, &dir, &id).await {
+                Ok(path) => return crate::paths::normalize_jpeg(&path).ok(),
+                Err(miupy_media::MediaError::NotFound(_)) => continue,
+                Err(e) => {
+                    log::warn!("capa do álbum {id}: {e}");
+                    break;
+                }
+            }
+        }
+        None
     }
 }
 
@@ -376,9 +502,24 @@ pub mod testing {
         MetadataProvider, PlaylistInfo, RecordingMatch, SearchResult, error::Result,
     };
 
+    fn valid_jpeg() -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut out, image::ImageFormat::Jpeg)
+            .unwrap();
+        out.into_inner()
+    }
+
     #[derive(Default)]
     pub struct FakeResolver {
         pub results: Mutex<Vec<SearchResult>>,
+        pub related: Mutex<Vec<SearchResult>>,
+        pub stream_fail: Mutex<Option<MediaError>>,
+        pub stream_calls: Mutex<u32>,
+        pub stream_expiry: Mutex<Option<u64>>,
+        pub stream_delay_ms: Mutex<u64>,
+        pub always_fail_network: Mutex<bool>,
+        pub video: Mutex<Option<miupy_media::VideoMetadata>>,
         /// `Some(erro)` faz o download falhar com esse erro.
         pub fail_with: Mutex<Option<MediaError>>,
         pub downloads: Mutex<Vec<String>>,
@@ -397,15 +538,64 @@ pub mod testing {
     #[async_trait]
     impl MediaResolver for FakeResolver {
         async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+            if *self.always_fail_network.lock().unwrap() {
+                return Err(MediaError::Network("offline".into()));
+            }
             if let Some(e) = self.fail_with.lock().unwrap().take() {
                 return Err(e);
             }
             let all = self.results.lock().unwrap().clone();
+            let query = query.strip_suffix(" music").unwrap_or(query);
             Ok(all
                 .into_iter()
                 .filter(|r| r.title.to_lowercase().contains(&query.to_lowercase()))
                 .take(limit)
                 .collect())
+        }
+
+        async fn resolve_stream(&self, video_id: &str) -> Result<miupy_media::StreamAudio> {
+            let delay = *self.stream_delay_ms.lock().unwrap();
+            if delay > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+            *self.stream_calls.lock().unwrap() += 1;
+            if let Some(error) = self.stream_fail.lock().unwrap().take() {
+                return Err(error);
+            }
+            Ok(miupy_media::StreamAudio {
+                url: format!("https://audio.example/{video_id}.m4a"),
+                http_headers: std::collections::BTreeMap::from([(
+                    "User-Agent".into(),
+                    "miupy-test".into(),
+                )]),
+                codec: "aac".into(),
+                container: "m4a".into(),
+                bitrate_kbps: Some(128),
+                duration_ms: Some(200_000),
+                expires_at: *self.stream_expiry.lock().unwrap(),
+            })
+        }
+
+        async fn related_tracks(&self, video_id: &str, limit: usize) -> Result<Vec<SearchResult>> {
+            if *self.always_fail_network.lock().unwrap() {
+                return Err(MediaError::Network("offline".into()));
+            }
+            if let Some(error) = self.fail_with.lock().unwrap().take() {
+                return Err(error);
+            }
+            Ok(self
+                .related
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.video_id != video_id)
+                .take(limit)
+                .cloned()
+                .collect())
+        }
+
+        async fn video_metadata(&self, _video_id: &str) -> Result<miupy_media::VideoMetadata> {
+            Ok(self.video.lock().unwrap().clone().unwrap_or_default())
         }
 
         async fn download_audio(&self, request: DownloadRequest) -> Result<DownloadedAudio> {
@@ -523,7 +713,7 @@ pub mod testing {
             }
             std::fs::create_dir_all(dest_dir).unwrap();
             let p = dest_dir.join(format!("{file_stem}.jpg"));
-            std::fs::write(&p, b"jpg").unwrap();
+            std::fs::write(&p, valid_jpeg()).unwrap();
             Ok(p)
         }
 
@@ -547,7 +737,7 @@ pub mod testing {
             self.call()?;
             std::fs::create_dir_all(dest_dir).unwrap();
             let p = dest_dir.join(format!("{file_stem}.jpg"));
-            std::fs::write(&p, b"jpg").unwrap();
+            std::fs::write(&p, valid_jpeg()).unwrap();
             Ok(p)
         }
     }
@@ -577,10 +767,19 @@ mod tests {
         let db = Db::new(Database::open_in_memory().unwrap());
         let resolver = Arc::new(FakeResolver::default());
         let events = Arc::new(RecordingEvents::default());
+        let provider = Arc::new(FakeMetadata::default());
+        let artist_metadata = Arc::new(crate::metadata::MetadataService::new(
+            db.clone(),
+            provider.clone(),
+            resolver.clone(),
+            dirs.clone(),
+            events.clone(),
+        ));
         let dl = Downloads::new(
             db.clone(),
             resolver.clone(),
-            Arc::new(FakeMetadata::default()),
+            provider,
+            artist_metadata,
             events.clone(),
             dirs.clone(),
         );

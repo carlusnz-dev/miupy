@@ -1,8 +1,8 @@
 {
   "projeto": "miupy",
-  "versao": "0.1.0",
-  "atualizadoEm": "2026-10-13",
-  "sessao": "2026-10-13_sessao-01",
+  "versao": "0.2.0",
+  "atualizadoEm": "2026-10-14",
+  "sessao": "2026-10-14_sessao-03",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "App nativo abre e permanece de pé (tauri dev); fluxos dentro da janela ainda não validados."
+      "nota": "App abre na develop e migra o banco para a versão 3 sem perda; o autor usou a janela, relato pendente. gpu_mode salvo como \"on\": se não abrir, MIUPY_GPU=off."
     },
     "windows": {
       "status": "planejado",
@@ -25,7 +25,7 @@
     },
     "android": {
       "status": "planejado",
-      "nota": "SDK, NDK e targets Rust não instalados; backend de áudio é o NullBackend (silencioso)."
+      "nota": "Sem SDK/NDK/alvos Rust; áudio é o NullBackend (falta plugin Media3); sem extrator do YouTube (yt-dlp não roda; rustypipe é GPL-3.0, incompatível com MIT OR Apache-2.0)."
     }
   },
   "modulos": [
@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil e configurações.",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo.",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",
@@ -44,57 +44,66 @@
       ],
       "status": "verificado",
       "testes": {
-        "passando": 56,
+        "passando": 77,
         "falhando": 0
       },
       "requisitos": [
+        "RF-03",
         "RF-04",
         "RF-05",
         "RF-06",
         "RF-07",
         "RF-08",
+        "RF-10",
         "RF-13",
         "RF-14",
         "RF-15",
         "RF-16",
         "RF-17",
+        "RF-19",
+        "RF-20",
         "RNF-01"
-      ]
+      ],
+      "limitacoes": []
     },
     {
       "id": "miupy-audio",
       "caminho": "crates/miupy-audio",
       "tipo": "crate-rust",
-      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop) e NullBackend (testes e Android).",
+      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop, arquivo local e streaming HTTP) e NullBackend (testes e Android).",
       "dependeDe": [],
       "tecnologias": [
         "rodio 0.23",
+        "stream-download 0.24 (reqwest + rustls)",
+        "tokio",
         "crossbeam-channel",
         "thiserror"
       ],
       "status": "verificado",
       "testes": {
-        "passando": 13,
-        "falhando": 0
+        "passando": 26,
+        "falhando": 0,
+        "ignorados": 1
       },
       "requisitos": [
         "RF-01",
         "RF-02",
-        "RF-03"
+        "RF-03",
+        "RF-18"
       ],
       "limitacoes": [
-        "Testado só com WAV gerado; M4A e MP3 reais não foram provados.",
-        "AudioEvent::Error não é emitido pelo backend rodio."
+        "Streaming verificado contra URLs reais do YouTube com o backend mudo; ninguém ouviu o som.",
+        "No streaming a faixa só fica pronta com o arquivo inteiro baixado (1,5 a 3,5 s medidos); o cache fica em memória."
       ]
     },
     {
       "id": "miupy-media",
       "caminho": "crates/miupy-media",
       "tipo": "crate-rust",
-      "papel": "Trait MediaResolver (yt-dlp), MetadataProvider (MusicBrainz, Cover Art Archive, LRCLIB), tagger (lofty) e limpeza de títulos.",
+      "papel": "Trait MediaResolver (yt-dlp: busca, download, playlist, URL de streaming, faixas parecidas, metadados do vídeo), MetadataProvider (MusicBrainz com gêneros, ano e ISRC; Cover Art Archive; LRCLIB), tagger (lofty) e limpeza de títulos. YtDlpManager (binário oficial do yt-dlp com SHA-256), sugestões de busca, filtro de coletâneas, foto de artista pelo Wikidata/Commons.",
       "dependeDe": [],
       "dependenciasExternas": [
-        "yt-dlp (binário, não instalado nesta máquina)"
+        "yt-dlp (binário do sistema; verificado com 2026.08.19)"
       ],
       "tecnologias": [
         "tokio",
@@ -102,29 +111,34 @@
         "lofty",
         "async-trait"
       ],
-      "status": "parcial",
+      "status": "verificado",
       "testes": {
-        "passando": 54,
+        "passando": 64,
         "falhando": 0,
-        "ignorados": 5
+        "ignorados": 11,
+        "nota": "63 testes + 1 doc-test; os 11 ignorados são de rede e passaram 11/11 contra os serviços reais em 2026-10-14."
       },
       "requisitos": [
         "RF-05",
         "RF-09",
         "RF-10",
         "RF-11",
-        "RF-12"
+        "RF-12",
+        "RF-18",
+        "RF-19",
+        "RF-20"
       ],
       "limitacoes": [
-        "Busca e download com yt-dlp real nunca foram executados; só fixtures e processo falso.",
-        "rustypipe (Android) não adicionado: é GPL-3.0 e a licença do projeto está em aberto."
+        "Restrição de idade e de região só testada com mensagens sintéticas.",
+        "Teste falha_do_processo_vira_erro_tipado_e_limpa: 200/200 em 2026-10-14; a falha antiga não foi explicada.",
+        "Sem extrator para o Android: rustypipe é GPL-3.0 e o projeto é MIT OR Apache-2.0."
       ]
     },
     {
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, 37 comandos IPC, eventos, fila de reprodução, registro de atividade e gerenciador de downloads.",
+      "papel": "Casca do app: estado, 45 comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU).",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -136,30 +150,38 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 68,
-        "falhando": 0
+        "passando": 78,
+        "falhando": 0,
+        "ignorados": 2,
+        "nota": "Os ignorados são provas reais (streaming, yt-dlp, sugestões, foto); passaram à mão em 2026-10-14 (a de foto 2 de 3, 503 do MusicBrainz)."
       },
       "requisitos": [
         "RF-01",
         "RF-02",
         "RF-03",
+        "RF-05",
         "RF-09",
         "RF-10",
         "RF-11",
         "RF-12",
-        "RF-13"
+        "RF-13",
+        "RF-15",
+        "RF-18",
+        "RF-19",
+        "RF-20",
+        "RNF-09"
       ],
       "limitacoes": [
-        "App abre, mas nenhum fluxo (tocar, baixar, playlists) foi exercitado dentro da janela.",
-        "Busca e download dependem do yt-dlp, não instalado.",
-        "Sem relatório de agente: o agente de integração foi interrompido."
+        "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
+        "Fotos de artista e letras sofrem 503 do MusicBrainz/LRCLIB em sequência; conferir o limite de requisições.",
+        "Exibição das capas pelo protocolo asset não vista pela orquestração."
       ]
     },
     {
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado com mock em memória.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -168,22 +190,24 @@
         "Vite",
         "TypeScript 6",
         "Tailwind 4",
-        "@tauri-apps/api 2"
+        "@tauri-apps/api 2",
+        "Vitest 5"
       ],
       "status": "parcial",
       "testes": {
-        "passando": 0,
+        "passando": 18,
         "falhando": 0,
-        "nota": "Sem testes automatizados; svelte-check e build passam."
+        "nota": "Vitest com cliente falso; validado na versão web por agente Sonnet + Playwright (12 itens, transições medidas)."
       },
       "requisitos": [
-        "RF-01 a RF-17 (interface)",
+        "RF-01 a RF-20 (interface)",
         "RNF-04",
-        "RNF-05"
+        "RNF-05",
+        "RNF-08"
       ],
       "limitacoes": [
-        "Aparência não revisada.",
-        "Cliente Tauri real nunca rodou contra o backend."
+        "Visual na janela (WebKitGTK) não visto pela orquestração.",
+        "Rótulo \"Mais\" do menu inferior maior que os outros no celular."
       ]
     },
     {
@@ -198,17 +222,34 @@
   "contratos": {
     "ipc": "docs/arquitetura/ipc.md",
     "bancoDeDados": "docs/arquitetura/banco-de-dados.md",
-    "requisitos": "docs/requisitos/requisitos.md"
+    "requisitos": "docs/requisitos/requisitos.md",
+    "recomendacao": "docs/arquitetura/recomendacao.md",
+    "fluxoDeGit": "docs/contribuicao/git.md"
   },
   "dadosEmDisco": {
     "raiz": "app_data_dir() do Tauri",
     "banco": "miupy.db",
     "audio": "audio/<track_id>.m4a",
-    "capas": "covers/"
+    "capas": "covers/",
+    "binarios": "bin/yt-dlp_linux (yt-dlp oficial) e bin/yt-dlp-status.json",
+    "capasDeAlbum": "covers/albuns/<release>.jpg",
+    "fotosDeArtista": "covers/artistas/<artist_id>.jpg",
+    "avatar": "avatars/",
+    "capasDePlaylist": "playlists/"
   },
   "decisoesEmAberto": [
-    "Licença do projeto (define se rustypipe GPL-3.0 pode ser o extrator no Android).",
-    "Fonte de biografia e foto de artista (TheAudioDB, Last.fm ou Wikidata).",
-    "Distribuição do yt-dlp (do sistema ou baixado e atualizado pelo app)."
+    "Extrator do YouTube no Android (rustypipe é GPL-3.0; a licença é MIT OR Apache-2.0).",
+    "Embutir runtime JS para o yt-dlp, se um dia for necessário (hoje não é)."
+  ],
+  "git": {
+    "publicado": "main",
+    "integracao": "develop",
+    "nota": "A develop está à frente da main (sessões 02 e 03). Promover com PR de versão depois do ok do autor na janela."
+  },
+  "decisoes": [
+    "2026-10-14: licença MIT OR Apache-2.0.",
+    "2026-10-14: yt-dlp baixado e atualizado pelo app.",
+    "2026-10-14: foto de artista pelo Wikidata/Commons.",
+    "2026-10-14: tabela tracks mantida."
   ]
 }

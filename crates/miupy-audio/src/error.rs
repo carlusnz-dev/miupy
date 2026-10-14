@@ -18,6 +18,9 @@ pub enum AudioError {
     /// Formato ausente, não suportado ou arquivo corrompido.
     #[error("não foi possível decodificar {path}: {message}")]
     Decode { path: PathBuf, message: String },
+    /// Falha de rede ao abrir ou ler uma faixa em streaming.
+    #[error("falha de rede ao tocar {url}: {message}")]
+    Network { url: String, message: String },
     /// Operação que exige uma faixa carregada, mas nenhuma está.
     #[error("nenhuma faixa carregada")]
     NothingLoaded,

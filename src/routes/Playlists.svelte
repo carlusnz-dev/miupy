@@ -7,10 +7,11 @@
   import { notify, notifyError } from '../lib/stores/toast.svelte';
   import { fmtDuration } from '../lib/util/format';
   import PageHeader from '../lib/components/PageHeader.svelte';
-  import Cover from '../lib/components/Cover.svelte';
+  import PlaylistCover from '../lib/components/PlaylistCover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
   import PlaylistForm from '../lib/components/PlaylistForm.svelte';
+  import { useShared } from '../lib/layoutPresence';
 
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -46,8 +47,8 @@
     {#each library.playlists as p (p.id)}
       <li class="card group relative p-3 hover:bg-s2">
         <a href={href(paths.playlist(p.id))} class="block" aria-label="Abrir playlist {p.name}">
-          <Cover path={p.coverPath} seed={p.id} class="mb-3 w-full" />
-          <span class="block truncate font-semibold">{p.name}</span>
+          <PlaylistCover playlist={p} class="mb-3 w-full" shared={`playlist-cover-${p.id}`} />
+          <span class="block truncate font-semibold" use:useShared={`playlist-title-${p.id}`}>{p.name}</span>
           <span class="block text-xs text-muted">{p.trackCount} faixas · {fmtDuration(p.totalDurationMs)}</span>
           {#if p.description}<span class="mt-1 line-clamp-2 block text-xs text-faint">{p.description}</span>{/if}
         </a>

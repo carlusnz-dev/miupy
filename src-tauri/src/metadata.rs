@@ -2,11 +2,14 @@
 //! `MetadataProvider`. Falha de rede nunca derruba a leitura local.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
-use miupy_media::{MediaError, MetadataProvider, TagUpdate, tagger};
+use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, tagger};
 
 use crate::db::Db;
 use crate::error::AppResult;
@@ -21,25 +24,78 @@ const RETRY_AFTER: Duration = Duration::from_secs(300);
 pub struct MetadataService {
     db: Db,
     provider: Arc<dyn MetadataProvider>,
+    resolver: Arc<dyn MediaResolver>,
     dirs: Dirs,
     events: Arc<dyn Events>,
     attempts: Mutex<HashMap<String, Instant>>,
+    batch_running: AtomicBool,
 }
 
 impl MetadataService {
     pub fn new(
         db: Db,
         provider: Arc<dyn MetadataProvider>,
+        resolver: Arc<dyn MediaResolver>,
         dirs: Dirs,
         events: Arc<dyn Events>,
     ) -> Self {
         MetadataService {
             db,
             provider,
+            resolver,
             dirs,
             events,
             attempts: Mutex::new(HashMap::new()),
+            batch_running: AtomicBool::new(false),
         }
+    }
+
+    // @req RF-12 RF-20
+    pub fn enqueue_library_refresh(self: &Arc<Self>, only_missing: bool) -> AppResult<usize> {
+        if self.batch_running.swap(true, Ordering::AcqRel) {
+            return Err(crate::error::AppError::new(
+                "conflict",
+                "Um reprocessamento já está em andamento.",
+            ));
+        }
+        let tracks = match self
+            .db
+            .with(|db| db.tracks_for_metadata_refresh(only_missing))
+        {
+            Ok(t) => t,
+            Err(e) => {
+                self.batch_running.store(false, Ordering::Release);
+                return Err(e.into());
+            }
+        };
+        let total = tracks.len();
+        let this = self.clone();
+        tauri::async_runtime::spawn(async move {
+            for (i, t) in tracks.into_iter().enumerate() {
+                let mut attempts = 0;
+                loop {
+                    match this.refresh_track(&t.id).await {
+                        Ok(_) => break,
+                        Err(e)
+                            if attempts < 3
+                                && (e.to_string().contains("503")
+                                    || e.to_string().contains("reduzir o ritmo")) =>
+                        {
+                            attempts += 1;
+                            tokio::time::sleep(Duration::from_secs(2u64.pow(attempts))).await;
+                        }
+                        Err(e) => {
+                            log::warn!("reprocessamento de {}: {e}", t.id);
+                            break;
+                        }
+                    }
+                }
+                this.events.metadata_progress(i + 1, total);
+            }
+            this.events.library_changed("metadata_batch_finished");
+            this.batch_running.store(false, Ordering::Release);
+        });
+        Ok(total)
     }
 
     /// `true` se vale tentar a consulta `key` agora; registra a tentativa.
@@ -61,15 +117,64 @@ impl MetadataService {
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
         let id = track_id.to_owned();
-        let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
+        let mut track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
+        if let Some(path) = track
+            .cover_path
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_file())
+            && image::ImageFormat::from_path(&path).ok() == Some(image::ImageFormat::WebP)
+            && let Ok(jpeg) = crate::paths::normalize_jpeg(&path)
+        {
+            let cover = Some(jpeg.to_string_lossy().into_owned());
+            let tid = track.id.clone();
+            if let Ok(updated) = self
+                .db
+                .run(move |db| {
+                    Ok(db.update_track(
+                        &tid,
+                        &TrackPatch {
+                            cover_path: Some(cover),
+                            ..Default::default()
+                        },
+                    )?)
+                })
+                .await
+            {
+                track = updated;
+            }
+        }
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
 
-        let Some(rec) = self
+        let rec = self
             .provider
             .find_recording(&track.title, track.artist_name.as_deref(), duration)
-            .await?
-        else {
-            return Ok(track);
+            .await?;
+        let Some(rec) = rec else {
+            // @req RF-20: sem correspondência no MusicBrainz, usa apenas os campos
+            // musicais do vídeo; suas categorias nunca viram gênero.
+            let Some(source_id) = &track.source_id else {
+                return Ok(track);
+            };
+            let video = match self.resolver.video_metadata(source_id).await {
+                Ok(v) => v,
+                Err(_) => return Ok(track),
+            };
+            let patch = TrackPatch {
+                title: video.track,
+                artist_name: video.artist.map(Some),
+                album: video.album.map(Some),
+                release_year: video.release_year.map(|year| Some(year as i32)),
+                ..Default::default()
+            };
+            let id = track.id.clone();
+            let updated = self
+                .db
+                .run(move |db| Ok(db.update_track(&id, &patch)?))
+                .await?;
+            self.write_file_tags(&updated, None).await;
+            self.events.library_changed("metadata_refreshed");
+            return Ok(updated);
         };
 
         // Capa: tenta os releases candidatos em ordem; o primeiro que tiver capa vale.
@@ -79,13 +184,15 @@ impl MetadataService {
         }
         let mut cover = None;
         for mbid in mbids {
-            match self
-                .provider
-                .download_cover(&mbid, &self.dirs.covers, &track.id)
-                .await
-            {
+            let album_dir = self.dirs.covers.join("albuns");
+            let cached = album_dir.join(format!("{mbid}.jpg"));
+            if cached.is_file() {
+                cover = Some(cached);
+                break;
+            }
+            match self.provider.download_cover(&mbid, &album_dir, &mbid).await {
                 Ok(path) => {
-                    cover = Some(path);
+                    cover = crate::paths::normalize_jpeg(&path).ok();
                     break;
                 }
                 Err(MediaError::NotFound(_)) => continue,
@@ -114,12 +221,26 @@ impl MetadataService {
             }
         };
 
+        // @req RF-20: MusicBrainz é a fonte principal; o vídeo só complementa campos ausentes.
+        let video = if let Some(source_id) = &track.source_id {
+            self.resolver.video_metadata(source_id).await.ok()
+        } else {
+            None
+        };
         let patch = TrackPatch {
-            title: Some(rec.title.clone()).filter(|t| !t.trim().is_empty()),
+            title: Some(rec.title.clone())
+                .filter(|t| !t.trim().is_empty())
+                .or_else(|| video.as_ref().and_then(|v| v.track.clone())),
             artist_name: Some(rec.artist.clone())
                 .filter(|a| !a.trim().is_empty())
+                .or_else(|| video.as_ref().and_then(|v| v.artist.clone()))
+                .filter(|a| !a.trim().is_empty())
                 .map(Some),
-            album: rec.album.clone().map(Some),
+            album: rec
+                .album
+                .clone()
+                .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+                .map(Some),
             duration_ms: if track.duration_ms <= 0 {
                 rec.duration_ms.and_then(|d| i64::try_from(d).ok())
             } else {
@@ -128,8 +249,18 @@ impl MetadataService {
             cover_path: cover
                 .as_ref()
                 .map(|p| Some(p.to_string_lossy().into_owned())),
-            // gêneros, ano, MBID e ISRC passam a ser preenchidos pela casca na segunda onda
-            ..Default::default()
+            genres: Some(rec.genres.clone()),
+            release_year: rec
+                .release_year
+                .map(|y| y as i32)
+                .or_else(|| {
+                    video
+                        .as_ref()
+                        .and_then(|v| v.release_year.map(|y| y as i32))
+                })
+                .map(Some),
+            mbid: Some(Some(rec.mbid.clone())),
+            isrc: rec.isrc.clone().map(Some),
         };
         let artist_mbid = rec.artist_mbid.clone();
         let artist_name = rec.artist.clone();
@@ -185,6 +316,8 @@ impl MetadataService {
             title: Some(track.title.clone()),
             artist: track.artist_name.clone(),
             album: track.album.clone(),
+            genres: Some(track.genres.clone()),
+            release_year: track.release_year.and_then(|year| u32::try_from(year).ok()),
             cover: cover.and_then(|p| std::fs::read(p).ok()),
         };
         match tokio::task::spawn_blocking(move || tagger::write_tags(&file, &update)).await {
@@ -200,6 +333,56 @@ impl MetadataService {
     pub async fn get_artist(&self, artist_id: &str) -> AppResult<ArtistInfo> {
         let id = artist_id.to_owned();
         let info = self.db.run(move |db| Ok(db.get_artist_info(&id)?)).await?;
+        let photo = if info.image_path.is_none()
+            && info.mbid.is_some()
+            && self.should_try(format!("artist-photo:{}", info.id))
+        {
+            match tokio::time::timeout(
+                READ_TIMEOUT,
+                self.provider.artist_photo(info.mbid.as_deref()),
+            )
+            .await
+            {
+                Ok(Ok(found)) => found,
+                Ok(Err(e)) => {
+                    log::info!("sem foto para o artista {}: {e}", info.name);
+                    None
+                }
+                Err(_) => {
+                    log::info!("tempo esgotado ao buscar a foto de {}", info.name);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(photo) = photo
+            && let Ok(img) = image::load_from_memory(&photo.bytes)
+                .inspect_err(|e| log::warn!("foto de {} ilegível: {e}", info.name))
+        {
+            let dir = self.dirs.covers.join("artistas");
+            let path = dir.join(format!("{}.jpg", info.id));
+            if std::fs::create_dir_all(&dir).is_ok()
+                && img
+                    .save_with_format(&path, image::ImageFormat::Jpeg)
+                    .is_ok()
+            {
+                let id = info.id.clone();
+                let p = path.to_string_lossy().into_owned();
+                let credit = photo.credit;
+                if let Ok(updated) = self
+                    .db
+                    .run(move |db| {
+                        db.set_artist_image(&id, Some(&p), Some(&credit))?;
+                        Ok(db.get_artist_info(&id)?)
+                    })
+                    .await
+                {
+                    self.events.library_changed("artist_photo_updated");
+                    return Ok(updated);
+                }
+            }
+        }
         let incomplete = info.mbid.is_none() || (info.country.is_none() && info.genres.is_empty());
         if !incomplete || !self.should_try(format!("artist:{}", info.id)) {
             return Ok(info);
@@ -319,6 +502,7 @@ mod tests {
     struct Fx {
         svc: MetadataService,
         fake: Arc<FakeMetadata>,
+        resolver: Arc<crate::downloads::testing::FakeResolver>,
         db: Db,
         events: Arc<RecordingEvents>,
         dirs: Dirs,
@@ -331,10 +515,18 @@ mod tests {
         dirs.create_all().unwrap();
         let db = Db::new(Database::open_in_memory().unwrap());
         let fake = Arc::new(FakeMetadata::default());
+        let resolver = Arc::new(crate::downloads::testing::FakeResolver::default());
         let events = Arc::new(RecordingEvents::default());
         Fx {
-            svc: MetadataService::new(db.clone(), fake.clone(), dirs.clone(), events.clone()),
+            svc: MetadataService::new(
+                db.clone(),
+                fake.clone(),
+                resolver.clone(),
+                dirs.clone(),
+                events.clone(),
+            ),
             fake,
+            resolver,
             db,
             events,
             dirs,
@@ -367,7 +559,55 @@ mod tests {
             release_mbids: vec!["rel-1".into(), "rel-2".into(), "rel-3".into()],
             duration_ms: Some(369_000),
             score: 100,
+            genres: Vec::new(),
+            release_year: None,
+            isrc: None,
         }
+    }
+
+    // @test RF-20
+    #[tokio::test]
+    async fn musicbrainz_prevalece_e_persiste_identificadores() {
+        let f = fx();
+        let t = track(&f);
+        let mut mb = rec();
+        mb.genres = vec!["disco".into()];
+        mb.release_year = Some(2013);
+        mb.isrc = Some("USABC1300001".into());
+        *f.fake.recording.lock().unwrap() = Some(mb);
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            artist: Some("Outro".into()),
+            track: Some("Vídeo".into()),
+            album: Some("Outro álbum".into()),
+            release_year: Some(2020),
+            genres: vec!["film & animation".into()],
+        });
+        let saved = f.svc.refresh_track(&t.id).await.unwrap();
+        assert_eq!(saved.genres, vec!["disco"]);
+        assert_eq!(saved.release_year, Some(2013));
+        assert_eq!(saved.title, "Get Lucky");
+        assert_eq!(
+            f.db.with(|db| db.get_track(&t.id)).unwrap().genres,
+            vec!["disco"]
+        );
+    }
+
+    // @test RF-20
+    #[tokio::test]
+    async fn video_complementa_sem_virar_genero() {
+        let f = fx();
+        let t = track(&f);
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            artist: Some("Artista".into()),
+            track: Some("Título".into()),
+            album: Some("Álbum".into()),
+            release_year: Some(2022),
+            genres: vec!["music".into()],
+        });
+        let saved = f.svc.refresh_track(&t.id).await.unwrap();
+        assert_eq!(saved.release_year, Some(2022));
+        assert_eq!(saved.album.as_deref(), Some("Álbum"));
+        assert!(saved.genres.is_empty());
     }
 
     // @test RF-12

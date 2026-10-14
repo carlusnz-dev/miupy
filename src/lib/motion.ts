@@ -14,3 +14,37 @@ export function springTransition(_node: Element, { y = 10, delay = 0, duration =
     },
   };
 }
+
+export type SharedRect = { left: number; top: number; width: number; height: number };
+
+// @req RNF-10
+export function flipTransform(from: SharedRect, to: SharedRect) {
+  return {
+    x: from.left - to.left,
+    y: from.top - to.top,
+    scaleX: to.width ? from.width / to.width : 1,
+    scaleY: to.height ? from.height / to.height : 1,
+  };
+}
+
+// @req RNF-10
+export function registerSharedEntry<T>(entries: Map<string, Set<T>>, key: string, value: T) {
+  const group = entries.get(key) ?? new Set<T>();
+  group.add(value);
+  entries.set(key, group);
+  return () => {
+    group.delete(value);
+    if (group.size === 0) entries.delete(key);
+  };
+}
+
+// @req RNF-10
+export class SharedSnapshot<T> {
+  private values = new Map<string, T>();
+  replace(values: Iterable<readonly [string, T]>) { this.values = new Map(values); }
+  take(key: string) {
+    const value = this.values.get(key);
+    this.values.delete(key);
+    return value;
+  }
+}

@@ -60,7 +60,8 @@ e na tela de bloqueio.
 ### `crates/miupy-media`
 Tudo que fala com a internet ou mexe no arquivo de mídia:
 - `MediaResolver`: busca no YouTube e download do áudio. Implementação `yt-dlp` (desktop) e, como
-  feature opcional, `rustypipe` (Rust puro, para o Android).
+  feature opcional, um extrator em Rust para o Android (o `rustypipe` é GPL-3.0 e não serve com a
+  licença MIT OR Apache-2.0; escolha em aberto).
 - `MetadataProvider`: MusicBrainz, Cover Art Archive e LRCLIB, com limite de requisições.
 - `tagger`: leitura e escrita de tags e capa com `lofty`.
 
@@ -98,8 +99,11 @@ Tudo sob o diretório de dados do app (`app_data_dir()` do Tauri):
 
 ```
 miupy.db          banco SQLite
+bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
-covers/           <track_id>.jpg, artistas/<artist_id>.jpg
+covers/           <track_id>.jpg, albuns/<chave>.jpg, artistas/<artist_id>.jpg
+avatars/          imagens de perfil enviadas pelo usuário
+playlists/        capas de playlists enviadas pelo usuário
 ```
 
 ## Android

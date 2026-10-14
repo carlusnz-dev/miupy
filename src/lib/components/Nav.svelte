@@ -4,6 +4,7 @@
   import { downloads } from '../stores/downloads.svelte';
   import { profile } from '../stores/profile.svelte';
   import Icon from './Icon.svelte';
+  import Avatar from './Avatar.svelte';
 
   let { variant }: { variant: 'side' | 'bottom' } = $props();
 
@@ -17,6 +18,7 @@
   ];
   const insights: Item[] = [
     { label: 'Estatísticas', icon: 'stats', path: paths.stats, names: ['stats'] },
+    { label: 'DNA', icon: 'sparkle', path: paths.dna, names: ['dna'] },
     { label: 'Retrospectiva', icon: 'sparkle', path: paths.wrapped, names: ['wrapped'] },
   ];
   const account: Item[] = [
@@ -29,7 +31,7 @@
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, names: ['playlists', 'playlist'] },
     { label: 'Buscar', icon: 'search', path: paths.youtube, names: ['youtube'] },
   ];
-  const moreNames: RouteName[] = ['downloads', 'stats', 'wrapped', 'profile', 'settings'];
+  const moreNames: RouteName[] = ['downloads', 'stats', 'dna', 'wrapped', 'profile', 'settings'];
   const moreItems = [main[4], ...insights, ...account];
 
   let moreOpen = $state(false);
@@ -60,7 +62,7 @@
   <div class="mt-auto border-t border-line pt-3">
     {#each account as i}{@render link(i)}{/each}
     {#if profile.data}
-      <p class="truncate px-3 pt-2 text-xs text-faint">{profile.data.displayName} · @{profile.data.username}</p>
+      <div class="flex items-center gap-2 px-3 pt-2"><Avatar path={profile.data.avatarPath} initials={profile.initials} size={28} /><p class="truncate text-xs text-faint">{profile.data.displayName} · @{profile.data.username}</p></div>
     {/if}
   </div>
 </nav>

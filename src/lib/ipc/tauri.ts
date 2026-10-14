@@ -32,6 +32,7 @@ export function createTauriApi(): MiupyApi {
     playerSetVolume: (a) => call('player_set_volume', a),
     playerSetMuted: (a) => call('player_set_muted', a),
     playerGetQueue: () => call('player_get_queue'),
+    playerSetShuffle: (a) => call('player_set_shuffle', a), // @req RF-24
 
     libraryListTracks: (a) => call('library_list_tracks', a ?? {}),
     libraryGetTrack: (a) => call('library_get_track', a),
@@ -47,8 +48,12 @@ export function createTauriApi(): MiupyApi {
     playlistAddTracks: (a) => call('playlist_add_tracks', a),
     playlistRemoveTracks: (a) => call('playlist_remove_tracks', a),
     playlistMoveTrack: (a) => call('playlist_move_track', a),
+    playlistSetCover: (a) => call('playlist_set_cover', a), // @req RF-22
 
     youtubeSearch: (a) => call('youtube_search', a),
+    youtubeSuggest: (a) => call('youtube_suggest', a), // @req RF-23
+    ytdlpStatus: () => call('ytdlp_status'), // @req RF-26
+    ytdlpUpdate: () => call('ytdlp_update'),
     youtubeAddToLibrary: (a) => call('youtube_add_to_library', a),
 
     downloadEnqueue: (a) => call('download_enqueue', a),
@@ -58,6 +63,7 @@ export function createTauriApi(): MiupyApi {
     downloadClearFinished: () => call('download_clear_finished'),
 
     metadataRefreshTrack: (a) => call('metadata_refresh_track', a),
+    metadataRefreshLibrary: (a) => call('metadata_refresh_library', a), // @req RF-12 RF-20
     metadataGetArtist: (a) => call('metadata_get_artist', a),
     metadataGetLyrics: (a) => call('metadata_get_lyrics', a),
 
@@ -65,14 +71,18 @@ export function createTauriApi(): MiupyApi {
     statsWrapped: (a) => call('stats_wrapped', a),
     statsWrappedYears: () => call('stats_wrapped_years'),
     statsTaste: () => call('stats_taste'),
+    statsTrackScores: (a) => call('stats_track_scores', a ?? {}), // @req RF-25
+    statsDna: (a) => call('stats_dna', a ?? {}),
     recommendationsList: (a) => call('recommendations_list', a ?? {}),
     recommendationsRefresh: (a) => call('recommendations_refresh', a ?? {}),
     recommendationsDismiss: (a) => call('recommendations_dismiss', a),
 
     profileGet: () => call('profile_get'),
     profileUpdate: (a) => call('profile_update', a),
+    profileSetAvatar: (a) => call('profile_set_avatar', a), // @req RF-21
     settingsGet: () => call('settings_get'),
     settingsUpdate: (a) => call('settings_update', a),
+    systemGpuStatus: () => call('system_gpu_status'),
 
     async on(event, handler) {
       const un = await listen<never>(event, (e) => handler(e.payload as never));

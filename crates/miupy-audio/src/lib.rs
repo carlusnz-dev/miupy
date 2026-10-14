@@ -19,7 +19,8 @@ pub use null::NullBackend;
 #[cfg(not(target_os = "android"))]
 pub use rodio_backend::RodioBackend;
 pub use types::{
-    AudioBackend, AudioEvent, PROGRESS_INTERVAL_MS, PlaybackState, PlaybackStatus, volume_to_gain,
+    AudioBackend, AudioEvent, PROGRESS_INTERVAL_MS, PlaybackState, PlaybackStatus, StreamOptions,
+    volume_to_gain,
 };
 
 /// Backend padrão da plataforma: rodio no desktop; no Android, por enquanto, o

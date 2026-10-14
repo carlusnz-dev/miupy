@@ -35,3 +35,8 @@ Documentação em [`docs/`](docs/README.md).
 
 Projeto de uso pessoal. Baixar conteúdo do YouTube pode violar os termos de serviço da plataforma
 e direitos autorais; use apenas com conteúdo que você tem direito de baixar.
+
+## Licença
+
+Distribuído sob a licença MIT ou a Apache 2.0, à sua escolha: [`LICENSE-MIT`](LICENSE-MIT) e
+[`LICENSE-APACHE`](LICENSE-APACHE).

@@ -1,8 +1,10 @@
 // @req RF-01 RF-02 RF-03 RF-04
 import { api, type PlayerState, type Track } from '../ipc';
+import { nextShuffle } from '../util/shuffle';
 import { notifyError } from './toast.svelte';
+import { scores } from './scores.svelte';
 
-const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1, streaming: false };
+const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1, streaming: false, shuffle: 'off' };
 
 class PlayerStore {
   state = $state<PlayerState>({ ...EMPTY });
@@ -26,12 +28,14 @@ class PlayerStore {
       this.state.positionMs = p.positionMs;
       this.state.durationMs = p.durationMs;
     });
+    await api.on('player://error', (e) => notifyError({ message: e.message })); // @req RF-18
     // favorito alterado fora do player (biblioteca) reflete na faixa atual
-    await api.on('library://changed', () => { void this.refreshCurrent(); });
+    await api.on('library://changed', () => { scores.invalidate(); void this.refreshCurrent(); });
     try { this.apply(await api.playerGetState()); } catch (e) { notifyError(e); }
   }
 
   private apply(s: PlayerState) {
+    if (s.track?.id !== this.state.track?.id) scores.invalidate(); // a faixa anterior ganhou um evento
     this.state = s;
     const key = s.queue.join(',');
     if (key !== this.lastQueueKey) { this.lastQueueKey = key; void this.resolveQueue(s.queue); }
@@ -59,6 +63,7 @@ class PlayerStore {
     }
   }
 
+  cycleShuffle() { return this.run(api.playerSetShuffle({ mode: nextShuffle(this.state.shuffle) })); } // @req RF-24
   play(trackId: string, queue?: string[]) { return this.run(api.playerPlay({ trackId, queue })); }
   pause() { return this.run(api.playerPause()); }
   resume() { return this.run(api.playerResume()); }

@@ -24,7 +24,8 @@ são constantes nomeadas em `recommendations.rs`.
 O perfil soma as pontuações das faixas por artista e gênero. Artistas com saldo negativo não
 entram nos `topArtists`, mas o saldo negativo reduz candidatas desse artista. `skipRate` é
 `eventos encerrados e pulados / eventos encerrados`; `totalListenedMs` soma todo o tempo ouvido
-desses eventos. Sem eventos encerrados, perfil vazio e lista de recomendações vazia.
+desses eventos. Sem eventos encerrados e sem favoritas, perfil e recomendações vazios. Só
+favoritas, mesmo nunca tocadas, já formam um perfil.
 
 ## Sementes e candidatas
 
@@ -48,3 +49,35 @@ artista. `limit` é 20 por padrão e no máximo 100; a diversidade pode devolver
 
 O modelo deliberadamente não usa similaridade textual de título nem dados externos no cálculo.
 Gênero desconhecido é `[]`; isso não impede recomendação por artista ou por semente de faixa.
+
+## Favoritas sem reprodução
+
+Uma faixa favoritada entra no gosto mesmo sem nenhum evento: soma o bônus de favorita (`0,65`) à
+faixa e, por ela, ao artista e aos gêneros. Isso vale para `stats_taste`, `stats_dna`, sementes e
+ranking. Um perfil só com favoritas não é vazio.
+
+## *Smart random* (RF-24)
+
+O núcleo recebe as faixas restantes da fila e devolve uma ordem. É uma função pura sobre as
+pontuações, artistas e gêneros, com semente de sorteio explícita para os testes. A cada passo,
+sorteia uma faixa entre as que faltam com peso:
+
+```text
+peso = 0,10 + 0,60 × pontuação_normalizada + 0,30 × proximidade
+```
+
+- `pontuação_normalizada = max(pontuação, 0) / max(maior pontuação positiva da fila, 1)`.
+- `proximidade` com a faixa escolhida no passo anterior (no primeiro passo, a faixa atual):
+  `1` se é do mesmo artista, `0,5` se divide pelo menos um gênero, `0` caso contrário. Se as duas
+  últimas escolhidas já são do mesmo artista, a proximidade por artista vale `0` para evitar uma
+  sequência longa de um só artista.
+- A base `0,10` garante que toda faixa sai em algum momento.
+
+## DNA (RF-25)
+
+`stats_dna` aplica a mesma pontuação de faixa só aos eventos de cada janela (a atual e a
+anterior, de `windowDays` cada), sem o decaimento de recência dentro da janela, e soma por artista
+e por gênero. O bônus de favorita entra nas duas janelas. `rising` e `falling` ordenam a diferença
+entre as janelas, ignorando diferenças abaixo de `0,1`. Os eventos entram pela data de início:
+`[agora − 2 × janela, agora − janela)` e `[agora − janela, agora)`; eventos abertos ficam fora.
+Repetição, pulos e tempo ouvido são calculados separadamente em cada janela.

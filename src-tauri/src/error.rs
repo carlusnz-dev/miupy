@@ -51,6 +51,7 @@ impl AppError {
             AppError::Media(e) => e.code(),
             AppError::Audio(e) => match e {
                 AudioError::Io { .. } => "io",
+                AudioError::Network { .. } => "network",
                 AudioError::NoOutputDevice(_)
                 | AudioError::Decode { .. }
                 | AudioError::NothingLoaded

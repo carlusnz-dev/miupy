@@ -4,6 +4,8 @@ use crate::db::blocking;
 use crate::dto::PlayerState;
 use crate::error::AppError;
 use crate::state::AppState;
+use miupy_core::ShuffleMode;
+use miupy_core::Track;
 
 type R<T> = Result<T, AppError>;
 
@@ -12,6 +14,13 @@ type R<T> = Result<T, AppError>;
 pub async fn player_get_state(state: State<'_, AppState>) -> R<PlayerState> {
     let p = state.player.clone();
     blocking(move || Ok(p.state())).await
+}
+
+// @req RF-03
+#[tauri::command]
+pub async fn player_get_queue(state: State<'_, AppState>) -> R<Vec<Track>> {
+    let p = state.player.clone();
+    blocking(move || p.queue_tracks()).await
 }
 
 // @req RF-01 RF-03
@@ -79,4 +88,11 @@ pub async fn player_set_volume(state: State<'_, AppState>, volume: f64) -> R<Pla
 pub async fn player_set_muted(state: State<'_, AppState>, muted: bool) -> R<PlayerState> {
     let p = state.player.clone();
     blocking(move || p.set_muted(muted)).await
+}
+
+// @req RF-24
+#[tauri::command]
+pub async fn player_set_shuffle(state: State<'_, AppState>, mode: ShuffleMode) -> R<PlayerState> {
+    let p = state.player.clone();
+    blocking(move || p.set_shuffle(mode)).await
 }

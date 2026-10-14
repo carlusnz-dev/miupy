@@ -9,10 +9,14 @@
 //! o banco, sempre nessa ordem. Nada aqui é `async`.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{
+    Arc, Mutex, MutexGuard,
+    atomic::{AtomicU64, Ordering},
+};
 
-use miupy_audio::{AudioBackend, AudioEvent, PlaybackStatus};
-use miupy_core::{PlayEnd, SettingsPatch, Track};
+use miupy_audio::{AudioBackend, AudioEvent, PlaybackStatus, StreamOptions};
+use miupy_core::{PlayEnd, SettingsPatch, ShuffleMode, Source, Track};
+use miupy_media::{MediaResolver, StreamAudio};
 
 use crate::db::Db;
 use crate::dto::{PlayerState, PlayerStatus, Progress};
@@ -35,26 +39,35 @@ struct Inner {
     tracker: ListenTracker,
     /// Último status informado pelo motor (espelho, atualizado pela thread de eventos).
     status: PlaybackStatus,
+    streaming: bool,
+    stream_expires_at: Option<u64>,
+    stream_retried: bool,
+    resolving: bool,
+    shuffle: ShuffleMode,
 }
 
 pub struct Player {
     db: Db,
     backend: Arc<dyn AudioBackend>,
+    resolver: Arc<dyn MediaResolver>,
     events: Arc<dyn Events>,
     prefs_file: PathBuf,
     inner: Mutex<Inner>,
+    generation: AtomicU64,
 }
 
 impl Player {
     pub fn new(
         db: Db,
         backend: Arc<dyn AudioBackend>,
+        resolver: Arc<dyn MediaResolver>,
         events: Arc<dyn Events>,
         prefs_file: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Player {
             db,
             backend,
+            resolver,
             events,
             prefs_file,
             inner: Mutex::new(Inner {
@@ -63,7 +76,13 @@ impl Player {
                 event_id: None,
                 tracker: ListenTracker::default(),
                 status: PlaybackStatus::Stopped,
+                streaming: false,
+                stream_expires_at: None,
+                stream_retried: false,
+                resolving: false,
+                shuffle: ShuffleMode::Off,
             }),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -85,6 +104,9 @@ impl Player {
         let prefs = Prefs::load(&self.prefs_file);
         if let Err(e) = self.backend.set_muted(prefs.muted) {
             log::warn!("não consegui aplicar o mudo salvo: {e}");
+        }
+        if let Ok(mode) = self.db.with(|db| db.get_shuffle_mode()) {
+            self.lock().shuffle = mode;
         }
     }
 
@@ -121,6 +143,12 @@ impl Player {
         self.snapshot(&inner)
     }
 
+    // @req RF-03
+    pub fn queue_tracks(&self) -> AppResult<Vec<Track>> {
+        let ids = self.state().queue;
+        Ok(self.db.with(|db| db.get_tracks_by_ids(&ids))?)
+    }
+
     fn snapshot(&self, inner: &Inner) -> PlayerState {
         let st = self.backend.state();
         // Relê a faixa: favorito e capa podem ter mudado desde que ela começou a tocar.
@@ -129,7 +157,9 @@ impl Player {
                 .with(|db| db.get_track(&t.id))
                 .unwrap_or_else(|_| t.clone())
         });
-        let status = if track.is_some() {
+        let status = if inner.resolving {
+            PlayerStatus::Loading
+        } else if track.is_some() {
             PlayerStatus::from(st.status)
         } else {
             PlayerStatus::Stopped
@@ -141,6 +171,8 @@ impl Player {
         };
         PlayerState {
             status,
+            streaming: inner.streaming && track.is_some() && status != PlayerStatus::Stopped,
+            shuffle: inner.shuffle,
             track,
             position_ms: st.position_ms,
             duration_ms,
@@ -196,13 +228,30 @@ impl Player {
 
     /// Carrega e toca `track`, fechando o evento da faixa anterior com `end_prev`.
     fn start_track(&self, inner: &mut Inner, track: Track, end_prev: PlayEnd) -> AppResult<()> {
-        let path = playable_path(&track)?;
+        let stream = if track.file_path.is_none() && track.source == Source::Youtube {
+            Some(self.resolve_track_stream(&track)?)
+        } else {
+            None
+        };
+        let path = if stream.is_none() {
+            Some(playable_path(&track)?)
+        } else {
+            None
+        };
         self.close_event(inner, end_prev);
-        if let Err(e) = self.backend.load(&path).and_then(|_| self.backend.play()) {
+        let loaded = if let Some(stream) = &stream {
+            self.load_stream(stream, &track)
+        } else {
+            self.backend
+                .load(path.as_deref().expect("caminho validado"))
+                .and_then(|_| self.backend.play())
+                .map_err(AppError::from)
+        };
+        if let Err(e) = loaded {
             let _ = self.backend.stop();
             inner.track = None;
             inner.status = PlaybackStatus::Stopped;
-            return Err(e.into());
+            return Err(e);
         }
         inner.event_id = match self.db.with(|db| db.start_play(&track.id, None)) {
             Ok(id) => Some(id),
@@ -212,8 +261,40 @@ impl Player {
             }
         };
         inner.tracker.reset();
-        inner.status = PlaybackStatus::Playing;
+        inner.status = self.backend.state().status;
+        inner.streaming = stream.is_some();
+        inner.stream_expires_at = stream.and_then(|s| s.expires_at);
+        inner.stream_retried = false;
         inner.track = Some(track);
+        Ok(())
+    }
+
+    // @req RF-18
+    fn resolve_track_stream(&self, track: &Track) -> AppResult<StreamAudio> {
+        let id = track
+            .source_id
+            .clone()
+            .ok_or_else(|| AppError::unavailable("Faixa sem origem para streaming."))?;
+        let resolver = self.resolver.clone();
+        std::thread::spawn(move || tauri::async_runtime::block_on(resolver.resolve_stream(&id)))
+            .join()
+            .map_err(|_| AppError::internal("Resolução do streaming interrompida."))?
+            .map_err(AppError::from)
+    }
+
+    fn load_stream(&self, stream: &StreamAudio, track: &Track) -> AppResult<()> {
+        let options = StreamOptions {
+            headers: stream
+                .http_headers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            duration_ms: stream
+                .duration_ms
+                .unwrap_or(track.duration_ms.max(0) as u64),
+        };
+        self.backend.load_url(&stream.url, options)?;
+        self.backend.play()?;
         Ok(())
     }
 
@@ -263,9 +344,14 @@ impl Player {
     // @req RF-01 RF-03
     /// Toca `track_id`. Com `queue`, ela vira a fila (a faixa entra no começo se faltar);
     /// sem ela, usa a fila atual se a faixa estiver nela, ou uma fila só com a faixa.
-    pub fn play(&self, track_id: &str, queue: Option<Vec<String>>) -> AppResult<PlayerState> {
+    pub fn play(
+        self: &Arc<Self>,
+        track_id: &str,
+        queue: Option<Vec<String>>,
+    ) -> AppResult<PlayerState> {
         let track = self.db.with(|db| db.get_track(track_id))?;
         let mut inner = self.lock();
+        let new_queue = queue.is_some();
         let mut q = inner.queue.clone();
         match queue {
             Some(ids) => q.replace(ids, &track.id),
@@ -275,8 +361,128 @@ impl Player {
                 }
             }
         }
-        self.start_track(&mut inner, track, PlayEnd::Skipped)?;
+        if new_queue && inner.shuffle != ShuffleMode::Off {
+            // Fila nova com aleatório: a faixa pedida vai primeiro e todas as outras são sorteadas.
+            self.shuffle_after_current(&mut q, &track.id, inner.shuffle, true)?;
+        }
         inner.queue = q;
+        let is_stream = track.file_path.is_none() && track.source == Source::Youtube;
+        if is_stream {
+            let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            self.close_event(&mut inner, PlayEnd::Skipped);
+            let _ = self.backend.stop();
+            inner.track = Some(track.clone());
+            inner.status = PlaybackStatus::Loading;
+            inner.streaming = true;
+            inner.resolving = true;
+            inner.stream_expires_at = None;
+            inner.stream_retried = false;
+            inner.tracker.reset();
+            self.emit(&inner);
+            let this = Arc::clone(self);
+            std::thread::spawn(move || {
+                let resolved = this.resolve_track_stream(&track);
+                let mut inner = this.lock();
+                if this.generation.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                inner.resolving = false;
+                match resolved.and_then(|stream| {
+                    this.load_stream(&stream, &track)?;
+                    inner.event_id = this.db.with(|db| db.start_play(&track.id, None)).ok();
+                    inner.tracker.reset();
+                    inner.status = this.backend.state().status;
+                    inner.streaming = true;
+                    inner.stream_expires_at = stream.expires_at;
+                    inner.stream_retried = false;
+                    Ok(())
+                }) {
+                    Ok(()) => this.emit(&inner),
+                    Err(error) => {
+                        let _ = this.backend.stop();
+                        inner.track = None;
+                        inner.streaming = false;
+                        inner.status = PlaybackStatus::Stopped;
+                        this.events
+                            .player_error(&track.id, error.code(), &error.to_string());
+                        this.emit(&inner);
+                    }
+                }
+            });
+            return Ok(self.snapshot(&inner));
+        }
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        inner.resolving = false;
+        self.start_track(&mut inner, track, PlayEnd::Skipped)?;
+        self.emit(&inner);
+        Ok(self.snapshot(&inner))
+    }
+
+    /// Sorteia o que vem depois de `current`. Com `whole_queue`, `current` vai para o começo e
+    /// todas as outras faixas entram no sorteio (fila nova); sem ele, o que já passou fica antes.
+    fn shuffle_after_current(
+        &self,
+        queue: &mut PlayQueue,
+        current: &str,
+        mode: ShuffleMode,
+        whole_queue: bool,
+    ) -> AppResult<()> {
+        let ids = queue.ids().to_vec();
+        let Some(index) = ids.iter().position(|id| id == current) else {
+            return Ok(());
+        };
+        let (mut out, rest): (Vec<String>, Vec<String>) = if whole_queue {
+            let mut others = ids.clone();
+            others.remove(index);
+            (vec![current.to_owned()], others)
+        } else {
+            (ids[..=index].to_vec(), ids[index + 1..].to_vec())
+        };
+        let tail = rest.as_slice();
+        let seed = now_seconds();
+        let ordered = match mode {
+            ShuffleMode::Off => tail.to_vec(),
+            ShuffleMode::Random => miupy_core::random_order(tail, seed),
+            ShuffleMode::Smart => {
+                let smart = self.db.with(|db| db.smart_tracks(&ids))?;
+                let by_id = smart
+                    .into_iter()
+                    .map(|t| (t.track_id.clone(), t))
+                    .collect::<std::collections::HashMap<_, _>>();
+                let current_track = by_id.get(current);
+                if let Some(cur) = current_track {
+                    let rem = tail
+                        .iter()
+                        .filter_map(|id| by_id.get(id).cloned())
+                        .collect::<Vec<_>>();
+                    miupy_core::smart_order(cur, &rem, seed)
+                } else {
+                    miupy_core::random_order(tail, seed)
+                }
+            }
+        };
+        out.extend(ordered);
+        queue.set_ids(out, current);
+        Ok(())
+    }
+
+    // @req RF-24
+    pub fn set_shuffle(&self, mode: ShuffleMode) -> AppResult<PlayerState> {
+        let mut inner = self.lock();
+        self.db.with(|db| db.set_shuffle_mode(mode))?;
+        inner.shuffle = mode;
+        if let Some(current) = inner
+            .queue
+            .index()
+            .and_then(|i| inner.queue.id_at(i))
+            .map(str::to_owned)
+        {
+            let original = inner.queue.original_ids().to_vec();
+            let mut queue = PlayQueue::default();
+            queue.replace(original, &current);
+            self.shuffle_after_current(&mut queue, &current, mode, false)?;
+            inner.queue = queue;
+        }
         self.emit(&inner);
         Ok(self.snapshot(&inner))
     }
@@ -292,6 +498,27 @@ impl Player {
     /// Retoma. Se a faixa já terminou ou foi parada, recomeça a faixa atual da fila.
     pub fn resume(&self) -> AppResult<PlayerState> {
         let mut inner = self.lock();
+        if inner.streaming
+            && inner
+                .stream_expires_at
+                .is_some_and(|expires| now_seconds() >= expires)
+        {
+            let track = inner
+                .track
+                .clone()
+                .ok_or_else(|| AppError::unavailable("Não há faixa para retomar."))?;
+            let position = self.backend.state().position_ms;
+            let stream = self.resolve_track_stream(&track)?;
+            self.load_stream(&stream, &track)?;
+            if position > 0 {
+                self.backend.seek(position)?;
+            }
+            inner.stream_expires_at = stream.expires_at;
+            inner.stream_retried = false;
+            inner.status = self.backend.state().status;
+            self.emit(&inner);
+            return Ok(self.snapshot(&inner));
+        }
         if self.backend.state().status == PlaybackStatus::Stopped {
             let idx = match (inner.queue.index(), inner.track.is_some()) {
                 (Some(i), true) => i,
@@ -307,7 +534,9 @@ impl Player {
 
     // @req RF-01
     pub fn stop(&self) -> AppResult<PlayerState> {
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let mut inner = self.lock();
+        inner.resolving = false;
         self.close_event(&mut inner, PlayEnd::Stopped);
         self.backend.stop()?;
         inner.status = PlaybackStatus::Stopped;
@@ -450,9 +679,32 @@ impl Player {
             AudioEvent::Error { message } => {
                 log::warn!("erro do motor de áudio: {message}");
                 let mut inner = self.lock();
+                if inner.track.is_none() {
+                    return;
+                }
+                if inner.streaming && !inner.stream_retried {
+                    inner.stream_retried = true;
+                    if let Some(track) = inner.track.clone()
+                        && let Ok(stream) = self.resolve_track_stream(&track)
+                        && self.load_stream(&stream, &track).is_ok()
+                    {
+                        inner.stream_expires_at = stream.expires_at;
+                        inner.status = self.backend.state().status;
+                        self.emit(&inner);
+                        return;
+                    }
+                }
                 self.close_event(&mut inner, PlayEnd::Stopped);
+                let _ = self.backend.stop();
                 inner.status = PlaybackStatus::Stopped;
+                inner.track = None;
                 self.emit(&inner);
+                if let Some(cur) = inner.queue.index() {
+                    match self.walk(&mut inner, cur, true, PlayEnd::Stopped) {
+                        Ok(_) => self.emit(&inner),
+                        Err(e) => log::warn!("falha ao avançar após erro de áudio: {e}"),
+                    }
+                }
             }
         }
     }
@@ -480,6 +732,13 @@ impl Player {
     pub fn current_event_id(&self) -> Option<String> {
         self.lock().event_id.clone()
     }
+}
+
+fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Caminho do arquivo tocável da faixa, ou `unavailable` (RF-01).
@@ -554,6 +813,7 @@ mod tests {
         let player = Player::new(
             db.clone(),
             backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
             events.clone(),
             dir.path().join("prefs.json"),
         );
@@ -583,9 +843,93 @@ mod tests {
         }
     }
 
-    // @test RF-01
+    // @test RF-18
+    /// Prova real, de ponta a ponta na casca: yt-dlp do sistema resolve a URL e o backend rodio
+    /// toca (mudo). `cargo test -p miupy streaming_real -- --ignored --nocapture`
     #[test]
-    fn faixa_sem_arquivo_devolve_unavailable() {
+    #[ignore = "rede + yt-dlp instalado + dispositivo de saída"]
+    fn streaming_real_toca_avanca_e_registra_atividade() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let track = db
+            .with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "dQw4w9WgXcQ",
+                    "Never Gonna Give You Up",
+                    Some("Rick Astley".into()),
+                    213_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        let backend: Arc<dyn AudioBackend> = Arc::new(miupy_audio::RodioBackend::new().unwrap());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(miupy_media::YtDlpResolver::new()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.spawn_event_loop();
+        player.set_muted(true).unwrap();
+        let started = std::time::Instant::now();
+        let state = player.play(&track.id, None).unwrap();
+        println!(
+            "play devolveu em {} ms com status {:?}, streaming={}",
+            started.elapsed().as_millis(),
+            state.status,
+            state.streaming
+        );
+        assert!(state.streaming);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while player.state().status != PlayerStatus::Playing && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        println!(
+            "tocando {} ms depois do clique",
+            started.elapsed().as_millis()
+        );
+        assert_eq!(player.state().status, PlayerStatus::Playing);
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        let st = player.state();
+        println!("posição depois de 8 s: {} ms", st.position_ms);
+        assert!(st.streaming && st.status == PlayerStatus::Playing);
+        assert!(
+            (6_500..=9_500).contains(&st.position_ms),
+            "{}",
+            st.position_ms
+        );
+        player.seek(60_000).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let st = player.state();
+        println!(
+            "posição 3 s depois do seek para 60 s: {} ms",
+            st.position_ms
+        );
+        assert!(
+            (62_000..=64_500).contains(&st.position_ms),
+            "{}",
+            st.position_ms
+        );
+        let event_id = player
+            .current_event_id()
+            .expect("evento de reprodução aberto");
+        player.stop().unwrap();
+        let event = db.with(|db| db.get_play_event(&event_id)).unwrap();
+        println!(
+            "evento: ouvido {} ms, encerrado={}",
+            event.listened_ms,
+            event.ended_at.is_some()
+        );
+        assert!(event.ended_at.is_some());
+        assert!(event.listened_ms >= 9_000, "{}", event.listened_ms);
+    }
+
+    // @test RF-18
+    #[test]
+    fn youtube_sem_arquivo_toca_em_streaming() {
         let f = fx(1);
         let t =
             f.db.with(|db| {
@@ -599,10 +943,9 @@ mod tests {
             })
             .unwrap()
             .track;
-        let err = f.player.play(&t.id, None).unwrap_err();
-        assert_eq!(err.code(), "unavailable");
-        assert_eq!(f.player.state().status, PlayerStatus::Stopped);
-        assert!(f.player.current_event_id().is_none());
+        let state = f.player.play(&t.id, None).unwrap();
+        assert!(state.streaming);
+        assert_eq!(state.track.unwrap().id, t.id);
     }
 
     // @test RF-01
@@ -655,6 +998,44 @@ mod tests {
         let st = f.player.play(&f.ids[0], None).unwrap();
         assert_eq!(st.queue, f.ids);
         assert_eq!(st.queue_index, 0);
+    }
+
+    // @test RF-24
+    #[test]
+    fn shuffle_reordena_depois_da_atual_persiste_e_off_restaura() {
+        let f = fx(8);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        let state = f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        assert_eq!(state.queue[0], f.ids[0]);
+        let mut sorted = state.queue.clone();
+        sorted.sort();
+        let mut expected = f.ids.clone();
+        expected.sort();
+        assert_eq!(sorted, expected);
+        assert_eq!(
+            f.db.with(|db| db.get_shuffle_mode()).unwrap(),
+            ShuffleMode::Random
+        );
+        let restored = f.player.set_shuffle(ShuffleMode::Off).unwrap();
+        assert_eq!(restored.queue, f.ids);
+    }
+
+    // @test RF-24
+    #[test]
+    fn fila_nova_com_aleatorio_poe_a_pedida_primeiro_e_sorteia_todas_as_outras() {
+        let f = fx(8);
+        f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        let state = f.player.play(&f.ids[4], Some(f.ids.clone())).unwrap();
+        assert_eq!(state.queue[0], f.ids[4]);
+        assert_eq!(state.queue_index, 0);
+        let mut sorted = state.queue.clone();
+        sorted.sort();
+        let mut expected = f.ids.clone();
+        expected.sort();
+        assert_eq!(sorted, expected, "nenhuma faixa some nem repete");
+        let off = f.player.set_shuffle(ShuffleMode::Off).unwrap();
+        assert_eq!(off.queue, f.ids, "off volta à ordem original");
+        assert_eq!(off.queue[off.queue_index as usize], f.ids[4]);
     }
 
     // @test RF-01 RF-13
@@ -832,6 +1213,7 @@ mod tests {
         let p2 = Player::new(
             f.db.clone(),
             backend2.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
             Arc::new(RecordingEvents::default()),
             f.dir.path().join("prefs.json"),
         );

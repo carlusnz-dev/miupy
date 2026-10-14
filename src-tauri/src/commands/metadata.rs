@@ -23,3 +23,14 @@ pub async fn metadata_get_artist(state: State<'_, AppState>, artist_id: String) 
 pub async fn metadata_get_lyrics(state: State<'_, AppState>, track_id: String) -> R<Lyrics> {
     state.metadata.get_lyrics(&track_id).await
 }
+
+// @req RF-12 RF-20
+#[tauri::command]
+pub async fn metadata_refresh_library(
+    state: State<'_, AppState>,
+    only_missing: Option<bool>,
+) -> R<usize> {
+    state
+        .metadata
+        .enqueue_library_refresh(only_missing.unwrap_or(true))
+}

@@ -4,6 +4,7 @@
 //! para `rustypipe` (Rust puro, Android): implementar esta trait num módulo atrás de uma feature
 //! opcional. Ver o README da crate; a dependência NÃO foi adicionada (GPL-3.0, licença em aberto).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -88,6 +89,30 @@ pub struct DownloadedAudio {
     pub duration_ms: u64,
 }
 
+/// URL temporária de áudio M4A/AAC para reprodução sem download.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamAudio {
+    pub url: String,
+    pub http_headers: BTreeMap<String, String>,
+    pub codec: String,
+    pub container: String,
+    pub bitrate_kbps: Option<u32>,
+    pub duration_ms: Option<u64>,
+    /// Instante UTC, em segundos Unix, se a URL informa `expire`.
+    pub expires_at: Option<u64>,
+}
+
+/// Metadados secundários fornecidos pelo vídeo, antes do enriquecimento pelo MusicBrainz.
+// @req RF-20
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VideoMetadata {
+    pub artist: Option<String>,
+    pub track: Option<String>,
+    pub album: Option<String>,
+    pub release_year: Option<u32>,
+    pub genres: Vec<String>,
+}
+
 /// Fonte de busca e download de áudio. Trocável (yt-dlp, rustypipe...).
 #[async_trait]
 pub trait MediaResolver: Send + Sync {
@@ -99,4 +124,16 @@ pub trait MediaResolver: Send + Sync {
 
     /// Lista os vídeos de uma playlist (URL ou id).
     async fn resolve_playlist(&self, url_or_id: &str) -> Result<PlaylistInfo>;
+
+    // @req RF-18
+    /// Resolve uma URL direta e temporária de áudio M4A/AAC.
+    async fn resolve_stream(&self, video_id: &str) -> Result<StreamAudio>;
+
+    // @req RF-19
+    /// Busca vídeos no mix de um vídeo. Mix indisponível devolve lista vazia.
+    async fn related_tracks(&self, video_id: &str, limit: usize) -> Result<Vec<SearchResult>>;
+
+    // @req RF-20
+    /// Lê campos musicais fornecidos pelo vídeo como fonte secundária.
+    async fn video_metadata(&self, video_id: &str) -> Result<VideoMetadata>;
 }

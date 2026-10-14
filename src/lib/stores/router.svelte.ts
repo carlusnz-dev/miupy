@@ -2,7 +2,7 @@
 
 export type RouteName =
   | 'home' | 'library' | 'playlists' | 'playlist' | 'youtube' | 'downloads'
-  | 'now-playing' | 'artist' | 'stats' | 'wrapped' | 'profile' | 'settings' | 'not-found';
+  | 'now-playing' | 'artist' | 'stats' | 'dna' | 'wrapped' | 'profile' | 'settings' | 'not-found';
 
 export interface Route { name: RouteName; params: Record<string, string>; }
 
@@ -17,6 +17,7 @@ function parse(hash: string): Route {
   if (a === 'downloads') return { name: 'downloads', params: {} };
   if (a === 'tocando') return { name: 'now-playing', params: {} };
   if (a === 'artista' && b) return { name: 'artist', params: { id: b } };
+  if (a === 'dna') return { name: 'dna', params: {} };
   if (a === 'estatisticas') return { name: 'stats', params: {} };
   if (a === 'retrospectiva') return { name: 'wrapped', params: {} };
   if (a === 'perfil') return { name: 'profile', params: {} };
@@ -38,7 +39,7 @@ export function navigate(path: string) { location.hash = path; }
 export function href(path: string) { return `#${path}`; }
 export const paths = {
   home: '/', library: '/biblioteca', playlists: '/playlists', youtube: '/youtube', downloads: '/downloads',
-  nowPlaying: '/tocando', stats: '/estatisticas', wrapped: '/retrospectiva', profile: '/perfil', settings: '/configuracoes',
+  nowPlaying: '/tocando', stats: '/estatisticas', dna: '/dna', wrapped: '/retrospectiva', profile: '/perfil', settings: '/configuracoes',
   playlist: (id: string) => `/playlists/${encodeURIComponent(id)}`,
   artist: (id: string) => `/artista/${encodeURIComponent(id)}`,
 };

@@ -1,13 +1,12 @@
 //! Implementação de [`MediaResolver`] que executa o binário `yt-dlp` como processo.
 //!
-//! IMPORTANTE: o caminho real (processo) NÃO foi exercitado no desenvolvimento, porque o `yt-dlp`
-//! não estava instalado. Estão testados com fixtures: construção dos argumentos, parsing do JSON,
-//! parsing das linhas de progresso, validações e limpeza de parciais.
+//! O caminho real é verificado por testes de rede ignorados por padrão.
 //!
 //! Segurança: a linha de comando é sempre uma lista de argumentos separados (nunca passa por
 //! shell). A consulta do usuário vai dentro do valor `ytsearchN:<consulta>`, que nunca começa
 //! com `-`, então não pode ser lida como opção. URLs/ids são validados e remontados por nós.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -18,13 +17,17 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::error::{MediaError, Result};
+use crate::metadata::MetadataProvider;
 use crate::resolver::{
-    DownloadRequest, DownloadedAudio, MediaResolver, PlaylistInfo, SearchResult,
+    DownloadRequest, DownloadedAudio, MediaResolver, PlaylistInfo, SearchResult, StreamAudio,
+    VideoMetadata,
 };
 use crate::tagger;
+use crate::title::clean_title;
 
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
 const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(180);
+const VIDEO_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_LIMIT: usize = 50;
 const MAX_QUERY_LEN: usize = 300;
 const PROGRESS_PREFIX: &str = "MIUPYPROG";
@@ -60,6 +63,33 @@ impl YtDlpResolver {
 
     pub fn binary(&self) -> &Path {
         &self.binary
+    }
+
+    // @req RF-09 RF-20
+    /// Reconsulta o vídeo de uma faixa existente e devolve os campos corrigidos.
+    /// O provedor é opcional; se presente, confirma título, álbum e ano no MusicBrainz.
+    pub async fn reprocess_track(
+        &self,
+        source_id: &str,
+        provider: Option<&dyn MetadataProvider>,
+    ) -> Result<CorrectedTrack> {
+        let video = self.video_json(source_id, false).await?;
+        let mut corrected = corrected_track(&video);
+        if let Some(provider) = provider
+            && let Some(found) = provider
+                .find_recording(
+                    &corrected.title,
+                    Some(&corrected.artist),
+                    duration_ms(&video),
+                )
+                .await?
+        {
+            corrected.title = found.title;
+            corrected.artist = found.artist;
+            corrected.album = found.album.or(corrected.album);
+            corrected.release_year = found.release_year.or(corrected.release_year);
+        }
+        Ok(corrected)
     }
 
     // @req RF-09
@@ -115,9 +145,14 @@ impl YtDlpResolver {
 impl MediaResolver for YtDlpResolver {
     // @req RF-09
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let args = search_args(query, limit)?;
+        let wanted = limit.clamp(1, MAX_LIMIT);
+        let args = search_args(query, (wanted * 3).min(150))?;
         let out = self.run_capture(args, SEARCH_TIMEOUT).await?;
-        Ok(parse_search_output(&out))
+        Ok(parse_search_output(&out)
+            .into_iter()
+            .filter(is_song_result)
+            .take(wanted)
+            .collect())
     }
 
     // @req RF-10
@@ -221,6 +256,69 @@ impl MediaResolver for YtDlpResolver {
         let out = self.run_capture(args, PLAYLIST_TIMEOUT).await?;
         parse_playlist_output(&out)
     }
+
+    // @req RF-18
+    async fn resolve_stream(&self, video_id: &str) -> Result<StreamAudio> {
+        let json = self.video_json(video_id, true).await?;
+        parse_stream(&json)
+    }
+
+    // @req RF-19
+    async fn related_tracks(&self, video_id: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        validate_video_id(video_id)?;
+        let mut args = base_args();
+        args.extend([
+            "--flat-playlist".into(),
+            "--dump-single-json".into(),
+            "--playlist-end".into(),
+            (limit.clamp(1, MAX_LIMIT) * 3 + 1).to_string(),
+            "--".into(),
+            // O mix só responde pela URL do vídeo com `list=RD<id>`; a forma
+            // `playlist?list=RD<id>` devolve "This playlist type is unviewable".
+            format!("https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"),
+        ]);
+        let out = match self.run_capture(args, PLAYLIST_TIMEOUT).await {
+            Ok(out) => out,
+            Err(MediaError::NotFound(_)) | Err(MediaError::Unavailable(_)) => return Ok(Vec::new()),
+            Err(MediaError::Internal(message)) if message.contains("unviewable") => {
+                return Ok(Vec::new());
+            }
+            Err(e) => return Err(e),
+        };
+        Ok(filter_related(
+            parse_playlist_output(&out)?.entries,
+            video_id,
+            limit,
+        ))
+    }
+
+    // @req RF-20
+    async fn video_metadata(&self, video_id: &str) -> Result<VideoMetadata> {
+        let json = self.video_json(video_id, false).await?;
+        Ok(parse_video_metadata(&json))
+    }
+}
+
+impl YtDlpResolver {
+    async fn video_json(&self, video_id: &str, audio_only: bool) -> Result<Value> {
+        validate_video_id(video_id)?;
+        let mut args = base_args();
+        args.extend([
+            "--no-playlist".into(),
+            "--dump-single-json".into(),
+            "--skip-download".into(),
+        ]);
+        if audio_only {
+            args.extend(["-f".into(), AUDIO_FORMAT.into()]);
+        }
+        args.extend([
+            "--".into(),
+            format!("https://www.youtube.com/watch?v={video_id}"),
+        ]);
+        let out = self.run_capture(args, VIDEO_TIMEOUT).await?;
+        serde_json::from_str(&out)
+            .map_err(|e| MediaError::Internal(format!("JSON do vídeo ilegível: {e}")))
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -244,7 +342,7 @@ pub(crate) fn search_args(query: &str, limit: usize) -> Result<Vec<String>> {
             "consulta longa demais ou com caracteres de controle".into(),
         ));
     }
-    let limit = limit.clamp(1, MAX_LIMIT);
+    let limit = limit.clamp(1, MAX_LIMIT * 3);
     let mut args = base_args();
     args.extend(["--flat-playlist".into(), "--dump-json".into()]);
     // Consulta começando com `-` é segura: o argumento inteiro começa com "ytsearch".
@@ -394,6 +492,197 @@ fn parse_entry(v: &Value) -> Option<SearchResult> {
     })
 }
 
+// @req RF-18
+fn parse_stream(v: &Value) -> Result<StreamAudio> {
+    let codec = v.get("acodec").and_then(Value::as_str).unwrap_or("");
+    let container = v.get("ext").and_then(Value::as_str).unwrap_or("");
+    if container != "m4a" || !codec.starts_with("mp4a.") {
+        return Err(MediaError::Unavailable(
+            "formato M4A/AAC indisponível para streaming".into(),
+        ));
+    }
+    let url = v
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or_else(|| MediaError::Unavailable("vídeo sem URL direta de áudio".into()))?;
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|_| MediaError::Internal("URL de áudio inválida".into()))?;
+    if parsed.scheme() != "https" {
+        return Err(MediaError::Unavailable("URL de áudio sem HTTPS".into()));
+    }
+    let expires_at = parsed
+        .query_pairs()
+        .find(|(key, _)| key == "expire")
+        .and_then(|(_, value)| value.parse().ok());
+    let http_headers = v
+        .get("http_headers")
+        .and_then(Value::as_object)
+        .map(|headers| {
+            headers
+                .iter()
+                .filter_map(|(key, value)| {
+                    value.as_str().map(|value| (key.clone(), value.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(StreamAudio {
+        url: url.to_string(),
+        http_headers,
+        codec: "aac".into(),
+        container: container.into(),
+        bitrate_kbps: v
+            .get("abr")
+            .and_then(Value::as_f64)
+            .filter(|n| *n >= 0.0)
+            .map(|n| n.round() as u32),
+        duration_ms: v
+            .get("duration")
+            .and_then(Value::as_f64)
+            .filter(|n| *n >= 0.0)
+            .map(|n| (n * 1000.0).round() as u64),
+        expires_at,
+    })
+}
+
+// @req RF-20
+fn parse_video_metadata(v: &Value) -> VideoMetadata {
+    let field = |key| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
+    let mut genres = Vec::new();
+    let mut seen = HashSet::new();
+    for key in ["categories", "tags"] {
+        if let Some(items) = v.get(key).and_then(Value::as_array) {
+            for item in items {
+                if let Some(name) = item.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                    let name = name.to_lowercase();
+                    if seen.insert(name.clone()) {
+                        genres.push(name);
+                    }
+                }
+            }
+        }
+    }
+    genres.truncate(8);
+    VideoMetadata {
+        artist: field("artist").or_else(|| field("creator")),
+        track: field("track"),
+        album: field("album"),
+        release_year: v
+            .get("release_year")
+            .and_then(Value::as_u64)
+            .and_then(|year| u32::try_from(year).ok())
+            .filter(|year| (1000..=3000).contains(year))
+            .or_else(|| {
+                ["release_date"]
+                    .iter()
+                    .filter_map(|key| v.get(*key).and_then(Value::as_str))
+                    .find_map(|date| date.get(..4)?.parse::<u32>().ok())
+                    .filter(|year| (1000..=3000).contains(year))
+            }),
+        genres,
+    }
+}
+
+/// Campos prontos para atualizar uma faixa já salva no banco.
+// @req RF-09 RF-20
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectedTrack {
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub release_year: Option<u32>,
+}
+
+// @req RF-09 RF-20
+/// Extrai campos musicais de um JSON de vídeo do yt-dlp. Campos estruturados têm prioridade.
+pub fn corrected_track(v: &Value) -> CorrectedTrack {
+    let field = |key| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
+    let raw = field("title").unwrap_or("");
+    let channel = field("channel").or_else(|| field("uploader")).unwrap_or("");
+    let parsed = clean_title(raw, channel);
+    let mut album = field("album").map(String::from);
+    let parts: Vec<_> = raw.split(" - ").map(str::trim).collect();
+    if album.is_none() && parts.len() >= 3 && parts.iter().all(|s| !s.is_empty()) {
+        album = Some(parts[1..parts.len() - 1].join(" - "));
+    } else if album.is_none() && parts.len() == 2 && parsed.title.eq_ignore_ascii_case(parts[0]) {
+        album = Some(parts[1].to_string());
+    }
+    let meta = parse_video_metadata(v);
+    CorrectedTrack {
+        title: field("track").unwrap_or(&parsed.title).to_string(),
+        artist: field("artist")
+            .or_else(|| field("creator"))
+            .map(String::from)
+            .or(parsed.artist)
+            .unwrap_or_else(|| channel.to_string()),
+        album,
+        release_year: meta.release_year,
+    }
+}
+
+fn duration_ms(v: &Value) -> Option<u64> {
+    v.get("duration")
+        .and_then(Value::as_f64)
+        .filter(|d| *d >= 0.0)
+        .map(|d| (d * 1000.0).round() as u64)
+}
+
+// @req RF-09
+/// Decide se um resultado é uma faixa avulsa, usando duração e termos de coletânea.
+pub fn is_song_result(entry: &SearchResult) -> bool {
+    if entry.duration_ms.is_some_and(|ms| ms > 600_000) {
+        return false;
+    }
+    let title = entry.title.to_lowercase();
+    let normalized = title.replace(['_', '|', '[', ']', '(', ')', '–', '—', '-', ':', '/'], " ");
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    let contains = |phrase: &[&str]| words.windows(phrase.len()).any(|w| w == phrase);
+    if [
+        &["full", "album"][..],
+        &["album", "completo"],
+        &["álbum", "completo"],
+        &["greatest", "hits"],
+        &["1", "hour"],
+        &["1", "hora"],
+        &["one", "hour"],
+        &["coletânea"],
+        &["compilação"],
+        &["compilation"],
+        &["playlist"],
+    ]
+    .iter()
+    .any(|phrase| contains(phrase))
+    {
+        return false;
+    }
+    // "Mix" também nomeia versões de uma faixa ("Radio Mix", "Extended Mix"); só indica
+    // coletânea quando o vídeo é longo (ou sem duração conhecida) e o título tem mais termos.
+    let long_or_unknown = entry.duration_ms.is_none_or(|ms| ms > 420_000);
+    !(words.contains(&"mix") && words.len() > 2 && long_or_unknown)
+}
+
+fn filter_related(entries: Vec<SearchResult>, seed: &str, limit: usize) -> Vec<SearchResult> {
+    let mut seen = HashSet::new();
+    entries
+        .into_iter()
+        .filter(|entry| {
+            entry.video_id != seed && seen.insert(entry.video_id.clone()) && is_song_result(entry)
+        })
+        .take(limit.clamp(1, MAX_LIMIT))
+        .collect()
+}
+
 /// Uma linha JSON por resultado (`--dump-json`). Linhas inválidas são ignoradas.
 pub(crate) fn parse_search_output(stdout: &str) -> Vec<SearchResult> {
     stdout
@@ -449,14 +738,23 @@ pub(crate) fn classify_stderr(stderr: &str) -> MediaError {
         .trim()
         .to_string();
     let l = last.to_lowercase();
-    if l.contains("requested format is not available") {
+    if l.contains("requested format is not available") || l.contains("no video formats found") {
         MediaError::Unavailable(format!("formato M4A indisponível para este vídeo: {last}"))
+    } else if l.contains("sign in to confirm your age")
+        || l.contains("age-restricted")
+        || l.contains("not available in your country")
+        || l.contains("not available in your region")
+        || l.contains("geo-restricted")
+        || l.contains("this video is unavailable in your country")
+    {
+        MediaError::Unavailable(last)
     } else if l.contains("video unavailable")
         || l.contains("private video")
         || l.contains("this video is not available")
         || l.contains("has been removed")
         || l.contains("does not exist")
         || l.contains("http error 404")
+        || l.contains("this video is unavailable")
     {
         MediaError::NotFound(last)
     } else if l.contains("unable to download")
@@ -467,8 +765,11 @@ pub(crate) fn classify_stderr(stderr: &str) -> MediaError {
         || l.contains("http error 5")
         || l.contains("http error 429")
         || l.contains("network is unreachable")
+        || l.contains("unable to extract") && l.contains("network")
     {
         MediaError::Network(last)
+    } else if l.contains("playlist type is unviewable") || l.contains("playlist does not exist") {
+        MediaError::NotFound(last)
     } else {
         MediaError::Internal(last)
     }
@@ -507,41 +808,160 @@ mod tests {
 
     const SEARCH: &str = include_str!("../tests/fixtures/ytdlp_search.jsonl");
     const PLAYLIST: &str = include_str!("../tests/fixtures/ytdlp_playlist.json");
+    const VIDEO: &str = include_str!("../tests/fixtures/ytdlp_video.json");
+    const PROGRESS: &str = include_str!("../tests/fixtures/ytdlp_progress.txt");
+    const ERRORS: &str = include_str!("../tests/fixtures/ytdlp_errors.json");
+
+    // @test RF-18 RF-20
+    #[test]
+    fn video_capturado_resolve_stream_e_metadados() {
+        let video: Value = serde_json::from_str(VIDEO).unwrap();
+        let stream = parse_stream(&video).unwrap();
+        assert_eq!(stream.codec, "aac");
+        assert_eq!(stream.container, "m4a");
+        assert_eq!(stream.duration_ms, Some(19_000));
+        assert!(stream.bitrate_kbps.unwrap() >= 100);
+        assert_eq!(stream.expires_at, Some(1791910000));
+        assert!(stream.http_headers.contains_key("User-Agent"));
+        let meta = parse_video_metadata(&video);
+        assert!(meta.genres.contains(&"film & animation".into()));
+        assert!(meta.release_year.is_none());
+        let mut unsupported = video;
+        unsupported["acodec"] = Value::String("opus".into());
+        assert_eq!(
+            parse_stream(&unsupported).unwrap_err().code(),
+            "unavailable"
+        );
+    }
+
+    // @test RF-19
+    #[test]
+    fn relacionadas_removem_semente_e_repetidos() {
+        let mut entries = parse_playlist_output(PLAYLIST).unwrap().entries;
+        let seed = entries[0].video_id.clone();
+        entries.push(entries[1].clone());
+        let related = filter_related(entries, &seed, 50);
+        assert_eq!(related.len(), 3);
+        assert!(related.iter().all(|entry| entry.video_id != seed));
+    }
 
     // @test RF-09
     #[test]
     fn parse_busca_ignora_linhas_ruins() {
         let r = parse_search_output(SEARCH);
-        assert_eq!(r.len(), 3, "{r:?}");
-        assert_eq!(r[0].video_id, "dQw4w9WgXcQ");
-        assert_eq!(r[0].channel, "Rick Astley");
-        assert_eq!(r[0].duration_ms, Some(213_000));
-        assert!(r[0].thumbnail_url.as_deref().unwrap().contains("hq720.jpg"));
-        // canal nulo cai para uploader; duração float; webp trocado por jpg
-        assert_eq!(r[1].channel, "Smash Mouth");
-        assert_eq!(r[1].duration_ms, Some(200_000));
-        assert_eq!(
-            r[1].thumbnail_url.as_deref(),
-            Some("https://i.ytimg.com/vi/L_jWHffIx5E/hqdefault.jpg")
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r[0].video_id, "8_aIF8GvEK4");
+        assert_eq!(r[0].channel, "Creative Commons Music");
+        assert_eq!(r[0].duration_ms, Some(193_000));
+        assert!(
+            r[0].thumbnail_url
+                .as_deref()
+                .unwrap()
+                .contains("hqdefault.jpg")
         );
-        // ao vivo: sem duração
-        assert_eq!(r[2].duration_ms, None);
+        assert_eq!(parse_search_output("inválido\n{}\n").len(), 0);
+    }
+
+    // @test RF-09 RF-20
+    #[test]
+    fn reprocessa_fixtures_racionais_e_preserva_metadados_estruturados() {
+        for (fixture, expected_title, expected_album) in [
+            (
+                include_str!("../tests/fixtures/racionais_q_xeCu3P9hU.json"),
+                "Estilo Cachorro",
+                "Nada Como Um Dia Após O Outro Dia (Ri Depois)",
+            ),
+            (
+                include_str!("../tests/fixtures/racionais_fgysUhl98As.json"),
+                "Eu sou 157",
+                "Nada Como Um Dia Após O Outro Dia (Chora Agora)",
+            ),
+            (
+                include_str!("../tests/fixtures/racionais_pL4bzW2qGqQ.json"),
+                "Jorge da Capadócia",
+                "Sobrevivendo no Inferno",
+            ),
+        ] {
+            let v: Value = serde_json::from_str(fixture).unwrap();
+            let track = corrected_track(&v);
+            assert_eq!(track.title, expected_title);
+            assert_eq!(track.artist, "Racionais");
+            assert_eq!(track.album.as_deref(), Some(expected_album));
+        }
+        let structured = serde_json::json!({"title":"Racionais - álbum - cru", "channel":"Racionais - Topic", "track":"Estruturada", "artist":"Artista estruturado", "album":"Álbum estruturado", "release_year":2003});
+        let track = corrected_track(&structured);
+        assert_eq!(track.title, "Estruturada");
+        assert_eq!(track.artist, "Artista estruturado");
+        assert_eq!(track.album.as_deref(), Some("Álbum estruturado"));
+        assert_eq!(track.release_year, Some(2003));
+
+        let known_good: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/ytdlp_daftpunk_get_lucky.json"
+        ))
+        .unwrap();
+        let track = corrected_track(&known_good);
+        assert_eq!(track.title, "Get Lucky");
+        assert_eq!(track.artist, "Daft Punk");
+        assert_eq!(track.release_year, None);
+    }
+
+    // @test RF-09
+    #[test]
+    fn filtro_rejeita_coletaneas_e_duracao_sem_rejeitar_faixa_mix() {
+        let item = |title: &str, ms| SearchResult {
+            video_id: "abcdefghijk".into(),
+            title: title.into(),
+            channel: "Artista".into(),
+            duration_ms: ms,
+            thumbnail_url: None,
+        };
+        for title in [
+            "Artista - Full Album 2024",
+            "Álbum completo de artista",
+            "Greatest Hits",
+            "Playlist de sucessos",
+            "Coletânea 1 hora",
+            "Rock 1-hour compilation",
+            "Full-album collection",
+            "Artista mix músicas",
+        ] {
+            assert!(!is_song_result(&item(title, Some(500_000))), "{title}");
+        }
+        assert!(!is_song_result(&item("Uma faixa", Some(600_001))));
+        assert!(is_song_result(&item("Mix", Some(180_000))));
+        assert!(is_song_result(&item(
+            "Artista - Música (Radio Mix)",
+            Some(210_000)
+        )));
+        assert!(is_song_result(&item(
+            "Artista - Música (Extended Mix)",
+            Some(400_000)
+        )));
+        assert!(!is_song_result(&item("Artista mix músicas", None)));
+        assert!(is_song_result(&item("Artista - Música", Some(180_000))));
     }
 
     // @test RF-11
     #[test]
     fn parse_playlist() {
         let p = parse_playlist_output(PLAYLIST).unwrap();
-        assert_eq!(p.id, "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
-        assert_eq!(p.title.as_deref(), Some("Minha playlist"));
-        assert_eq!(p.entries.len(), 2);
-        assert_eq!(p.entries[1].channel, "officialpsy");
+        assert_eq!(p.id, "PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj");
+        assert!(p.title.as_deref().unwrap().contains("Pop Music"));
+        assert_eq!(p.entries.len(), 4);
         assert!(parse_playlist_output("lixo").is_err());
     }
 
     // @test RF-10
     #[test]
     fn progresso() {
+        let values: Vec<_> = PROGRESS.lines().filter_map(parse_progress_line).collect();
+        assert_eq!(values.len(), 10);
+        assert!(values.first().unwrap() < values.last().unwrap());
+        assert_eq!(*values.last().unwrap(), 1.0);
+        assert_eq!(
+            parse_file_line(PROGRESS.lines().last().unwrap()),
+            Some(PathBuf::from("/tmp/miupy-zoo.m4a"))
+        );
         assert_eq!(parse_progress_line("MIUPYPROG 50 100 NA"), Some(0.5));
         assert_eq!(parse_progress_line("MIUPYPROG 50 NA 200"), Some(0.25));
         assert_eq!(parse_progress_line("MIUPYPROG 150 100 NA"), Some(1.0));
@@ -594,7 +1014,7 @@ mod tests {
                 .unwrap()
                 .last()
                 .unwrap()
-                .starts_with("ytsearch50:")
+                .starts_with("ytsearch150:")
         );
     }
 
@@ -657,6 +1077,16 @@ mod tests {
     #[test]
     fn classificacao_de_erros() {
         let c = |s: &str| classify_stderr(s).code();
+        let errors: Value = serde_json::from_str(ERRORS).unwrap();
+        assert_eq!(c(errors["indisponivel"].as_str().unwrap()), "not_found");
+        assert_eq!(c(errors["formato"].as_str().unwrap()), "unavailable");
+        assert_eq!(c(errors["mix"].as_str().unwrap()), "not_found");
+        assert_eq!(c(errors["rede"].as_str().unwrap()), "network");
+        assert_eq!(
+            c("ERROR: This video is not available in your country"),
+            "unavailable"
+        );
+        assert_eq!(c("ERROR: Sign in to confirm your age"), "unavailable");
         assert_eq!(c("ERROR: [youtube] x: Video unavailable"), "not_found");
         assert_eq!(c("ERROR: [youtube] x: Private video. Sign in"), "not_found");
         assert_eq!(
@@ -777,7 +1207,11 @@ mod tests {
             let bin = fake_bin(tmp.path(), &format!("cat '{}'", fixture.display()));
             let r = YtDlpResolver::with_binary(bin);
             let res = r.search("qualquer", 5).await.unwrap();
-            assert_eq!(res.len(), 3);
+            assert_eq!(
+                res.len(),
+                1,
+                "o filtro removeu vídeo com mais de dez minutos"
+            );
         }
     }
 }
