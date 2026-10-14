@@ -2,7 +2,9 @@
 //! de cima e para compilar onde não há motor real (Android, por enquanto).
 
 use crate::error::{AudioError, Result};
-use crate::types::{AudioBackend, AudioEvent, PROGRESS_INTERVAL_MS, PlaybackState, PlaybackStatus};
+use crate::types::{
+    AudioBackend, AudioEvent, PROGRESS_INTERVAL_MS, PlaybackState, PlaybackStatus, StreamOptions,
+};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::path::Path;
 use std::sync::Mutex;
@@ -65,6 +67,7 @@ impl NullBackend {
             g.state.status = PlaybackStatus::Stopped;
             let snapshot = g.state.clone();
             g.state.path = None;
+            g.state.url = None;
             let _ = self.tx.send(AudioEvent::StateChanged(snapshot));
             let _ = self.tx.send(AudioEvent::TrackEnded);
         } else {
@@ -93,15 +96,54 @@ impl AudioBackend for NullBackend {
     fn load(&self, path: &Path) -> Result<()> {
         let mut g = self.lock();
         if g.fail_loads {
-            return Err(AudioError::Decode {
+            g.state.status = PlaybackStatus::Stopped;
+            g.state.path = None;
+            g.state.url = None;
+            g.state.position_ms = 0;
+            g.state.duration_ms = 0;
+            self.emit_state(&g);
+            let e = AudioError::Decode {
                 path: path.to_path_buf(),
                 message: "falha simulada".into(),
+            };
+            let _ = self.tx.send(AudioEvent::Error {
+                message: e.to_string(),
             });
+            return Err(e);
         }
         g.state.status = PlaybackStatus::Paused;
         g.state.path = Some(path.to_path_buf());
+        g.state.url = None;
         g.state.position_ms = 0;
         g.state.duration_ms = g.next_duration_ms;
+        self.emit_state(&g);
+        Ok(())
+    }
+
+    // @req RF-18
+    fn load_url(&self, url: &str, options: StreamOptions) -> Result<()> {
+        let mut g = self.lock();
+        if g.fail_loads {
+            g.state.status = PlaybackStatus::Stopped;
+            g.state.path = None;
+            g.state.url = None;
+            g.state.position_ms = 0;
+            g.state.duration_ms = 0;
+            self.emit_state(&g);
+            let e = AudioError::Network {
+                url: url.into(),
+                message: "falha simulada".into(),
+            };
+            let _ = self.tx.send(AudioEvent::Error {
+                message: e.to_string(),
+            });
+            return Err(e);
+        }
+        g.state.status = PlaybackStatus::Paused;
+        g.state.path = None;
+        g.state.url = Some(url.into());
+        g.state.position_ms = 0;
+        g.state.duration_ms = options.duration_ms;
         self.emit_state(&g);
         Ok(())
     }
@@ -141,6 +183,7 @@ impl AudioBackend for NullBackend {
         let changed = g.state.status != PlaybackStatus::Stopped;
         g.state.status = PlaybackStatus::Stopped;
         g.state.path = None;
+        g.state.url = None;
         g.state.position_ms = 0;
         g.state.duration_ms = 0;
         if changed {
@@ -152,7 +195,7 @@ impl AudioBackend for NullBackend {
     // @req RF-03
     fn seek(&self, position_ms: u64) -> Result<()> {
         let mut g = self.lock();
-        if g.state.path.is_none() {
+        if g.state.path.is_none() && g.state.url.is_none() {
             return Err(AudioError::NothingLoaded);
         }
         g.state.position_ms = position_ms.min(g.state.duration_ms);
@@ -304,5 +347,39 @@ mod tests {
         b.load(&p()).unwrap();
         b.play().unwrap();
         assert_eq!(b.state().status, PlaybackStatus::Playing);
+    }
+
+    // @test RF-18
+    #[test]
+    fn stream_simulation_uses_known_duration_and_reports_failure() {
+        let b = NullBackend::new();
+        let rx = b.events();
+        b.load_url(
+            "https://example.test/tone.m4a",
+            StreamOptions {
+                headers: vec![("Referer".into(), "https://example.test".into())],
+                duration_ms: 2000,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            b.state().url.as_deref(),
+            Some("https://example.test/tone.m4a")
+        );
+        assert_eq!(b.state().duration_ms, 2000);
+        b.play().unwrap();
+        b.seek(1500).unwrap();
+        b.advance(500);
+        assert!(drain(&rx).contains(&AudioEvent::TrackEnded));
+        b.set_fail_loads(true);
+        assert!(matches!(
+            b.load_url("https://example.test/fail", StreamOptions::default()),
+            Err(AudioError::Network { .. })
+        ));
+        assert!(
+            drain(&rx)
+                .iter()
+                .any(|e| matches!(e, AudioEvent::Error { .. }))
+        );
     }
 }
