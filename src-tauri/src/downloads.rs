@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
+use crate::metadata::MetadataService;
 use crate::paths::Dirs;
 
 /// Downloads simultâneos.
@@ -33,6 +34,7 @@ pub struct Downloads {
     db: Db,
     resolver: Arc<dyn MediaResolver>,
     metadata: Arc<dyn MetadataProvider>,
+    artist_metadata: Arc<MetadataService>,
     events: Arc<dyn Events>,
     dirs: Dirs,
     max_concurrent: usize,
@@ -45,6 +47,7 @@ impl Downloads {
         db: Db,
         resolver: Arc<dyn MediaResolver>,
         metadata: Arc<dyn MetadataProvider>,
+        artist_metadata: Arc<MetadataService>,
         events: Arc<dyn Events>,
         dirs: Dirs,
     ) -> Arc<Self> {
@@ -52,6 +55,7 @@ impl Downloads {
             db,
             resolver,
             metadata,
+            artist_metadata,
             events,
             dirs,
             max_concurrent: MAX_CONCURRENT,
@@ -307,9 +311,30 @@ impl Downloads {
                 Err(e) => log::warn!("metadados do download de {}: {e}", track.id),
             }
         }
+        if let (Some(aid), Some(artist_mbid)) = (
+            track.artist_id.clone(),
+            recording.as_ref().and_then(|r| r.artist_mbid.clone()),
+        ) {
+            let _ = self
+                .db
+                .run(move |db| {
+                    db.update_artist(
+                        &aid,
+                        &miupy_core::ArtistPatch {
+                            mbid: Some(Some(artist_mbid)),
+                            ..Default::default()
+                        },
+                    )?;
+                    Ok(())
+                })
+                .await;
+        }
 
         // Capa (miniatura do YouTube). Falha aqui não invalida o download.
-        let cover = self.download_cover(&track).await;
+        let cover = self
+            .download_album_cover(&recording)
+            .await
+            .or(self.download_cover(&track).await);
 
         // Tags e capa embutida, em thread de bloqueio. Também não é fatal.
         let update = TagUpdate {
@@ -347,6 +372,9 @@ impl Downloads {
             self.events.download_progress(&job);
         }
         self.events.library_changed("download_done");
+        if let Some(artist_id) = track.artist_id.as_deref() {
+            let _ = self.artist_metadata.get_artist(artist_id).await;
+        }
         Ok(())
     }
 
@@ -369,12 +397,39 @@ impl Downloads {
             .download_image(&url, &self.dirs.covers, &track.id)
             .await
         {
-            Ok(path) => Some(path),
+            Ok(path) => crate::paths::normalize_jpeg(&path).ok(),
             Err(e) => {
                 log::warn!("não consegui baixar a capa de {}: {e}", track.id);
                 None
             }
         }
+    }
+
+    async fn download_album_cover(
+        &self,
+        recording: &Option<miupy_media::RecordingMatch>,
+    ) -> Option<PathBuf> {
+        let recording = recording.as_ref()?;
+        let mut ids = recording.release_mbids.clone();
+        if ids.is_empty() {
+            ids.extend(recording.release_mbid.clone());
+        }
+        let dir = self.dirs.covers.join("albuns");
+        for id in ids {
+            let cached = dir.join(format!("{id}.jpg"));
+            if cached.is_file() {
+                return Some(cached);
+            }
+            match self.metadata.download_cover(&id, &dir, &id).await {
+                Ok(path) => return crate::paths::normalize_jpeg(&path).ok(),
+                Err(miupy_media::MediaError::NotFound(_)) => continue,
+                Err(e) => {
+                    log::warn!("capa do álbum {id}: {e}");
+                    break;
+                }
+            }
+        }
+        None
     }
 }
 
@@ -447,6 +502,14 @@ pub mod testing {
         MetadataProvider, PlaylistInfo, RecordingMatch, SearchResult, error::Result,
     };
 
+    fn valid_jpeg() -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut out, image::ImageFormat::Jpeg)
+            .unwrap();
+        out.into_inner()
+    }
+
     #[derive(Default)]
     pub struct FakeResolver {
         pub results: Mutex<Vec<SearchResult>>,
@@ -454,6 +517,7 @@ pub mod testing {
         pub stream_fail: Mutex<Option<MediaError>>,
         pub stream_calls: Mutex<u32>,
         pub stream_expiry: Mutex<Option<u64>>,
+        pub stream_delay_ms: Mutex<u64>,
         pub always_fail_network: Mutex<bool>,
         pub video: Mutex<Option<miupy_media::VideoMetadata>>,
         /// `Some(erro)` faz o download falhar com esse erro.
@@ -490,6 +554,10 @@ pub mod testing {
         }
 
         async fn resolve_stream(&self, video_id: &str) -> Result<miupy_media::StreamAudio> {
+            let delay = *self.stream_delay_ms.lock().unwrap();
+            if delay > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
             *self.stream_calls.lock().unwrap() += 1;
             if let Some(error) = self.stream_fail.lock().unwrap().take() {
                 return Err(error);
@@ -645,7 +713,7 @@ pub mod testing {
             }
             std::fs::create_dir_all(dest_dir).unwrap();
             let p = dest_dir.join(format!("{file_stem}.jpg"));
-            std::fs::write(&p, b"jpg").unwrap();
+            std::fs::write(&p, valid_jpeg()).unwrap();
             Ok(p)
         }
 
@@ -669,7 +737,7 @@ pub mod testing {
             self.call()?;
             std::fs::create_dir_all(dest_dir).unwrap();
             let p = dest_dir.join(format!("{file_stem}.jpg"));
-            std::fs::write(&p, b"jpg").unwrap();
+            std::fs::write(&p, valid_jpeg()).unwrap();
             Ok(p)
         }
     }
@@ -699,10 +767,19 @@ mod tests {
         let db = Db::new(Database::open_in_memory().unwrap());
         let resolver = Arc::new(FakeResolver::default());
         let events = Arc::new(RecordingEvents::default());
+        let provider = Arc::new(FakeMetadata::default());
+        let artist_metadata = Arc::new(crate::metadata::MetadataService::new(
+            db.clone(),
+            provider.clone(),
+            resolver.clone(),
+            dirs.clone(),
+            events.clone(),
+        ));
         let dl = Downloads::new(
             db.clone(),
             resolver.clone(),
-            Arc::new(FakeMetadata::default()),
+            provider,
+            artist_metadata,
             events.clone(),
             dirs.clone(),
         );

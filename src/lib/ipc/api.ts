@@ -1,7 +1,7 @@
 // @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
   ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, PlayerState, Playlist,
-  Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
+  GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
 } from './types';
 
 /** Interface única implementada pelo cliente real (Tauri) e pelo mock em memória. */
@@ -69,6 +69,7 @@ export interface MiupyApi {
   profileUpdate(a: { profile: Profile }): Promise<Profile>;
   settingsGet(): Promise<Settings>;
   settingsUpdate(a: { settings: Partial<Settings> }): Promise<Settings>;
+  systemGpuStatus(): Promise<GpuStatus>;
 
   /** Assina um evento; devolve a função que cancela a assinatura. */
   on<E extends EventName>(event: E, handler: (payload: EventMap[E]) => void): Promise<() => void>;

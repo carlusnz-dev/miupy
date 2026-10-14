@@ -44,7 +44,7 @@
       },
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/audio/**", "$APPDATA/covers/**"]
+        "scope": ["$APPDATA/audio/**", "$APPDATA/covers/**", "$APPDATA/avatars/**", "$APPDATA/playlists/**"]
       }
     }
   },

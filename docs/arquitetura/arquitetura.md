@@ -98,8 +98,11 @@ Tudo sob o diretório de dados do app (`app_data_dir()` do Tauri):
 
 ```
 miupy.db          banco SQLite
+bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
-covers/           <track_id>.jpg, artistas/<artist_id>.jpg
+covers/           <track_id>.jpg, albuns/<chave>.jpg, artistas/<artist_id>.jpg
+avatars/          imagens de perfil enviadas pelo usuário
+playlists/        capas de playlists enviadas pelo usuário
 ```
 
 ## Android

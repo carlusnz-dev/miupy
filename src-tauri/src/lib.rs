@@ -64,12 +64,17 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
     let scope = app.asset_protocol_scope();
     scope.allow_directory(&dirs.covers, true)?;
     scope.allow_directory(&dirs.audio, true)?;
+    scope.allow_directory(dirs.root.join("avatars"), true)?;
+    scope.allow_directory(dirs.root.join("playlists"), true)?;
 
+    let resolver = Arc::new(YtDlpResolver::with_binary(
+        miupy_media::YtDlpManager::new(dirs.root.join("bin"))?.binary_path(),
+    ));
     let state = AppState::new(Parts {
         dirs,
         events: Arc::new(TauriEvents(app.clone())),
         backend: default_backend(),
-        resolver: Arc::new(YtDlpResolver::new()),
+        resolver,
         provider,
     })?;
     Ok(state)
@@ -78,7 +83,8 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
-    let gpu_decision = gpu::configure();
+    let saved_gpu_mode = gpu::load_saved_mode();
+    let gpu_decision = gpu::configure_mode(saved_gpu_mode.as_deref());
 
     let app = tauri::Builder::default()
         .plugin(
@@ -106,6 +112,7 @@ pub fn run() {
             pl::player_previous,
             pl::player_set_volume,
             pl::player_set_muted,
+            pl::player_set_shuffle,
             library::library_list_tracks,
             library::library_list_tracks_by_artist,
             library::library_get_track,
@@ -119,7 +126,11 @@ pub fn run() {
             playlist::playlist_add_tracks,
             playlist::playlist_remove_tracks,
             playlist::playlist_move_track,
+            playlist::playlist_set_cover,
             yt::youtube_search,
+            yt::youtube_suggest,
+            yt::ytdlp_status,
+            yt::ytdlp_update,
             yt::youtube_add_to_library,
             download::download_enqueue,
             download::download_enqueue_playlist,
@@ -129,17 +140,22 @@ pub fn run() {
             meta::metadata_refresh_track,
             meta::metadata_get_artist,
             meta::metadata_get_lyrics,
+            meta::metadata_refresh_library,
             stats::stats_library,
             stats::stats_wrapped,
             stats::stats_wrapped_years,
             stats::stats_taste,
+            stats::stats_track_scores,
+            stats::stats_dna,
             rec::recommendations_list,
             rec::recommendations_refresh,
             rec::recommendations_dismiss,
             profile::profile_get,
             profile::profile_update,
+            profile::profile_set_avatar,
             profile::settings_get,
             profile::settings_update,
+            profile::system_gpu_status,
         ])
         .build(tauri::generate_context!())
         .expect("falha ao montar o app Tauri");

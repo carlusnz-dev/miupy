@@ -414,6 +414,7 @@ interface YtDlpStatus {
   `metadata_refresh_track`, inclusive refazer título, artista e álbum a partir dos dados do
   YouTube. `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
   `metadata://progress` e `library://changed` ao fim.
+- Só pode haver um lote ativo. Enquanto ele roda, outro pedido devolve `conflict`.
 
 ### Recomendações (RF-19)
 

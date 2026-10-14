@@ -60,16 +60,27 @@ pub async fn library_delete_track(
     delete_file: bool,
 ) -> R<()> {
     let id = track_id.clone();
-    let deleted = state.db.run(move |db| Ok(db.delete_track(&id)?)).await?;
+    let (deleted, cover_shared) = state
+        .db
+        .run(move |db| {
+            let deleted = db.delete_track(&id)?;
+            let shared = deleted.cover_path.as_ref().is_some_and(|p| {
+                db.list_tracks(&TrackQuery::default())
+                    .map(|ts| ts.iter().any(|t| t.cover_path.as_ref() == Some(p)))
+                    .unwrap_or(false)
+            });
+            Ok((deleted, shared))
+        })
+        .await?;
     state.player.remove_track(&track_id);
     if delete_file {
         let dirs = state.dirs.clone();
         // Só apagamos arquivos que estão no diretório de dados do app.
         tokio::task::spawn_blocking(move || {
-            for p in [&deleted.file_path, &deleted.cover_path]
-                .into_iter()
-                .flatten()
-            {
+            if let Some(p) = &deleted.file_path {
+                remove_file_quietly(&dirs, std::path::Path::new(p));
+            }
+            if !cover_shared && let Some(p) = &deleted.cover_path {
                 remove_file_quietly(&dirs, std::path::Path::new(p));
             }
         })

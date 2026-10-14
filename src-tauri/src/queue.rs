@@ -5,6 +5,7 @@
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlayQueue {
     ids: Vec<String>,
+    original_ids: Vec<String>,
     index: Option<usize>,
 }
 
@@ -46,8 +47,17 @@ impl PlayQueue {
                 0
             }
         };
+        self.original_ids = ids.clone();
         self.ids = ids;
         self.index = Some(pos);
+    }
+
+    pub fn set_ids(&mut self, ids: Vec<String>, current: &str) {
+        self.ids = ids;
+        self.index = self.ids.iter().position(|id| id == current);
+    }
+    pub fn original_ids(&self) -> &[String] {
+        &self.original_ids
     }
 
     /// Aponta para `track_id` se ele já estiver na fila (a primeira ocorrência).

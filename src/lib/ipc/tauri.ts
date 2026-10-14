@@ -82,6 +82,7 @@ export function createTauriApi(): MiupyApi {
     profileSetAvatar: (a) => call('profile_set_avatar', a), // @req RF-21
     settingsGet: () => call('settings_get'),
     settingsUpdate: (a) => call('settings_update', a),
+    systemGpuStatus: () => call('system_gpu_status'),
 
     async on(event, handler) {
       const un = await listen<never>(event, (e) => handler(e.payload as never));
