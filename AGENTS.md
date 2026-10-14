@@ -6,7 +6,11 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
 
 ## Ambiente
 
-- Rust não está no `PATH` do shell não interativo: `export PATH="$HOME/.cargo/bin:$PATH"`.
+- Use o Rust do rustup: `export PATH="$HOME/.cargo/bin:$PATH"` (o `~/.zshenv` já faz isso; o
+  `/usr/bin/cargo` do Arch é outro build e invalida o `target/` inteiro).
+- Compilação: sccache + clang/mold em `~/.cargo/config.toml`, `jobs = 6`. Worktree novo:
+  `scripts/semear-target.sh <worktree>` antes de compilar. Não exporte `RUSTFLAGS` nem
+  `CARGO_TARGET_DIR`. Detalhes em `docs/contribuicao/compilacao.md`.
 - Gerenciador de pacotes JS: `npm`. CLI do Tauri: `npx tauri`.
 - Adicione dependências com `cargo add` / `npm install` (versão atual), não chute versões.
 
