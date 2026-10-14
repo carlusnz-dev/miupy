@@ -1,8 +1,11 @@
 <script lang="ts">
   // Discoteca: busca, ordenação, filtro de favoritas e seleção múltipla.
-  // @req RF-05 RF-08 RF-10
-  import { api, errorMessage, type SortDir, type Track, type TrackSort } from '../lib/ipc';
-  import { library } from '../lib/stores/library.svelte';
+  // @req RF-05 RF-08 RF-10 RNF-11 RNF-13
+  import { untrack } from 'svelte';
+  import { api, type SortDir, type Track, type TrackSort } from '../lib/ipc';
+  import { Resource } from '../lib/stores/resource.svelte';
+  import { mergeList } from '../lib/util/diff';
+  import { Chunked } from '../lib/util/chunked.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { Selection } from '../lib/stores/selection.svelte';
   import { ui } from '../lib/stores/ui.svelte';
@@ -12,38 +15,54 @@
   import TrackToolbar from '../lib/components/TrackToolbar.svelte';
   import TrackRow from '../lib/components/TrackRow.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Icon from '../lib/components/Icon.svelte';
 
   let search = $state('');
   let sortBy = $state<TrackSort>('addedAt');
   let sortDir = $state<SortDir>('desc');
   let favoritesOnly = $state(false);
-  let tracks = $state<Track[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
   const sel = new Selection();
 
-  async function load() {
-    try {
-      tracks = await api.libraryListTracks({ query: { search: search.trim() || undefined, sortBy, sortDir, favoritesOnly } });
-      error = null;
-      sel.set(sel.ids.filter((id) => tracks.some((t) => t.id === id)));
-    } catch (e) { error = errorMessage(e); } finally { loading = false; }
-  }
-  // recarrega quando muda a consulta (com debounce na busca) ou chega library://changed
+  // Cache por consulta: voltar à Discoteca mostra a lista na hora e atualiza em segundo plano; um
+  // library://changed só troca as linhas que mudaram (RNF-11, RNF-13).
+  const res = new Resource<Track[]>(['tracks'], mergeList((t: Track) => t.id));
+  const tracks = $derived(res.data ?? []);
+  const loading = $derived(res.loading);
+  const error = $derived(res.data === undefined ? res.error : null);
+  $effect(() => res.attach());
+
+  // carrega quando muda a consulta (com debounce na busca); o cache da consulta aparece sem esperar
   $effect(() => {
-    library.version; sortBy; sortDir; favoritesOnly;
-    const q = search;
-    const t = setTimeout(load, q ? 200 : 0);
+    sortBy; sortDir; favoritesOnly;
+    const q = search.trim();
+    const query = { search: q || undefined, sortBy, sortDir, favoritesOnly };
+    const run = () => { void res.load(`tracks:${JSON.stringify(query)}`, () => api.libraryListTracks({ query })); };
+    if (!q) { run(); return; }
+    const t = setTimeout(run, 200);
     return () => clearTimeout(t);
   });
+  // tira da seleção o que sumiu da lista
+  $effect(() => {
+    const list = tracks;
+    untrack(() => {
+      const present = new Set(list.map((t) => t.id));
+      const kept = sel.ids.filter((id) => present.has(id));
+      if (kept.length !== sel.ids.length) sel.set(kept);
+    });
+  });
 
+  // listas longas montam em blocos, um por quadro: a navegação não espera as 1500 linhas (RNF-13)
+  const chunk = new Chunked();
+  $effect(() => chunk.advance(tracks.length));
+  const rows = $derived(tracks.slice(0, chunk.shown));
+  const totalMs = $derived(tracks.reduce((s, t) => s + t.durationMs, 0));
   const allSelected = $derived(tracks.length > 0 && sel.count === tracks.length);
   const queue = $derived(tracks.map((t) => t.id));
   const filtering = $derived(search.trim() !== '' || favoritesOnly);
 </script>
 
-<PageHeader title="Discoteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(tracks.reduce((s, t) => s + t.durationMs, 0))}`}>
+<PageHeader title="Discoteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(totalMs)}`}>
   {#snippet actions()}
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar tudo</button>
   {/snippet}
@@ -61,9 +80,9 @@
 {/if}
 
 {#if loading}
-  <State kind="loading" />
+  <SkeletonList variant="tracks" count={10} label="Carregando a discoteca" />
 {:else if error}
-  <State kind="error" text={error} onretry={load} />
+  <State kind="error" text={error} onretry={() => res.reload()} />
 {:else if tracks.length === 0}
   {#if filtering}
     <State kind="empty" icon="search" title="Nenhuma faixa encontrada" text="Ajuste a busca ou tire o filtro de favoritas." />
@@ -76,9 +95,10 @@
     Selecionar tudo
   </label>
   <div role="list">
-    {#each tracks as t, i (t.id)}
+    {#each rows as t, i (t.id)}
       <TrackRow track={t} index={i} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
         current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} />
     {/each}
   </div>
+  {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}
 {/if}

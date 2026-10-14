@@ -1,10 +1,11 @@
 <script lang="ts">
-  // Perfil com validação. @req RF-16
+  // Perfil com validação. @req RF-16 RNF-11
   import { errorMessage, type Profile } from '../lib/ipc';
   import { profile } from '../lib/stores/profile.svelte';
   import { notify } from '../lib/stores/toast.svelte';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Avatar from '../lib/components/Avatar.svelte';
   import { readImageUpload, previewImage } from '../lib/util/imageUpload';
   import { notifyError } from '../lib/stores/toast.svelte';
@@ -81,7 +82,7 @@
 {#if loadError}
   <State kind="error" text={loadError} onretry={load} />
 {:else if !form}
-  <State kind="loading" />
+  <SkeletonList variant="form" label="Carregando o perfil" />
 {:else}
   <div class="grid max-w-3xl gap-6 md:grid-cols-[auto_1fr]">
     <div class="flex flex-col items-center gap-2">

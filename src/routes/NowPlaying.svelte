@@ -16,6 +16,7 @@
   import ShuffleButton from '../lib/components/ShuffleButton.svelte';
   import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { useShared } from '../lib/layoutPresence';
 
   const t = $derived(player.track);
@@ -120,7 +121,7 @@
               </ol>
             {/if}
           {:else if lyricsLoading}
-            <State kind="loading" title="Buscando letra…" />
+            <SkeletonList variant="lines" label="Buscando letra" />
           {:else if lyricsErr}
             <State kind="error" title="Não deu para buscar a letra" text="A letra vem de um serviço online; sem rede ela não aparece." />
           {:else if lines.length}

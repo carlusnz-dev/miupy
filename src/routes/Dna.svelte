@@ -1,5 +1,5 @@
 <script lang="ts">
-  // @req RF-25 RNF-04
+  // @req RF-25 RNF-04 RNF-11
   import { onMount } from 'svelte';
   import { dna } from '../lib/stores/dna.svelte';
   import { fmtDuration } from '../lib/util/format';
@@ -7,6 +7,7 @@
   import { href, paths } from '../lib/stores/router.svelte';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   onMount(() => { void dna.load(); });
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 </script>
@@ -16,7 +17,7 @@
     <option value="7">7 dias</option><option value="30">30 dias</option><option value="90">90 dias</option><option value="365">365 dias</option>
   </select>
 </label>
-{#if dna.loading && !dna.data}<State kind="loading" />
+{#if dna.loading && !dna.data}<SkeletonList variant="stats" count={3} label="Calculando seu DNA" />
 {:else if dna.error}<State kind="error" text={dna.error} onretry={() => dna.load()} />
 {:else if !dna.data || (dna.data.listenedMs === 0 && dna.data.topArtists.length === 0 && dna.data.topGenres.length === 0)}<State kind="empty" title="Seu DNA ainda está se formando" text="Ouça algumas faixas para ver seus artistas, gêneros e tendências." />
 {:else}

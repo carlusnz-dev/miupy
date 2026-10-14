@@ -19,7 +19,9 @@ function mockArt(seed: number): string {
 function err(code: string, message: string): never {
   throw { code, message };
 }
-const wait = (ms = 70) => new Promise((r) => setTimeout(r, ms));
+/** `?latency=ms` soma atraso a toda chamada do mock: serve para ver os esqueletos (RNF-11). */
+const extraLatency = typeof location === 'undefined' ? 0 : Number(new URLSearchParams(location.search).get('latency')) || 0;
+const wait = (ms = 70) => new Promise((r) => setTimeout(r, ms + extraLatency));
 let seq = 1000;
 const uid = (p: string) => `${p}-${(seq++).toString(16).padStart(6, '0')}`;
 

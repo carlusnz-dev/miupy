@@ -7,6 +7,7 @@
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import State from './State.svelte';
+  import SkeletonList from './SkeletonList.svelte';
   let { playlistId }: { playlistId?: string } = $props();
   // svelte-ignore state_referenced_locally
   const store = new RecommendationsStore(playlistId);
@@ -32,7 +33,7 @@
     <button class="btn btn-sm" disabled={store.refreshing} onclick={() => store.refresh()}><Icon name="sparkle" size={15} />{store.refreshing ? 'Atualizando…' : 'Atualizar'}</button>
   </div>
   {#if store.error}<p class="mb-3 text-sm text-danger" role="alert">{store.error}</p>{/if}
-  {#if store.loading && !store.items.length}<State kind="loading" title="Buscando sugestões…" />
+  {#if !store.ready && !store.error}<SkeletonList variant="recs" label="Buscando sugestões" />
   {:else if !store.items.length}<State kind="empty" title="Ainda sem sugestões" text="As sugestões aparecem depois de ouvir música. Use Atualizar quando estiver conectado para buscar novas faixas." />
   {:else}
     <ul class="grid gap-2 sm:grid-cols-2">

@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Retrospectiva anual no espírito do Wrapped: sequência de cartões. @req RF-15 RNF-05
-  import { api, errorMessage, type Wrapped } from '../lib/ipc';
+  // Retrospectiva anual no espírito do Wrapped: sequência de cartões. @req RF-15 RNF-05 RNF-11
+  import { api, type Wrapped } from '../lib/ipc';
+  import { Resource } from '../lib/stores/resource.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { fmtDuration, fmtMinutes, fmtNumber, MONTHS } from '../lib/util/format';
@@ -8,22 +9,28 @@
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
 
   const thisYear = new Date().getFullYear();
-  let years = $state<number[]>([]);
-  let yearsLoading = $state(true);
+  // Anos e retrospectiva de cada ano ficam em cache: voltar a um ano já visto mostra na hora.
+  const yearsRes = new Resource<number[]>([]);
+  yearsRes.prime('wrapped:years');
+  const years = $derived(yearsRes.data ?? []);
+  const yearsLoading = $derived(yearsRes.loading);
   let year = $state(thisYear);
-  let w = $state<Wrapped | null>(null);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
+  const wrapped = new Resource<Wrapped>([]);
+  const w = $derived(wrapped.dataKey === `wrapped:${year}` ? (wrapped.data ?? null) : null);
+  const loading = $derived(!w && !wrapped.error && years.includes(year));
+  const error = $derived(wrapped.error ?? yearsRes.error);
   let card = $state(0);
-  $effect(() => { void api.statsWrappedYears().then((found) => { years = found; if (found.length && !found.includes(year)) year = found[0]; }).catch((e) => { error = errorMessage(e); }).finally(() => { yearsLoading = false; }); });
+  $effect(() => { void yearsRes.load('wrapped:years', () => api.statsWrappedYears()); });
+  $effect(() => { if (years.length && !years.includes(year)) year = years[0]; });
 
   async function load() {
-    loading = true; error = null; card = 0;
-    try { w = await api.statsWrapped({ year }); } catch (e) { error = errorMessage(e); } finally { loading = false; }
+    card = 0;
+    await wrapped.load(`wrapped:${year}`, () => api.statsWrapped({ year }));
   }
-  $effect(() => { year; if (years.includes(year)) void load(); else loading = false; });
+  $effect(() => { year; if (years.includes(year)) void load(); });
 
   const empty = $derived(!!w && w.totalPlays === 0);
   const TOTAL = 6;
@@ -44,13 +51,13 @@
 </div>
 
 {#if yearsLoading}
-  <State kind="loading" title="Buscando anos…" />
+  <SkeletonList variant="card" label="Montando sua retrospectiva" />
 {:else if error && !years.length}
   <State kind="error" text={error} />
 {:else if !years.length}
   <State kind="empty" icon="sparkle" title="Ainda sem retrospectiva" text="Ouça músicas para criar sua primeira retrospectiva." />
 {:else if loading}
-  <State kind="loading" title="Montando sua retrospectiva…" />
+  <SkeletonList variant="card" label="Montando sua retrospectiva" />
 {:else if error}
   <State kind="error" text={error} onretry={load} />
 {:else if !w || empty}

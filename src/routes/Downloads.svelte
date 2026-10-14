@@ -1,19 +1,24 @@
 <script lang="ts">
-  // Fila de downloads com progresso e cancelamento. @req RF-10 RF-11
-  import { api, errorMessage, type DownloadJob, type Track } from '../lib/ipc';
+  // Fila de downloads com progresso e cancelamento. @req RF-10 RF-11 RNF-11 RNF-13
+  import { api, type DownloadJob, type Track } from '../lib/ipc';
   import { downloads } from '../lib/stores/downloads.svelte';
-  import { library } from '../lib/stores/library.svelte';
+  import { Resource } from '../lib/stores/resource.svelte';
+  import { mergeList } from '../lib/util/diff';
   import { notifyError } from '../lib/stores/toast.svelte';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import Skeleton from '../lib/components/Skeleton.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
 
-  let titles = $state<Record<string, Track>>({});
-  $effect(() => {
-    library.version;
-    api.libraryListTracks().then((l) => { titles = Object.fromEntries(l.map((t) => [t.id, t])); }).catch(() => {});
-  });
+  // Títulos e capas dos jobs: lista em cache, atualizada em segundo plano e só quando as faixas mudam.
+  const names = new Resource<Track[]>(['tracks'], mergeList((t: Track) => t.id));
+  names.prime('downloads:titles');
+  const titles = $derived(new Map((names.data ?? []).map((t) => [t.id, t])));
+  const titlesReady = $derived(names.data !== undefined);
+  $effect(() => names.attach());
+  $effect(() => { void names.load('downloads:titles', () => api.libraryListTracks()); });
 
   const active = $derived(downloads.jobs.filter((j) => j.status === 'queued' || j.status === 'downloading'));
   const finished = $derived(downloads.jobs.filter((j) => j.status === 'done' || j.status === 'error').reverse());
@@ -28,11 +33,15 @@
 </script>
 
 {#snippet item(j: DownloadJob)}
-  {@const t = titles[j.trackId]}
+  {@const t = titles.get(j.trackId)}
   <li class="card flex items-center gap-3 p-3">
     <Cover path={t?.coverPath} seed={j.trackId} size={44} rounded="0.375rem" />
     <div class="min-w-0 flex-1">
-      <p class="truncate text-sm font-medium">{t?.title ?? j.trackId}</p>
+      {#if t || titlesReady}
+        <p class="truncate text-sm font-medium">{t?.title ?? j.trackId}</p>
+      {:else}
+        <Skeleton w="45%" h="0.8rem" class="my-0.5" />
+      {/if}
       <p class="truncate text-xs {j.status === 'error' ? 'text-danger' : 'text-muted'}">
         {t?.artistName ? `${t.artistName} · ` : ''}{j.status === 'error' && j.error ? j.error : label[j.status]}
       </p>
@@ -56,7 +65,7 @@
 <PageHeader title="Downloads" subtitle={active.length ? `${active.length} em andamento` : 'Nada em andamento'} />
 
 {#if downloads.loading}
-  <State kind="loading" />
+  <SkeletonList variant="jobs" count={4} label="Carregando os downloads" />
 {:else if downloads.error}
   <State kind="error" text={downloads.error} onretry={() => downloads.reload()} />
 {:else if downloads.jobs.length === 0}

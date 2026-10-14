@@ -9,6 +9,7 @@
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { SuggestionsStore } from '../lib/stores/suggestions.svelte';
 
   let query = $state('');
@@ -63,7 +64,7 @@
 </form>
 
 {#if searching}
-  <State kind="loading" title="Buscando no YouTube…" />
+  <SkeletonList variant="tracks" count={6} label="Buscando no YouTube" />
 {:else if error}
   <State kind="error" title="A busca falhou" text={error} onretry={search} />
 {:else if results === null}
