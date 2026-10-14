@@ -518,6 +518,8 @@ pub mod testing {
         pub stream_calls: Mutex<u32>,
         pub stream_expiry: Mutex<Option<u64>>,
         pub stream_delay_ms: Mutex<u64>,
+        pub stream_gate:
+            Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
         pub always_fail_network: Mutex<bool>,
         pub video: Mutex<Option<miupy_media::VideoMetadata>>,
         /// `Some(erro)` faz o download falhar com esse erro.
@@ -554,6 +556,12 @@ pub mod testing {
         }
 
         async fn resolve_stream(&self, video_id: &str) -> Result<miupy_media::StreamAudio> {
+            if let Some((started, release)) = self.stream_gate.lock().unwrap().take() {
+                started.send(()).unwrap();
+                release
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
+            }
             let delay = *self.stream_delay_ms.lock().unwrap();
             if delay > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
