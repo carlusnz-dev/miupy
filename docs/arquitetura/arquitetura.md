@@ -53,6 +53,10 @@ Trait `AudioBackend` (carregar, tocar, pausar, seek, volume, estado) e a impleme
 sobre `rodio`. O motor roda em uma thread própria, recebe comandos por canal e publica eventos
 (posição, fim de faixa, erro). Não conhece fila nem banco: toca um arquivo por vez.
 
+Cadeia de áudio (v0.3): decodificação → ganho da normalização (RF-28) → equalizador de 8 bandas
+(RF-29) → volume do usuário → limitador em −1 dBTP. A medição de loudness (EBU R128) também fica
+aqui, como função pura sobre um arquivo; a casca decide quando medir e guarda o resultado no banco.
+
 No Android esta implementação não é usada: a reprodução passa por um plugin Tauri em Kotlin com
 Media3 (`MediaSessionService`), que é o que permite tocar em segundo plano e aparecer na notificação
 e na tela de bloqueio.
@@ -102,7 +106,7 @@ miupy.db          banco SQLite
 gpu-startup-pending  sentinela temporária da abertura com GPU forçada em Wayland/NVIDIA
 bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
-covers/           <track_id>.jpg, albuns/<chave>.jpg, artistas/<artist_id>.jpg
+covers/           <track_id>.webp, albuns/<chave>.webp, artistas/<artist_id>.webp (RNF-12)
 avatars/          imagens de perfil enviadas pelo usuário
 playlists/        capas de playlists enviadas pelo usuário
 ```
