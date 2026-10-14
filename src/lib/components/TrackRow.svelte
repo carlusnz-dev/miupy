@@ -28,7 +28,7 @@
 </script>
 
 <div
-  class="group motion-item flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
+  class="group motion-item track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
   {draggable} {ondragstart} {ondragover} {ondrop} role="listitem"
 >
   {#if selectable}
@@ -78,3 +78,9 @@
   <span class="tnum w-11 shrink-0 text-right text-xs text-muted">{fmtTime(track.durationMs)}</span>
   {#if extra}{@render extra()}{/if}
 </div>
+
+<style>
+  /* Só as primeiras linhas (as que cabem na tela) fazem a entrada em mola; as de baixo, montadas em
+     blocos ou ao rolar, entram sem animar (RNF-13: centenas de animações simultâneas engasgam). */
+  .track-row:nth-child(n + 15) { animation: none; }
+</style>
