@@ -650,6 +650,8 @@ pub struct Settings {
     pub volume: f64,
     // @req RF-28
     pub normalization: Normalization,
+    // @req RF-29
+    pub eq_preset_id: String,
 }
 
 /// `Partial<Settings>` do ipc.
@@ -659,6 +661,8 @@ pub struct SettingsPatch {
     pub lava_theme: Option<LavaTheme>,
     pub volume: Option<f64>,
     pub normalization: Option<Normalization>,
+    // @req RF-29
+    pub eq_preset_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -672,11 +676,12 @@ mod tests {
             lava_theme: LavaTheme::Purple,
             volume: 0.5,
             normalization: Normalization::Normal,
+            eq_preset_id: "flat".into(),
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal" })
+            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "eqPresetId": "flat" })
         );
         assert_eq!(LavaTheme::default(), LavaTheme::Orange);
     }

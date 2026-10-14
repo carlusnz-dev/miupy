@@ -44,6 +44,7 @@ enum Cmd {
     Seek(u64, Reply),
     SetVolume(f32, Reply),
     SetNormalizationGain(f32, Reply),
+    SetEqualizer([f32; 8], Reply),
     SetMuted(bool, Reply),
     /// Duração calculada em segundo plano (geração da faixa, ms).
     DurationResolved(u64, u64),
@@ -142,6 +143,10 @@ impl AudioBackend for RodioBackend {
     // @req RF-28
     fn set_normalization_gain_db(&self, gain_db: f32) -> Result<()> {
         self.call(|r| Cmd::SetNormalizationGain(gain_db, r))
+    }
+    // @req RF-29
+    fn set_equalizer(&self, gains_db: [f32; 8]) -> Result<()> {
+        self.call(|r| Cmd::SetEqualizer(gains_db, r))
     }
     // @req RF-02
     fn set_muted(&self, muted: bool) -> Result<()> {
@@ -300,6 +305,10 @@ impl Engine {
                         .normalization
                         .store(gain.to_bits(), Ordering::Relaxed);
                 }
+                let _ = r.send(Ok(()));
+            }
+            Cmd::SetEqualizer(gains, r) => {
+                self.dsp.set_equalizer(gains);
                 let _ = r.send(Ok(()));
             }
             Cmd::SetMuted(m, r) => {

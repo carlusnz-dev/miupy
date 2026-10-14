@@ -108,7 +108,9 @@ Linha única cada (`id INTEGER PRIMARY KEY CHECK (id = 1)`), criada pela migraç
 `avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8) e,
 desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`auto|on|off`,
 padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
-`Settings.gpuMode`.
+`Settings.gpuMode`. Desde 0005, `eq_preset_id` guarda o perfil ativo (`flat` por padrão);
+`eq_presets` guarda até três perfis personalizados, com oito ganhos serializados em JSON.
+Os oito perfis prontos vivem no código, fora do banco.
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).
@@ -154,7 +156,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | Número | Frente | Conteúdo |
 |---|---|---|
 | `0004_loudness.sql` | `feat/normalizacao-volume` | **Implementada:** `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` (`normal` por padrão) |
-| `0005_equalizer.sql` | `feat/equalizador` | `eq_presets` (personalizados); `settings.eq_preset_id` |
+| `0005_equalizer.sql` | `feat/equalizador` | **Implementada:** `eq_presets` (personalizados); `settings.eq_preset_id` |
 | `0006_sidebar_width.sql` | `feat/visual-flat` | `settings.sidebar_width` |
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | `settings.favorites_playlist_id`; cria "Favoritas" a partir de `favorites` |
 | `0008_search_history.sql` | `feat/busca-vazia` | `search_history` |

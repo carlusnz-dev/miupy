@@ -38,3 +38,4 @@ falhou, isso fica escrito.
 | 2026-10-14 | 04 — compilação rápida, v0.2.0 e pendências da 03 (com o prompt da 05) | [sessão](2026-10-14_sessao-04.md) · [pausa](2026-10-14_sessao-04_agente-pausa.md) · [limite](2026-10-14_sessao-04_agente-limite.md) · [gpu](2026-10-14_sessao-04_agente-gpu.md) · [aleatorio](2026-10-14_sessao-04_agente-aleatorio.md) |
 | 2026-10-14 | 05 — correção de capas | [capas](2026-10-14_sessao-05_agente-capas.md) |
 | 2026-10-14 | 05 — integração contínua | [ci](2026-10-14_sessao-05_agente-ci.md) |
+| 2026-10-14 | 05 — correção de capas e equalizador | [capas](2026-10-14_sessao-05_agente-capas.md) · [equalizador](2026-10-14_sessao-05_agente-equalizador.md) |
