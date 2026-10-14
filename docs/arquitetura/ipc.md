@@ -697,6 +697,25 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   cache, mostra *skeleton* no formato do conteúdo. Eventos (`library://changed`,
   `recommendations://changed`, `artist://changed`, `download://progress`) invalidam ou atualizam o
   cache. Spinner só dentro de botão com ação em andamento.
+- Implementação: `lib/stores/resource.svelte.ts` (`Resource`: cache por chave de consulta,
+  `invalidate(tags)`, no máximo uma consulta a cada 500 ms por recurso) e `lib/components/Skeleton*.svelte`.
+  Uma resposta igual à anterior mantém as mesmas referências (`lib/util/diff.ts`), então nada é repintado.
+- `library://changed` é filtrado pelo `reason` (`lib/util/libraryEvents.ts`). Cada motivo atualiza só os
+  grupos de tela que dependem dele; motivo desconhecido ou ausente atualiza todos (o seguro). Motivo
+  novo no backend: acrescente a linha na tabela do arquivo e aqui.
+
+  | `reason` | Grupos atualizados |
+  |---|---|
+  | `favorite`, `favorites` | faixas, estatísticas (e a pontuação) |
+  | `download_queued`, `download_failed`, `download_cancelled` | faixas |
+  | `download_done` | faixas, estatísticas |
+  | `playlist_created`, `playlist_deleted` | playlists, estatísticas |
+  | `playlist_updated`, `playlist_cover_updated` | playlists |
+  | `playlist_tracks_added`, `playlist_tracks_removed` | playlists, faixas, estatísticas |
+  | `playlist_reordered` | playlists, faixas |
+  | `artist_photo_updated` | artista, playlists |
+  | `artist_updated` | artista, playlists, faixas |
+  | qualquer outro (`tracks_added`, `track_deleted`, `images_migrated`, `metadata_*`, ...) | todos |
 
 ## Lacunas conhecidas
 

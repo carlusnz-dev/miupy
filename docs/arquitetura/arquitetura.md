@@ -83,8 +83,10 @@ expõe os comandos de [`ipc.md`](ipc.md), emite eventos e faz a orquestração q
 
 ### `src/` (frontend)
 SPA em Svelte 5. Camadas: `lib/ipc` (cliente tipado, com *mock* para rodar no navegador sem Tauri),
-`lib/stores` (player, biblioteca, tema), `lib/components`, `routes`. O tema é um conjunto de
-variáveis CSS trocado pelo atributo `data-lava` no `<html>`.
+`lib/stores` (player, biblioteca, tema e o `Resource`, cache por consulta que as telas usam para mostrar
+o último dado na hora e atualizar em segundo plano), `lib/components` (inclusive o esqueleto de
+carregamento), `routes`. O tema é um conjunto de variáveis CSS trocado pelo atributo `data-lava` no
+`<html>`.
 
 ## Fluxos principais
 

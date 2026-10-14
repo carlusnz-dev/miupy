@@ -188,7 +188,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola. Seção de áudio com seleção do modo de normalização.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
