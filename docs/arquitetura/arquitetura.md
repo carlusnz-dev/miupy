@@ -78,7 +78,8 @@ expõe os comandos de [`ipc.md`](ipc.md), emite eventos e faz a orquestração q
 - **Fila de reprodução**: próxima/anterior, avanço automático ao fim da faixa.
 - **Registro de atividade**: abre um evento de reprodução ao iniciar a faixa e acumula o tempo
   realmente ouvido (pausa não conta) até trocar ou parar.
-- **Downloads**: fila com concorrência limitada; baixa, grava tags, salva a capa, atualiza o banco.
+- **Downloads**: fila com concorrência limitada; baixa, grava tags, salva a capa em WebP, atualiza o banco.
+- **Imagens**: codifica uploads, capas e fotos em WebP com perda; migra JPEG/PNG antigos em segundo plano e atualiza os caminhos no banco.
 
 ### `src/` (frontend)
 SPA em Svelte 5. Camadas: `lib/ipc` (cliente tipado, com *mock* para rodar no navegador sem Tauri),
@@ -110,8 +111,8 @@ gpu-startup-pending  sentinela temporária da abertura com GPU forçada em Wayla
 bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
 covers/           <track_id>.webp, albuns/<chave>.webp, artistas/<artist_id>.webp (RNF-12)
-avatars/          imagens de perfil enviadas pelo usuário
-playlists/        capas de playlists enviadas pelo usuário
+avatars/          imagens de perfil enviadas pelo usuário em WebP
+playlists/        capas de playlists enviadas pelo usuário em WebP
 ```
 
 ## Android

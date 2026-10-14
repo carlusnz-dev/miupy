@@ -129,33 +129,7 @@ impl MetadataService {
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
         let id = track_id.to_owned();
-        let mut track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
-        if let Some(path) = track
-            .cover_path
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .filter(|p| p.is_file())
-            && image::ImageFormat::from_path(&path).ok() == Some(image::ImageFormat::WebP)
-            && let Ok(jpeg) = crate::paths::normalize_jpeg(&path)
-        {
-            let cover = Some(jpeg.to_string_lossy().into_owned());
-            let tid = track.id.clone();
-            if let Ok(updated) = self
-                .db
-                .run(move |db| {
-                    Ok(db.update_track(
-                        &tid,
-                        &TrackPatch {
-                            cover_path: Some(cover),
-                            ..Default::default()
-                        },
-                    )?)
-                })
-                .await
-            {
-                track = updated;
-            }
-        }
+        let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
 
         let rec = self
@@ -194,17 +168,19 @@ impl MetadataService {
         if mbids.is_empty() {
             mbids.extend(rec.release_mbid.clone());
         }
+        let key = crate::paths::album_key(&rec);
         let mut cover = None;
         for mbid in mbids {
             let album_dir = self.dirs.covers.join("albuns");
-            let cached = album_dir.join(format!("{mbid}.jpg"));
+            let cached = album_dir.join(format!("{key}.webp"));
             if cached.is_file() {
                 cover = Some(cached);
                 break;
             }
-            match self.provider.download_cover(&mbid, &album_dir, &mbid).await {
+            match self.provider.download_cover(&mbid, &album_dir, &key).await {
                 Ok(path) => {
-                    cover = crate::paths::normalize_jpeg(&path).ok();
+                    // @req RNF-12
+                    cover = crate::paths::normalize_webp(&path).ok();
                     break;
                 }
                 Err(MediaError::NotFound(_)) => continue,
@@ -330,7 +306,8 @@ impl MetadataService {
             album: track.album.clone(),
             genres: Some(track.genres.clone()),
             release_year: track.release_year.and_then(|year| u32::try_from(year).ok()),
-            cover: cover.and_then(|p| std::fs::read(p).ok()),
+            // @req RF-12: tags de M4A continuam em JPEG.
+            cover: cover.and_then(crate::paths::jpeg_for_tags),
         };
         match tokio::task::spawn_blocking(move || tagger::write_tags(&file, &update)).await {
             Ok(Ok(())) => {}
@@ -391,11 +368,10 @@ impl MetadataService {
                 .inspect_err(|e| log::warn!("foto de {} ilegível: {e}", info.name))
         {
             let dir = self.dirs.covers.join("artistas");
-            let path = dir.join(format!("{}.jpg", info.id));
+            // @req RF-27 RNF-12
+            let path = dir.join(format!("{}.webp", info.id));
             if std::fs::create_dir_all(&dir).is_ok()
-                && img
-                    .save_with_format(&path, image::ImageFormat::Jpeg)
-                    .is_ok()
+                && crate::paths::write_webp(&crate::paths::compact_image(img, false), &path).is_ok()
             {
                 let id = info.id.clone();
                 let p = path.to_string_lossy().into_owned();
@@ -428,7 +404,9 @@ impl MetadataService {
             (Some(url), None) => {
                 let dir = self.dirs.covers.join("artistas");
                 match self.provider.download_image(url, &dir, &info.id).await {
-                    Ok(p) => Some(p.to_string_lossy().into_owned()),
+                    Ok(p) => crate::paths::normalize_webp(&p)
+                        .ok()
+                        .map(|p| p.to_string_lossy().into_owned()),
                     Err(e) => {
                         log::warn!("foto do artista {}: {e}", info.name);
                         None
@@ -573,6 +551,7 @@ mod tests {
             artist_mbid: Some("art-1".into()),
             album: Some("Random Access Memories".into()),
             release_mbid: Some("rel-1".into()),
+            release_group_mbid: None,
             release_mbids: vec!["rel-1".into(), "rel-2".into(), "rel-3".into()],
             duration_ms: Some(369_000),
             score: 100,

@@ -141,7 +141,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -150,7 +150,8 @@
       "tecnologias": [
         "tauri 2",
         "tauri-plugin-log",
-        "webkit2gtk (Linux)"
+        "webkit2gtk (Linux)",
+        "webp/libwebp"
       ],
       "status": "parcial",
       "testes": {
@@ -174,7 +175,8 @@
         "RF-19",
         "RF-20",
         "RNF-09",
-        "RF-28"
+        "RF-28",
+        "RNF-12"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
