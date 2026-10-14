@@ -11,16 +11,24 @@ function rect(node: HTMLElement): SharedRect {
   return { left: box.left, top: box.top, width: box.width, height: box.height };
 }
 
+function isVisible(node: HTMLElement) {
+  if (!node.isConnected) return false;
+  const box = node.getBoundingClientRect();
+  return box.width > 0 && box.height > 0;
+}
+
 export function captureSharedLayout(preferPersistentPlayer = false) {
   generation++;
   const snapshot = new Map<string, SharedRect>();
-  for (const [key, group] of byKey) for (const { node } of group) if (node.isConnected) snapshot.set(key, rect(node));
+  // Só elementos visíveis: o MiniPlayer (escondido no desktop) e a PlayerBar (escondida no móvel)
+  // registram a mesma chave, e o retângulo vazio do escondido não pode ser a origem.
+  for (const [key, group] of byKey) for (const { node } of group) if (isVisible(node)) snapshot.set(key, rect(node));
   before.replace(snapshot);
   const capturedGeneration = generation;
   requestAnimationFrame(() => {
     if (capturedGeneration !== generation) return;
     for (const [key, group] of byKey) {
-      const connected = [...group].filter(({ node }) => node.isConnected && node.getClientRects().length > 0);
+      const connected = [...group].filter(({ node }) => isVisible(node));
       const added = connected.filter((entry) => entry.generation === capturedGeneration);
       const persistentPlayer = preferPersistentPlayer
         ? connected.find(({ node }) => !node.closest('#conteudo'))
