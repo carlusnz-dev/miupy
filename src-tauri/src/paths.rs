@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 
 use crate::error::AppResult;
 
@@ -45,7 +46,39 @@ impl Dirs {
     }
 }
 
-// @req RF-21 RF-22
+// @req RF-05 RF-12
+pub fn album_key(recording: &miupy_media::RecordingMatch) -> String {
+    if let Some(group) = recording
+        .release_group_mbid
+        .as_ref()
+        .filter(|s| !s.is_empty())
+    {
+        return group.clone();
+    }
+    let artist = recording
+        .artist
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let album = recording
+        .album
+        .as_deref()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let digest = sha2::Sha256::digest(format!("{artist}\0{album}").as_bytes());
+    let mut key = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write;
+        write!(key, "{byte:02x}").expect("escrita em String");
+    }
+    key
+}
+
+// @req RF-21 RF-22 RNF-12
 pub fn save_upload(
     upload: &crate::dto::ImageUpload,
     directory: &Path,
@@ -68,36 +101,69 @@ pub fn save_upload(
     }
     let image = image::load_from_memory(&bytes)
         .map_err(|_| crate::error::AppError::invalid("Arquivo de imagem inválido."))?;
-    let side = image.width().min(image.height());
-    if side == 0 {
+    if image.width() == 0 || image.height() == 0 {
         return Err(crate::error::AppError::invalid("Imagem vazia."));
     }
-    let x = (image.width() - side) / 2;
-    let y = (image.height() - side) / 2;
-    let image = image.crop_imm(x, y, side, side).resize_exact(
-        512,
-        512,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let image = compact_image(image, true);
     std::fs::create_dir_all(directory)?;
-    let path = directory.join(format!("{stem}-{}.jpg", uuid::Uuid::now_v7()));
-    image
-        .save_with_format(&path, image::ImageFormat::Jpeg)
-        .map_err(|e| crate::error::AppError::invalid(e.to_string()))?;
+    let path = directory.join(format!("{stem}-{}.webp", uuid::Uuid::now_v7()));
+    write_webp(&image, &path)?;
     Ok(path)
 }
 
-pub fn normalize_jpeg(path: &Path) -> AppResult<PathBuf> {
+// @req RNF-12
+pub fn compact_image(image: image::DynamicImage, square: bool) -> image::DynamicImage {
+    if square {
+        let side = image.width().min(image.height());
+        let image = image.crop_imm(
+            (image.width() - side) / 2,
+            (image.height() - side) / 2,
+            side,
+            side,
+        );
+        image.resize_exact(512, 512, image::imageops::FilterType::Lanczos3)
+    } else if image.width().max(image.height()) <= 600 {
+        image
+    } else {
+        image.resize(600, 600, image::imageops::FilterType::Lanczos3)
+    }
+}
+
+// @req RNF-12
+pub fn write_webp(image: &image::DynamicImage, path: &Path) -> AppResult<()> {
+    let rgba = image::DynamicImage::ImageRgba8(image.to_rgba8());
+    let encoder = webp::Encoder::from_image(&rgba)
+        .map_err(|e| crate::error::AppError::invalid(e.to_string()))?;
+    let bytes = encoder.encode(82.0);
+    let temp = path.with_extension(format!("webp.{}.part", uuid::Uuid::now_v7()));
+    std::fs::write(&temp, &*bytes)?;
+    std::fs::rename(temp, path)?;
+    Ok(())
+}
+
+// @req RNF-12
+pub fn normalize_webp(path: &Path) -> AppResult<PathBuf> {
+    let out = path.with_extension("webp");
+    if !path.exists() && out.is_file() {
+        return Ok(out);
+    }
     let image = image::open(path)
         .map_err(|e| crate::error::AppError::invalid(format!("capa inválida: {e}")))?;
-    let out = path.with_extension("jpg");
-    image
-        .save_with_format(&out, image::ImageFormat::Jpeg)
-        .map_err(|e| crate::error::AppError::invalid(e.to_string()))?;
+    write_webp(&compact_image(image, false), &out)?;
     if out != path {
         let _ = std::fs::remove_file(path);
     }
     Ok(out)
+}
+
+// @req RF-12
+pub fn jpeg_for_tags(path: &Path) -> Option<Vec<u8>> {
+    let image = image::open(path).ok()?.to_rgb8();
+    let mut bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 82)
+        .encode_image(&image)
+        .ok()?;
+    Some(bytes)
 }
 
 /// Preferências do player que o `Settings` do núcleo não tem (hoje só o mudo). Ficam num JSON
@@ -153,7 +219,7 @@ mod tests {
 
     // @test RF-21 RF-22
     #[test]
-    fn upload_recorta_normaliza_jpeg_e_rejeita_entrada_invalida() {
+    fn upload_recorta_normaliza_webp_e_rejeita_entrada_invalida() {
         use base64::Engine;
         let tmp = tempfile::tempdir().unwrap();
         let original = image::DynamicImage::new_rgb8(800, 400);
@@ -166,8 +232,12 @@ mod tests {
             mime_type: "image/png".into(),
         };
         let path = save_upload(&upload, tmp.path(), "avatar").unwrap();
+        assert_eq!(path.extension().unwrap(), "webp");
         let decoded = image::open(path).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (512, 512));
+        let playlist = save_upload(&upload, tmp.path(), "playlist").unwrap();
+        assert_eq!(playlist.extension().unwrap(), "webp");
+        assert_eq!(image::open(playlist).unwrap().width(), 512);
         let bad = crate::dto::ImageUpload {
             data_base64: "%%%".into(),
             mime_type: "image/png".into(),
@@ -176,5 +246,65 @@ mod tests {
             save_upload(&bad, tmp.path(), "avatar").unwrap_err().code(),
             "invalid_input"
         );
+    }
+
+    // @test RNF-12
+    #[test]
+    fn webp_com_perda_limita_dimensoes_e_ocupa_menos_que_jpeg() {
+        let mut pixels = image::RgbImage::new(1200, 800);
+        for (x, y, pixel) in pixels.enumerate_pixels_mut() {
+            let n = ((x * 13 + y * 17 + (x ^ y) * 7) % 37) as u8;
+            *pixel = image::Rgb([((x / 3) % 256) as u8, ((y / 2) % 256) as u8, n]);
+        }
+        let original = image::DynamicImage::ImageRgb8(pixels);
+        let wide = compact_image(original.clone(), false);
+        assert_eq!((wide.width(), wide.height()), (600, 400));
+        let square = compact_image(original, true);
+        assert_eq!((square.width(), square.height()), (512, 512));
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("test.webp");
+        write_webp(&wide, &path).unwrap();
+        let webp = std::fs::read(&path).unwrap();
+        assert_eq!(&webp[8..12], b"WEBP");
+        let decoded = image::open(&path).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (600, 400));
+        assert_ne!(decoded.to_rgb8(), wide.to_rgb8());
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 82)
+            .encode_image(&wide)
+            .unwrap();
+        assert!(
+            webp.len() < jpeg.len(),
+            "WebP: {}, JPEG: {}",
+            webp.len(),
+            jpeg.len()
+        );
+    }
+
+    // @test RF-05 RF-12
+    #[test]
+    fn chave_do_album_prefere_grupo_e_normaliza_artista_album() {
+        let mut rec = miupy_media::RecordingMatch {
+            mbid: "rec".into(),
+            title: "Faixa".into(),
+            artist: " Daft   Punk ".into(),
+            artist_mbid: None,
+            album: Some(" Random  Access Memories ".into()),
+            release_mbid: Some("release".into()),
+            release_group_mbid: None,
+            release_mbids: vec![],
+            duration_ms: None,
+            score: 100,
+            genres: vec![],
+            release_year: None,
+            isrc: None,
+        };
+        let hash = album_key(&rec);
+        assert_eq!(hash.len(), 64);
+        rec.artist = "daft punk".into();
+        rec.album = Some("random access memories".into());
+        assert_eq!(album_key(&rec), hash);
+        rec.release_group_mbid = Some("grupo".into());
+        assert_eq!(album_key(&rec), "grupo");
     }
 }

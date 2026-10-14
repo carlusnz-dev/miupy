@@ -136,6 +136,7 @@ impl AppState {
                 })
                 .ok();
         }
+        crate::image_migration::spawn(self.dirs.clone(), self.db.clone(), self.events.clone());
         // @req RF-26: a checagem/instalação nunca bloqueia a abertura.
         let manager = self.ytdlp.clone();
         let events = self.events.clone();
@@ -283,6 +284,7 @@ mod tests {
             artist_mbid: None,
             album: Some("Disco".into()),
             release_mbid: None,
+            release_group_mbid: None,
             release_mbids: vec![],
             duration_ms: Some(200_000),
             score: 100,

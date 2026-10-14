@@ -343,7 +343,8 @@ impl Downloads {
             album: track.album.clone(),
             genres: Some(track.genres.clone()),
             release_year: track.release_year.and_then(|y| u32::try_from(y).ok()),
-            cover: cover.as_deref().and_then(|p| std::fs::read(p).ok()),
+            // @req RF-12: M4A recebe JPEG; a cópia no disco permanece WebP.
+            cover: cover.as_deref().and_then(crate::paths::jpeg_for_tags),
         };
         let audio_path = audio.path.clone();
         match tokio::task::spawn_blocking(move || tagger::write_tags(&audio_path, &update)).await {
@@ -417,7 +418,8 @@ impl Downloads {
             .download_image(&url, &self.dirs.covers, &track.id)
             .await
         {
-            Ok(path) => crate::paths::normalize_jpeg(&path).ok(),
+            // @req RNF-12
+            Ok(path) => crate::paths::normalize_webp(&path).ok(),
             Err(e) => {
                 log::warn!("não consegui baixar a capa de {}: {e}", track.id);
                 None
@@ -434,14 +436,15 @@ impl Downloads {
         if ids.is_empty() {
             ids.extend(recording.release_mbid.clone());
         }
+        let key = crate::paths::album_key(recording);
         let dir = self.dirs.covers.join("albuns");
         for id in ids {
-            let cached = dir.join(format!("{id}.jpg"));
+            let cached = dir.join(format!("{key}.webp"));
             if cached.is_file() {
                 return Some(cached);
             }
-            match self.metadata.download_cover(&id, &dir, &id).await {
-                Ok(path) => return crate::paths::normalize_jpeg(&path).ok(),
+            match self.metadata.download_cover(&id, &dir, &key).await {
+                Ok(path) => return crate::paths::normalize_webp(&path).ok(),
                 Err(miupy_media::MediaError::NotFound(_)) => continue,
                 Err(e) => {
                     log::warn!("capa do álbum {id}: {e}");
