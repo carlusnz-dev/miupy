@@ -1,5 +1,5 @@
 <script lang="ts">
-  // @req RF-18
+  // @req RF-18 RNF-10
   // Linha de faixa: capa, título/artista, álbum, duração e ações. @req RF-04 RF-05 RF-10
   import type { Track } from '../ipc';
   import { player } from '../stores/player.svelte';
@@ -10,6 +10,7 @@
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import { scores, fmtScore } from '../stores/scores.svelte';
+  import { useShared } from '../layoutPresence';
   $effect(() => { void scores.load([track.id]); }); // @req RF-25
 
   type Props = {
@@ -49,7 +50,7 @@
     </span>
     <span class="min-w-0">
       <span class="block truncate text-sm font-medium {current ? 'text-lava-text' : ''}">{track.title}</span>
-      <span class="block truncate text-xs text-muted">{track.artistName ?? 'Artista desconhecido'}{#if current && player.state.streaming} · {player.isLoading ? 'Conectando…' : 'Streaming'}{:else if track.source === 'youtube' && !track.filePath} · Disponível por streaming{/if}</span>
+      <span class="block truncate text-xs text-muted" use:useShared={track.artistId ? `artist-title-${track.artistId}` : ''}>{track.artistName ?? 'Artista desconhecido'}{#if current && player.state.streaming} · {player.isLoading ? 'Conectando…' : 'Streaming'}{:else if track.source === 'youtube' && !track.filePath} · Disponível por streaming{/if}</span>
     </span>
   </button>
 

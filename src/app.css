@@ -178,7 +178,7 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 
 dialog.modal {
   border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); border-radius: 0.875rem;
-  padding: 0; width: min(28rem, calc(100vw - 2rem)); max-height: min(36rem, calc(100dvh - 2rem));
+  padding: 0; margin: auto; width: min(28rem, calc(100vw - 2rem)); max-height: min(36rem, calc(100dvh - 2rem));
 }
 dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 
@@ -188,9 +188,9 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 
 /* Primitivas de movimento curtas; apenas transform e opacity. @req RNF-08 RNF-09 */
 @keyframes spring-in {
-  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.97); }
-  65% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.008); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  from { opacity: 0; transform: scale(.92); }
+  65% { opacity: 1; transform: scale(1.025); }
+  to { opacity: 1; transform: scale(1); }
 }
 @keyframes spring-out { to { opacity: 0; transform: translate3d(0, 7px, 0) scale(.98); } }
 @keyframes spring-bounce {
@@ -214,8 +214,12 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 .group[role='listitem']:hover, .motion-cover:hover { transform: translate3d(0, -1px, 0); }
 .motion-cover img { animation: fade-image 180ms both; }
 @keyframes fade-image { from { opacity: 0; } to { opacity: 1; } }
-dialog.modal[open] { animation: spring-in 260ms both; }
-dialog.modal[open]::backdrop { animation: fade-image 180ms both; }
+dialog.modal[open] { animation: spring-in 260ms both; transform-origin: center; }
+dialog.modal[open]::backdrop { animation: backdrop-in 220ms both; }
+@keyframes backdrop-in { from { background: rgb(0 0 0 / 0); } to { background: rgb(0 0 0 / 0.6); } }
+dialog.modal.closing { animation: spring-out 190ms both; }
+dialog.modal.closing::backdrop { animation: backdrop-out 190ms both; }
+@keyframes backdrop-out { from { background: rgb(0 0 0 / 0.6); } to { background: rgb(0 0 0 / 0); } }
 @media (prefers-reduced-motion: reduce) {
   .motion-page, .motion-item, .motion-player, .motion-toast, dialog.modal[open] { animation: fade-image 100ms both; will-change: auto; }
   .motion-bounce:active { animation: none; will-change: auto; }

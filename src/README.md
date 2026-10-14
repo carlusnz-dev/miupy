@@ -61,6 +61,13 @@ fora da tela (`IntersectionObserver`) e com a aba oculta; `prefers-reduced-motio
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 
+## Movimento entre telas
+
+`lib/layoutPresence.ts` registra apenas nós marcados com `use:useShared` ou a propriedade `shared` de
+`Cover`. Chaves iguais produzem FLIP por `transform` entre telas; ao trocar de rota no meio do
+movimento, a captura mais nova substitui a anterior. A animação reduzida usa apenas fade. O modal
+nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
+
 ## Layout
 
 `md` (>= 768 px): barra lateral + conteúdo + barra do player. Abaixo: conteúdo + mini player + navegação

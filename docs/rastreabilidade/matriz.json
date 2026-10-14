@@ -1,10 +1,10 @@
 {
   "summary": {
     "total": 37,
-    "verificado": 27,
+    "verificado": 28,
     "implementado": 6,
     "soTeste": 0,
-    "pendente": 4
+    "pendente": 3
   },
   "unknownIds": [],
   "requirements": [
@@ -837,7 +837,7 @@
         "src/lib/ipc/types.ts:162",
         "src/lib/util/imageUpload.ts:1",
         "src/lib/util/mosaic.ts:1",
-        "src/routes/PlaylistDetail.svelte:68"
+        "src/routes/PlaylistDetail.svelte:69"
       ],
       "tests": [
         "src/lib/util/features.test.ts:15",
@@ -891,7 +891,7 @@
       "priority": "S",
       "description": "Mostrar a pontuação de cada faixa e uma tela \"DNA\" com o estilo atual do usuário: artistas, gêneros, taxa de pulos, o que subiu e o que caiu.",
       "implementation": [
-        "src/lib/components/TrackRow.svelte:13",
+        "src/lib/components/TrackRow.svelte:14",
         "src/lib/ipc/api.ts:60",
         "src/lib/ipc/mock.ts:499",
         "src/lib/ipc/mock.ts:503",
@@ -1035,7 +1035,7 @@
       "implementation": [
         "src/App.svelte:2",
         "src/app.css:189",
-        "src/app.css:227",
+        "src/app.css:231",
         "src/lib/components/Cover.svelte:2",
         "src/lib/components/Toasts.svelte:2",
         "src/lib/components/Transport.svelte:2",
@@ -1064,9 +1064,20 @@
       "title": "Transições com elementos compartilhados",
       "priority": "S",
       "description": "Na troca de tela, elementos presentes nas duas (capa, título, player) animam da posição antiga para a nova (*layout presence*); modais abrem centralizados com animação de pop-up. Respeita `prefers-reduced-motion`.",
-      "implementation": [],
-      "tests": [],
-      "status": "pendente"
+      "implementation": [
+        "src/lib/components/TrackRow.svelte:2",
+        "src/lib/layoutPresence.ts:1",
+        "src/lib/motion.ts:20",
+        "src/lib/motion.ts:30",
+        "src/lib/motion.ts:41"
+      ],
+      "tests": [
+        "src/lib/layoutPresence.ts:55",
+        "src/lib/motion.test.ts:5",
+        "src/lib/motion.test.ts:13",
+        "src/lib/motion.test.ts:27"
+      ],
+      "status": "verificado"
     }
   ]
 }
