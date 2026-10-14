@@ -241,6 +241,15 @@ impl Player {
             None
         };
         self.close_event(inner, end_prev);
+        // @req RF-28
+        let gain = if stream.is_none() {
+            let mode = self.db.with(|db| db.get_settings())?.normalization;
+            let peak = self.db.with(|db| db.get_true_peak_db(&track.id))?;
+            mode.gain_db(track.loudness_lufs, peak)
+        } else {
+            0.0
+        };
+        self.backend.set_normalization_gain_db(gain)?;
         let loaded = if let Some(stream) = &stream {
             self.load_stream(stream, &track, true)
         } else {
@@ -615,6 +624,20 @@ impl Player {
     }
 
     // @req RF-02
+    // @req RF-28
+    pub fn refresh_normalization(&self) -> AppResult<()> {
+        let current = self.lock().track.clone();
+        let gain = if let Some(track) = current.filter(|t| t.file_path.is_some()) {
+            let mode = self.db.with(|db| db.get_settings())?.normalization;
+            let peak = self.db.with(|db| db.get_true_peak_db(&track.id))?;
+            mode.gain_db(track.loudness_lufs, peak)
+        } else {
+            0.0
+        };
+        self.backend.set_normalization_gain_db(gain)?;
+        Ok(())
+    }
+
     /// Define o volume (0.0 a 1.0), aplica ao motor e persiste em `settings`.
     pub fn set_volume(&self, volume: f64) -> AppResult<PlayerState> {
         if !volume.is_finite() {
@@ -1532,5 +1555,59 @@ mod tests {
         let p = f.events.progress.lock().unwrap().clone();
         assert_eq!(p.len(), 2);
         assert_eq!(p[1].position_ms, 1000);
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+    use crate::events::testing::RecordingEvents;
+    use miupy_audio::NullBackend;
+    use miupy_core::{Database, DownloadedFile, NewTrack, Normalization, SettingsPatch};
+    // @test RF-28
+    #[test]
+    fn loading_and_mode_change_apply_gain_without_changing_volume() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let track = db
+            .with(|d| d.upsert_track(&NewTrack::youtube("loud", "Música", None, 1000, None)))
+            .unwrap()
+            .track;
+        let file = dir.path().join("song.m4a");
+        std::fs::write(&file, b"fake").unwrap();
+        db.with(|d| {
+            d.mark_downloaded(
+                &track.id,
+                &DownloadedFile {
+                    file_path: file.to_string_lossy().into_owned(),
+                    codec: None,
+                    bitrate: None,
+                    cover_path: None,
+                    duration_ms: None,
+                },
+            )?;
+            d.set_loudness(&track.id, -20.0, -2.0)
+        })
+        .unwrap();
+        let backend = Arc::new(NullBackend::new());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.play(&track.id, None).unwrap();
+        assert_eq!(backend.normalization_gain_db(), 1.0);
+        db.with(|d| {
+            d.update_settings(&SettingsPatch {
+                normalization: Some(Normalization::Loud),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        player.refresh_normalization().unwrap();
+        assert_eq!(backend.normalization_gain_db(), 9.0);
+        assert_eq!(backend.state().volume, 1.0);
     }
 }

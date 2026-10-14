@@ -114,13 +114,13 @@ interface Profile {
 
 type GpuMode = 'auto' | 'on' | 'off';   // RNF-09
 
-type NormalizationMode = 'off' | 'quiet' | 'normal' | 'loud';   // RF-28: −19, −14, −11 LUFS
+type Normalization = 'off' | 'quiet' | 'normal' | 'loud';   // RF-28: −19, −14, −11 LUFS
 
 interface Settings {
   lavaTheme: LavaTheme;
   volume: number;
   gpuMode: GpuMode;             // vale a partir da próxima abertura do app (RNF-09)
-  normalization: NormalizationMode;     // padrão 'normal' (RF-28)
+  normalization: Normalization;     // padrão 'normal' (RF-28)
   eqPresetId: string;                   // padrão 'flat' (RF-29)
   favoritesPlaylistId: string | null;   // só leitura aqui; muda por favorites_set_playlist (RF-30)
   artistAutoRefresh: boolean;           // padrão true (RF-35)

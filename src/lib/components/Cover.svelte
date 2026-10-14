@@ -2,6 +2,7 @@
   // @req RNF-08
   import { api } from '../ipc';
   import { hash } from '../util/format';
+  import { assetCrossOrigin } from '../util/asset';
   import Icon from './Icon.svelte';
   import { useShared as sharedAction } from '../layoutPresence';
 
@@ -27,7 +28,7 @@
   aria-hidden={label ? undefined : true}
 >
   {#if src && !failed}
-    <img {src} alt="" class="h-full w-full object-cover" loading="lazy" onerror={() => (failed = true)} />
+    <img crossorigin={assetCrossOrigin(src)} {src} alt="" class="h-full w-full object-cover" loading="lazy" onerror={() => (failed = true)} />
   {:else}
     <div class="absolute inset-0" style="background:{bg}"></div>
     <Icon name="music" size={typeof size === 'number' ? Math.max(14, size * 0.4) : 28} class="relative text-lava-ink opacity-70" />

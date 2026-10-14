@@ -113,6 +113,30 @@ impl AppState {
     pub fn start(&self) {
         self.player.spawn_event_loop();
         self.downloads.spawn_worker();
+        // @req RF-28: varredura sequencial, fora da trava do player.
+        #[cfg(not(target_os = "android"))]
+        {
+            let db = self.db.clone();
+            std::thread::Builder::new()
+                .name("miupy-loudness".into())
+                .spawn(move || {
+                    // @req RF-28: no Linux, o nice é por thread; a medição cede CPU ao player.
+                    #[cfg(target_os = "linux")]
+                    unsafe {
+                        libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+                    }
+                    let mut attempted = std::collections::HashSet::new();
+                    loop {
+                        if let Err(e) = measure_pending_loudness(&db, &mut attempted) {
+                            log::warn!("fila de loudness: {e}");
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(30));
+                    }
+                })
+                .ok();
+        }
+        crate::image_migration::spawn(self.dirs.clone(), self.db.clone(), self.events.clone());
         // @req RF-26: a checagem/instalação nunca bloqueia a abertura.
         let manager = self.ytdlp.clone();
         let events = self.events.clone();
@@ -124,6 +148,28 @@ impl AppState {
             let _ = manager.ensure_current_with_status(Some(callback)).await;
         });
     }
+}
+
+// @req RF-28
+#[cfg(not(target_os = "android"))]
+fn measure_pending_loudness(
+    db: &Db,
+    attempted: &mut std::collections::HashSet<String>,
+) -> miupy_core::Result<()> {
+    let pending = db.with(|d| d.tracks_without_loudness())?;
+    for (id, file) in pending {
+        if attempted.contains(&id) || !std::path::Path::new(&file).is_file() {
+            continue;
+        }
+        attempted.insert(id.clone());
+        match miupy_audio::measure_file(std::path::Path::new(&file)) {
+            Ok(Some(m)) => db.with(|d| d.set_loudness(&id, m.loudness_lufs, m.true_peak_db))?,
+            Ok(None) => {}
+            Err(e) => log::warn!("medir loudness de {id}: {e}"),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(())
 }
 
 /// Backend usado quando o motor de áudio não abre (sem dispositivo, por exemplo): o app abre
@@ -171,6 +217,9 @@ impl AudioBackend for UnavailableBackend {
     }
     fn seek(&self, _position_ms: u64) -> miupy_audio::Result<()> {
         Err(self.err())
+    }
+    fn set_normalization_gain_db(&self, gain_db: f32) -> miupy_audio::Result<()> {
+        self.fallback.set_normalization_gain_db(gain_db)
     }
     fn set_volume(&self, volume: f32) -> miupy_audio::Result<()> {
         self.fallback.set_volume(volume)
@@ -235,6 +284,7 @@ mod tests {
             artist_mbid: None,
             album: Some("Disco".into()),
             release_mbid: None,
+            release_group_mbid: None,
             release_mbids: vec![],
             duration_ms: Some(200_000),
             score: 100,
@@ -691,5 +741,51 @@ mod tests {
         assert_eq!(err.code(), "unavailable");
         assert!(err.to_string().contains("sem placa de som"));
         assert_eq!(st.player.state().status, crate::dto::PlayerStatus::Stopped);
+    }
+}
+
+#[cfg(all(test, not(target_os = "android")))]
+mod loudness_tests {
+    use super::*;
+    use miupy_core::{DownloadedFile, NewTrack};
+    // @test RF-28
+    #[test]
+    fn old_download_is_measured_once_without_player() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.m4a");
+        std::fs::write(
+            &path,
+            include_bytes!("../../crates/miupy-audio/tests/fixtures/tone.m4a"),
+        )
+        .unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let track = db
+            .with(|d| d.upsert_track(&NewTrack::youtube("old", "Antiga", None, 1000, None)))
+            .unwrap()
+            .track;
+        db.with(|d| {
+            d.mark_downloaded(
+                &track.id,
+                &DownloadedFile {
+                    file_path: path.to_string_lossy().into_owned(),
+                    codec: None,
+                    bitrate: None,
+                    cover_path: None,
+                    duration_ms: None,
+                },
+            )
+        })
+        .unwrap();
+        let mut attempted = std::collections::HashSet::new();
+        measure_pending_loudness(&db, &mut attempted).unwrap();
+        assert!(
+            db.with(|d| d.get_track(&track.id))
+                .unwrap()
+                .loudness_lufs
+                .is_some()
+        );
+        assert_eq!(attempted.len(), 1);
+        measure_pending_loudness(&db, &mut attempted).unwrap();
+        assert_eq!(attempted.len(), 1);
     }
 }

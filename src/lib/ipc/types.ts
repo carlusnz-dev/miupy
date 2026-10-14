@@ -27,6 +27,7 @@ export interface Track {
   addedAt: number;
   genres: string[]; // @req RF-20
   releaseYear: number | null;
+  loudnessLufs: number | null; // @req RF-28
 }
 
 export interface Playlist {
@@ -117,10 +118,13 @@ export interface Profile {
   avatarPath: string | null;
 }
 
+// @req RF-28
+export type Normalization = 'off' | 'quiet' | 'normal' | 'loud';
 export interface Settings {
   lavaTheme: LavaTheme;
   volume: number;
   gpuMode: GpuMode;
+  normalization: Normalization;
 }
 export type GpuMode = 'auto' | 'on' | 'off';
 export interface GpuStatus { mode: GpuMode; envOverride: GpuMode | null; hardware: boolean; reason: string; restartRequired: boolean; }

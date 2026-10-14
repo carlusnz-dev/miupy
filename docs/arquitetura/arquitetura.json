@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "App abre na develop e migra o banco para a versão 3 sem perda; o autor usou a janela, relato pendente. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
+      "nota": "O banco migra para a versão 4 nos testes; a abertura da janela nesta branch não foi conferida. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
     },
     "windows": {
       "status": "planejado",
@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo.",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa.",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",
@@ -44,7 +44,7 @@
       ],
       "status": "verificado",
       "testes": {
-        "passando": 77,
+        "passando": 79,
         "falhando": 0
       },
       "requisitos": [
@@ -62,7 +62,8 @@
         "RF-17",
         "RF-19",
         "RF-20",
-        "RNF-01"
+        "RNF-01",
+        "RF-28"
       ],
       "limitacoes": []
     },
@@ -70,18 +71,19 @@
       "id": "miupy-audio",
       "caminho": "crates/miupy-audio",
       "tipo": "crate-rust",
-      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop, arquivo local e streaming HTTP) e NullBackend (testes e Android).",
+      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop, arquivo local e streaming HTTP) e NullBackend (testes e Android). Medição EBU R128 sem dispositivo e cadeia DSP de normalização, EQ plano, volume e limitador.",
       "dependeDe": [],
       "tecnologias": [
         "rodio 0.23",
         "stream-download 0.24 (reqwest + rustls)",
         "tokio",
         "crossbeam-channel",
-        "thiserror"
+        "thiserror",
+        "ebur128 0.1"
       ],
       "status": "verificado",
       "testes": {
-        "passando": 26,
+        "passando": 28,
         "falhando": 0,
         "ignorados": 1
       },
@@ -89,7 +91,8 @@
         "RF-01",
         "RF-02",
         "RF-03",
-        "RF-18"
+        "RF-18",
+        "RF-28"
       ],
       "limitacoes": [
         "Streaming verificado contra URLs reais do YouTube com o backend mudo; ninguém ouviu o som.",
@@ -113,10 +116,10 @@
       ],
       "status": "verificado",
       "testes": {
-        "passando": 64,
+        "passando": 69,
         "falhando": 0,
         "ignorados": 11,
-        "nota": "63 testes + 1 doc-test; os 11 ignorados são de rede e passaram 11/11 contra os serviços reais em 2026-10-14."
+        "nota": "68 testes unitários + 1 doc-test; 11 testes de rede ignorados na suíte padrão."
       },
       "requisitos": [
         "RF-05",
@@ -138,7 +141,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações, escolha do renderizador (GPU) e configuração de CORS do protocolo asset no WebKitGTK.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -147,7 +150,8 @@
       "tecnologias": [
         "tauri 2",
         "tauri-plugin-log",
-        "webkit2gtk (Linux)"
+        "webkit2gtk (Linux)",
+        "webp/libwebp"
       ],
       "status": "parcial",
       "testes": {
@@ -170,7 +174,9 @@
         "RF-18",
         "RF-19",
         "RF-20",
-        "RNF-09"
+        "RNF-09",
+        "RF-28",
+        "RNF-12"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
@@ -182,7 +188,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações e primitivas de movimento de mola. Seção de áudio com seleção do modo de normalização.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -205,7 +211,8 @@
         "RNF-04",
         "RNF-05",
         "RNF-08",
-        "RNF-09"
+        "RNF-09",
+        "RF-28"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",

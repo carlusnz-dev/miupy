@@ -89,7 +89,7 @@ jobs:
       - name: IDs de requisito anotados existem
         run: node scripts/rastreabilidade.mjs --check
       - name: Testes das regras de fluxo
-        run: node --test scripts/ci/
+        run: node --test scripts/ci/*.test.mjs
       # Em PR de branch do próprio repositório para develop, o matriz.yml regenera a matriz e
       # commita no branch; exigir a matriz em dia aqui deixaria o PR vermelho antes do commit
       # do bot. Em todo o resto (fork, PR para main, push, execução disparada pelo matriz.yml)

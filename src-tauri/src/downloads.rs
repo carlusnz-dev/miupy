@@ -343,7 +343,8 @@ impl Downloads {
             album: track.album.clone(),
             genres: Some(track.genres.clone()),
             release_year: track.release_year.and_then(|y| u32::try_from(y).ok()),
-            cover: cover.as_deref().and_then(|p| std::fs::read(p).ok()),
+            // @req RF-12: M4A recebe JPEG; a cópia no disco permanece WebP.
+            cover: cover.as_deref().and_then(crate::paths::jpeg_for_tags),
         };
         let audio_path = audio.path.clone();
         match tokio::task::spawn_blocking(move || tagger::write_tags(&audio_path, &update)).await {
@@ -359,12 +360,32 @@ impl Downloads {
             cover_path: cover.map(|p| p.to_string_lossy().into_owned()),
             duration_ms: i64::try_from(audio.duration_ms).ok(),
         };
+        // @req RF-28: mede fora da trava do banco e do player.
+        #[cfg(not(target_os = "android"))]
+        let loudness = {
+            let path = audio.path.clone();
+            match tokio::task::spawn_blocking(move || miupy_audio::measure_file(&path)).await {
+                Ok(Ok(value)) => value,
+                Ok(Err(error)) => {
+                    log::warn!("medição de loudness falhou: {error}");
+                    None
+                }
+                Err(error) => {
+                    log::warn!("medição interrompida: {error}");
+                    None
+                }
+            }
+        };
         let track_id = track.id.clone();
         let job_id = job.id.clone();
         let done = self
             .db
             .run(move |db| {
                 db.mark_downloaded(&track_id, &file)?;
+                #[cfg(not(target_os = "android"))]
+                if let Some(m) = loudness {
+                    db.set_loudness(&track_id, m.loudness_lufs, m.true_peak_db)?;
+                }
                 Ok(db.get_download(&job_id).ok())
             })
             .await?;
@@ -397,7 +418,8 @@ impl Downloads {
             .download_image(&url, &self.dirs.covers, &track.id)
             .await
         {
-            Ok(path) => crate::paths::normalize_jpeg(&path).ok(),
+            // @req RNF-12
+            Ok(path) => crate::paths::normalize_webp(&path).ok(),
             Err(e) => {
                 log::warn!("não consegui baixar a capa de {}: {e}", track.id);
                 None
@@ -414,14 +436,15 @@ impl Downloads {
         if ids.is_empty() {
             ids.extend(recording.release_mbid.clone());
         }
+        let key = crate::paths::album_key(recording);
         let dir = self.dirs.covers.join("albuns");
         for id in ids {
-            let cached = dir.join(format!("{id}.jpg"));
+            let cached = dir.join(format!("{key}.webp"));
             if cached.is_file() {
                 return Some(cached);
             }
-            match self.metadata.download_cover(&id, &dir, &id).await {
-                Ok(path) => return crate::paths::normalize_jpeg(&path).ok(),
+            match self.metadata.download_cover(&id, &dir, &key).await {
+                Ok(path) => return crate::paths::normalize_webp(&path).ok(),
                 Err(miupy_media::MediaError::NotFound(_)) => continue,
                 Err(e) => {
                     log::warn!("capa do álbum {id}: {e}");
@@ -623,7 +646,15 @@ pub mod testing {
             std::fs::create_dir_all(&request.dest_dir).unwrap();
             let path = request.dest_dir.join(format!("{}.m4a", request.file_stem));
             // não é um M4A de verdade: a gravação de tags vai falhar, e isso não é fatal
-            std::fs::write(&path, b"nao-e-audio").unwrap();
+            if request.video_id == "loudtest" {
+                std::fs::write(
+                    &path,
+                    include_bytes!("../../crates/miupy-audio/tests/fixtures/tone.m4a"),
+                )
+                .unwrap();
+            } else {
+                std::fs::write(&path, b"nao-e-audio").unwrap();
+            }
             Ok(DownloadedAudio {
                 path,
                 codec: "aac".into(),
@@ -828,6 +859,23 @@ mod tests {
     fn enqueue(f: &Fx, ids: &[&Track]) -> Vec<DownloadJob> {
         let ids: Vec<String> = ids.iter().map(|t| t.id.clone()).collect();
         f.db.with(|db| db.enqueue_downloads(&ids)).unwrap()
+    }
+
+    // @test RF-28
+    #[cfg(not(target_os = "android"))]
+    #[tokio::test]
+    async fn download_grava_medicao() {
+        let f = fx();
+        let t = add(&f, "loudtest");
+        enqueue(&f, &[&t]);
+        f.dl.run_until_idle().await;
+        let saved = f.db.with(|db| db.get_track(&t.id)).unwrap();
+        assert!(saved.loudness_lufs.is_some());
+        assert!(
+            f.db.with(|db| db.get_true_peak_db(&t.id))
+                .unwrap()
+                .is_some()
+        );
     }
 
     // @test RF-10

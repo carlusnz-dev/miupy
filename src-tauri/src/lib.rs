@@ -11,6 +11,7 @@ mod dto;
 mod error;
 mod events;
 mod gpu;
+mod image_migration;
 mod listening;
 mod metadata;
 mod paths;

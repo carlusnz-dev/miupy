@@ -36,6 +36,8 @@ pub struct RecordingMatch {
     pub album: Option<String>,
     /// Release (para a capa no Cover Art Archive).
     pub release_mbid: Option<String>,
+    /// Grupo do release escolhido, usado como chave de cache da capa do álbum.
+    pub release_group_mbid: Option<String>,
     /// Até 5 releases candidatos, do mais provável ao menos (oficiais e sem tipo secundário como
     /// "Compilation"/"Bootleg" primeiro). Nem todo release tem capa: tente em ordem.
     pub release_mbids: Vec<String>,
@@ -722,6 +724,10 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
                 artist_mbid,
                 album: release.and_then(|x| str_of(x, "title")).map(String::from),
                 release_mbid: release.and_then(|x| str_of(x, "id")).map(String::from),
+                release_group_mbid: release
+                    .and_then(|x| x.get("release-group"))
+                    .and_then(|g| str_of(g, "id"))
+                    .map(String::from),
                 release_mbids,
                 duration_ms: r.get("length").and_then(Value::as_u64),
                 score: score as u32,
@@ -943,6 +949,16 @@ mod tests {
         assert_eq!(m.release_mbids.len(), 3);
         assert_eq!(m.release_mbids[0], "a0b5b3c2-1111-4c2a-9b5e-000000000001");
         assert_eq!(m.release_mbids[2], "a0b5b3c2-1111-4c2a-9b5e-0000000000ff");
+        let mut with_group = fixture(MB_REC);
+        with_group["recordings"][0]["releases"][1]["release-group"]["id"] =
+            Value::String("grupo-1".into());
+        assert_eq!(
+            parse_recordings(&with_group, None)
+                .unwrap()
+                .release_group_mbid
+                .as_deref(),
+            Some("grupo-1")
+        );
         assert_eq!(m.duration_ms, Some(369_000));
         assert_eq!(m.score, 100);
         // duração distante não atribui o lançamento de outra gravação à faixa.
