@@ -329,14 +329,18 @@ interface YtDlpStatus {
 
 ### Aleatório e *smart random* (RF-24)
 
-- `player_set_shuffle` muda só a ordem do que vem **depois** da faixa atual; a faixa atual continua
-  tocando. `PlayerState.queue` sempre traz a ordem em que as faixas vão tocar.
+- `player_set_shuffle` preserva as faixas antes da posição atual na fila em vigor, na mesma ordem,
+  e mantém a ocorrência atual tocando na mesma posição. Só reordena as ocorrências depois dela:
+  são exatamente as faixas ainda não tocadas nessa fila, sem entradas ou perdas, mesmo com IDs
+  repetidos. A regra vale também após várias trocas seguidas de modo. `PlayerState.queue` sempre
+  traz a ordem em que as faixas vão tocar.
 - `random`: embaralhamento uniforme do restante da fila.
 - `smart`: sorteio ponderado, uma faixa por vez. O peso de cada faixa restante combina a pontuação
   dela (`TrackScore.score`, normalizada) com a proximidade da faixa escolhida antes (mesmo artista
   pesa mais que gênero em comum). Toda faixa tem peso mínimo positivo, então todas tocam; faixas
   puladas muitas vezes só ficam mais para o fim. Fórmula em [`recomendacao.md`](recomendacao.md).
-- Voltar para `off` restaura a ordem original do restante, a partir da faixa atual.
+- Voltar para `off` põe somente as ocorrências restantes na ordem original de `player_play`;
+  o prefixo já tocado e a ocorrência atual continuam onde estão.
 - Um `player_play { trackId, queue }` novo com `shuffle` ligado embaralha a fila nova da mesma
   forma, mantendo `trackId` primeiro. O modo fica salvo entre aberturas do app.
 

@@ -52,12 +52,56 @@ impl PlayQueue {
         self.index = Some(pos);
     }
 
-    pub fn set_ids(&mut self, ids: Vec<String>, current: &str) {
+    // @req RF-24
+    /// Troca a ordem sem perder a posição da ocorrência atual, mesmo com IDs repetidos.
+    pub fn set_ids(&mut self, ids: Vec<String>, index: usize) {
         self.ids = ids;
-        self.index = self.ids.iter().position(|id| id == current);
+        self.index = (index < self.ids.len()).then_some(index);
     }
-    pub fn original_ids(&self) -> &[String] {
-        &self.original_ids
+
+    // @req RF-24
+    /// Ordena as ocorrências pendentes, descontando as já tocadas da fila original.
+    pub fn original_order_of(&self, played: &[String], remaining: &[String]) -> Vec<String> {
+        let mut played_counts = std::collections::HashMap::<&str, usize>::new();
+        for id in played {
+            *played_counts.entry(id).or_default() += 1;
+        }
+        let mut counts = std::collections::HashMap::<&str, usize>::new();
+        for id in remaining {
+            *counts.entry(id).or_default() += 1;
+        }
+        let mut ordered = self
+            .original_ids
+            .iter()
+            .filter(|id| {
+                if let Some(played_count) = played_counts.get_mut(id.as_str())
+                    && *played_count > 0
+                {
+                    *played_count -= 1;
+                    return false;
+                }
+                let Some(count) = counts.get_mut(id.as_str()) else {
+                    return false;
+                };
+                if *count == 0 {
+                    return false;
+                }
+                *count -= 1;
+                true
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        // Preserva todas as ocorrências se a fila original estiver desatualizada.
+        for id in remaining {
+            let Some(count) = counts.get_mut(id.as_str()) else {
+                continue;
+            };
+            if *count > 0 {
+                ordered.push(id.clone());
+                *count -= 1;
+            }
+        }
+        ordered
     }
 
     /// Aponta para `track_id` se ele já estiver na fila (a primeira ocorrência).
@@ -85,9 +129,11 @@ impl PlayQueue {
         i.checked_sub(1)
     }
 
+    // @req RF-03 RF-24
     /// Remove todas as ocorrências de `track_id`. Devolve `true` se a faixa atual foi removida;
     /// nesse caso o índice passa para a faixa que ocupava o lugar dela (ou `None` no fim).
     pub fn remove(&mut self, track_id: &str) -> bool {
+        self.original_ids.retain(|id| id != track_id);
         let Some(cur) = self.index else {
             self.ids.retain(|i| i != track_id);
             return false;
@@ -189,7 +235,7 @@ mod tests {
         assert_eq!(queue.index_i64(), -1);
     }
 
-    // @test RF-03
+    // @test RF-03 RF-24
     #[test]
     fn remover_remove_todas_as_ocorrencias() {
         let mut queue = PlayQueue::default();
@@ -197,5 +243,6 @@ mod tests {
         assert!(!queue.remove("x"));
         assert_eq!(queue.ids(), ["a", "b"]);
         assert_eq!(queue.current(), Some("b"));
+        assert_eq!(queue.original_ids, ["a", "b"]);
     }
 }

@@ -368,7 +368,7 @@ impl Player {
         }
         if new_queue && inner.shuffle != ShuffleMode::Off {
             // Fila nova com aleatório: a faixa pedida vai primeiro e todas as outras são sorteadas.
-            self.shuffle_after_current(&mut q, &track.id, inner.shuffle, true)?;
+            self.shuffle_after_current(&mut q, inner.shuffle, true)?;
         }
         inner.queue = q;
         let is_stream = track.file_path.is_none() && track.source == Source::Youtube;
@@ -425,30 +425,31 @@ impl Player {
         Ok(self.snapshot(&inner))
     }
 
-    /// Sorteia o que vem depois de `current`. Com `whole_queue`, `current` vai para o começo e
+    // @req RF-24
+    /// Sorteia o que vem depois da faixa atual. Com `whole_queue`, ela vai para o começo e
     /// todas as outras faixas entram no sorteio (fila nova); sem ele, o que já passou fica antes.
     fn shuffle_after_current(
         &self,
         queue: &mut PlayQueue,
-        current: &str,
         mode: ShuffleMode,
         whole_queue: bool,
     ) -> AppResult<()> {
         let ids = queue.ids().to_vec();
-        let Some(index) = ids.iter().position(|id| id == current) else {
+        let Some(index) = queue.index() else {
             return Ok(());
         };
+        let current = &ids[index];
         let (mut out, rest): (Vec<String>, Vec<String>) = if whole_queue {
             let mut others = ids.clone();
             others.remove(index);
-            (vec![current.to_owned()], others)
+            (vec![current.clone()], others)
         } else {
             (ids[..=index].to_vec(), ids[index + 1..].to_vec())
         };
         let tail = rest.as_slice();
         let seed = now_seconds();
         let ordered = match mode {
-            ShuffleMode::Off => tail.to_vec(),
+            ShuffleMode::Off => queue.original_order_of(&out, tail),
             ShuffleMode::Random => miupy_core::random_order(tail, seed),
             ShuffleMode::Smart => {
                 let smart = self.db.with(|db| db.smart_tracks(&ids))?;
@@ -462,14 +463,18 @@ impl Player {
                         .iter()
                         .filter_map(|id| by_id.get(id).cloned())
                         .collect::<Vec<_>>();
-                    miupy_core::smart_order(cur, &rem, seed)
+                    if rem.len() == tail.len() {
+                        miupy_core::smart_order(cur, &rem, seed)
+                    } else {
+                        miupy_core::random_order(tail, seed)
+                    }
                 } else {
                     miupy_core::random_order(tail, seed)
                 }
             }
         };
         out.extend(ordered);
-        queue.set_ids(out, current);
+        queue.set_ids(out, if whole_queue { 0 } else { index });
         Ok(())
     }
 
@@ -478,16 +483,9 @@ impl Player {
         let mut inner = self.lock();
         self.db.with(|db| db.set_shuffle_mode(mode))?;
         inner.shuffle = mode;
-        if let Some(current) = inner
-            .queue
-            .index()
-            .and_then(|i| inner.queue.id_at(i))
-            .map(str::to_owned)
-        {
-            let original = inner.queue.original_ids().to_vec();
-            let mut queue = PlayQueue::default();
-            queue.replace(original, &current);
-            self.shuffle_after_current(&mut queue, &current, mode, false)?;
+        if inner.queue.index().is_some() {
+            let mut queue = inner.queue.clone();
+            self.shuffle_after_current(&mut queue, mode, false)?;
             inner.queue = queue;
         }
         self.emit(&inner);
@@ -1177,6 +1175,116 @@ mod tests {
 
     // @test RF-24
     #[test]
+    fn alternar_aleatorio_no_meio_preserva_passado_e_restante() {
+        let f = fx(8);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        for _ in 0..3 {
+            f.player.next().unwrap();
+        }
+        let prefix = f.ids[..=3].to_vec();
+        let mut remaining = f.ids[4..].to_vec();
+        remaining.sort();
+
+        for mode in [
+            ShuffleMode::Random,
+            ShuffleMode::Off,
+            ShuffleMode::Smart,
+            ShuffleMode::Random,
+            ShuffleMode::Off,
+        ] {
+            let state = f.player.set_shuffle(mode).unwrap();
+            assert_eq!(state.queue_index, 3);
+            assert_eq!(state.track.as_ref().unwrap().id, f.ids[3]);
+            assert_eq!(&state.queue[..=3], prefix);
+            let mut tail = state.queue[4..].to_vec();
+            tail.sort();
+            assert_eq!(tail, remaining, "restante após {mode:?}");
+            if mode == ShuffleMode::Off {
+                assert_eq!(state.queue, f.ids);
+            }
+        }
+    }
+
+    // @test RF-24
+    #[test]
+    fn alternar_apos_avancar_no_aleatorio_preserva_prefixo_tocado() {
+        let f = fx(8);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        for _ in 0..3 {
+            f.player.next().unwrap();
+        }
+        f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        // Fixa uma permutação possível para a verificação não depender da semente do relógio.
+        {
+            let mut inner = f.player.lock();
+            let mut shuffled = f.ids[..4].to_vec();
+            shuffled.extend([
+                f.ids[7].clone(),
+                f.ids[4].clone(),
+                f.ids[5].clone(),
+                f.ids[6].clone(),
+            ]);
+            inner.queue.set_ids(shuffled, 3);
+        }
+        f.player.next().unwrap();
+        let before = f.player.state();
+        let prefix = before.queue[..=4].to_vec();
+        let mut expected = before.queue[5..].to_vec();
+        expected.sort();
+
+        for mode in [ShuffleMode::Smart, ShuffleMode::Off, ShuffleMode::Random] {
+            let state = f.player.set_shuffle(mode).unwrap();
+            assert_eq!(&state.queue[..=4], prefix);
+            assert_eq!(state.queue_index, 4);
+            let mut actual = state.queue[5..].to_vec();
+            actual.sort();
+            assert_eq!(actual, expected);
+            if mode == ShuffleMode::Off {
+                let restored = f
+                    .ids
+                    .iter()
+                    .filter(|id| expected.contains(id))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                assert_eq!(&state.queue[5..], restored);
+            }
+        }
+    }
+
+    // @test RF-24
+    #[test]
+    fn id_repetido_na_posicao_atual_preserva_ocorrencias() {
+        let f = fx(6);
+        let ids = vec![
+            f.ids[0].clone(),
+            f.ids[1].clone(),
+            f.ids[0].clone(),
+            f.ids[2].clone(),
+            f.ids[3].clone(),
+            f.ids[1].clone(),
+            f.ids[4].clone(),
+            f.ids[5].clone(),
+        ];
+        f.player.play(&f.ids[0], Some(ids.clone())).unwrap();
+        f.player.next().unwrap();
+        f.player.next().unwrap();
+        for mode in [ShuffleMode::Random, ShuffleMode::Smart, ShuffleMode::Off] {
+            let state = f.player.set_shuffle(mode).unwrap();
+            assert_eq!(state.queue_index, 2);
+            assert_eq!(&state.queue[..=2], &ids[..=2]);
+            let mut actual = state.queue[3..].to_vec();
+            actual.sort();
+            let mut expected = ids[3..].to_vec();
+            expected.sort();
+            assert_eq!(actual, expected);
+            if mode == ShuffleMode::Off {
+                assert_eq!(state.queue, ids);
+            }
+        }
+    }
+
+    // @test RF-24
+    #[test]
     fn fila_nova_com_aleatorio_poe_a_pedida_primeiro_e_sorteia_todas_as_outras() {
         let f = fx(8);
         f.player.set_shuffle(ShuffleMode::Random).unwrap();
@@ -1189,8 +1297,10 @@ mod tests {
         expected.sort();
         assert_eq!(sorted, expected, "nenhuma faixa some nem repete");
         let off = f.player.set_shuffle(ShuffleMode::Off).unwrap();
-        assert_eq!(off.queue, f.ids, "off volta à ordem original");
-        assert_eq!(off.queue[off.queue_index as usize], f.ids[4]);
+        let mut expected_off = vec![f.ids[4].clone()];
+        expected_off.extend(f.ids.iter().filter(|id| *id != &f.ids[4]).cloned());
+        assert_eq!(off.queue, expected_off, "off ordena somente o restante");
+        assert_eq!(off.queue_index, 0);
     }
 
     // @test RF-01 RF-13
