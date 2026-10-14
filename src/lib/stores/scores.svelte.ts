@@ -38,3 +38,11 @@ export const scores = new ScoresStore();
 export function fmtScore(n: number) {
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
+
+/** Texto do tooltip da pontuação: "3 plays, 1 pulo, última vez: 08/10/2026". */
+export function scoreTooltip(s: TrackScore) {
+  const plays = `${s.plays} ${s.plays === 1 ? 'play' : 'plays'}`;
+  const skips = `${s.skips} ${s.skips === 1 ? 'pulo' : 'pulos'}`;
+  const last = s.lastPlayedAt ? new Date(s.lastPlayedAt).toLocaleDateString('pt-BR') : 'nunca';
+  return `Pontuação: ${plays}, ${skips}, última vez: ${last}`;
+}

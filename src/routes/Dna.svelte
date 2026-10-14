@@ -12,7 +12,7 @@
 </script>
 <PageHeader title="DNA" subtitle="O que você mais ouviu e como seu gosto mudou." />
 <label class="mb-5 flex items-center gap-3 text-sm">Período
-  <select class="field !w-auto" value={dna.windowDays} onchange={(e) => dna.load(Number(e.currentTarget.value))}>
+  <select class="field !w-auto" value={String(dna.windowDays)} onchange={(e) => dna.load(Number(e.currentTarget.value))}>
     <option value="7">7 dias</option><option value="30">30 dias</option><option value="90">90 dias</option><option value="365">365 dias</option>
   </select>
 </label>

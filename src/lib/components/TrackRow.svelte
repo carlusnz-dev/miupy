@@ -9,7 +9,7 @@
   import { fmtTime } from '../util/format';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
-  import { scores, fmtScore } from '../stores/scores.svelte';
+  import { scores, fmtScore, scoreTooltip } from '../stores/scores.svelte';
   import { useShared } from '../layoutPresence';
   $effect(() => { void scores.load([track.id]); }); // @req RF-25
 
@@ -74,7 +74,7 @@
     {/if}
   </span>
 
-  {#if scores.get(track.id)}<span class="tnum hidden w-10 text-right text-xs text-faint sm:block" title={`Pontuação: ${scores.get(track.id).plays} plays, ${scores.get(track.id).skips} pulos, última vez: ${scores.get(track.id).lastPlayedAt ? new Date(scores.get(track.id).lastPlayedAt!).toLocaleDateString('pt-BR') : 'nunca'}`} aria-label={`Pontuação ${fmtScore(scores.get(track.id).score)}`}>{fmtScore(scores.get(track.id).score)}</span>{/if}
+  {#if scores.get(track.id)}<span class="tnum hidden w-10 text-right text-xs text-faint sm:block" title={scoreTooltip(scores.get(track.id))} aria-label={`Pontuação ${fmtScore(scores.get(track.id).score)}`}>{fmtScore(scores.get(track.id).score)}</span>{/if}
   <span class="tnum w-11 shrink-0 text-right text-xs text-muted">{fmtTime(track.durationMs)}</span>
   {#if extra}{@render extra()}{/if}
 </div>

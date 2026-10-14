@@ -89,3 +89,13 @@ describe('sugestões depois de escolher', () => {
     store.dispose(); vi.useRealTimers();
   });
 });
+
+describe('tooltip da pontuação', () => {
+  // @test RF-25
+  it('flexiona play e pulo', async () => {
+    const { scoreTooltip } = await import('./scores.svelte');
+    expect(scoreTooltip({ trackId: 'a', score: 1, plays: 1, skips: 1, lastPlayedAt: null })).toBe('Pontuação: 1 play, 1 pulo, última vez: nunca');
+    expect(scoreTooltip({ trackId: 'a', score: 1, plays: 2, skips: 0, lastPlayedAt: null })).toBe('Pontuação: 2 plays, 0 pulos, última vez: nunca');
+    vi.useRealTimers();
+  });
+});
