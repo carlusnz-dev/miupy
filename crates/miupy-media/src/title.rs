@@ -94,6 +94,20 @@ pub fn clean_title(raw_title: &str, channel: &str) -> ParsedTitle {
         None => (None, no_noise.clone()),
     };
 
+    // @req RF-09 RF-20
+    // Três partes costumam ser "artista - álbum - faixa". O canal confirma o primeiro
+    // lado; mesmo sem ele, o último lado é a faixa, nunca o álbum intermediário.
+    let parts: Vec<&str> = no_noise.split(" - ").map(str::trim).collect();
+    if parts.len() >= 3
+        && parts.iter().all(|p| !p.is_empty())
+        && channel_artist.as_deref().is_some_and(|ch| {
+            eq_ci(parts[0], ch) || ch.to_lowercase().starts_with(&parts[0].to_lowercase())
+        })
+    {
+        left = channel_artist.clone();
+        right = parts[parts.len() - 1].to_string();
+    }
+
     // "Música - Artista" quando o canal é o lado direito.
     if let (Some(a), Some(ch)) = (&left, &channel_artist)
         && eq_ci(&right, ch)
@@ -102,6 +116,20 @@ pub fn clean_title(raw_title: &str, channel: &str) -> ParsedTitle {
         let (a, t) = (a.clone(), right.clone());
         left = Some(t);
         right = a;
+    }
+
+    // Canal do artista conhecido: se nenhum lado é o canal e o segundo lado tem
+    // aparência de nome de álbum, o primeiro é a faixa.
+    if parts.len() == 2
+        && let (Some(ch), Some(a)) = (&channel_artist, &left)
+        && !eq_ci(a, ch)
+        && !eq_ci(&right, ch)
+        && right.split_whitespace().count() >= 6
+        && a.split_whitespace().count() <= 5
+    {
+        let track = a.clone();
+        left = Some(ch.clone());
+        right = track;
     }
 
     // "Artista feat. X" / "Música ft. X" sem parênteses.
@@ -156,6 +184,11 @@ fn clean_channel(channel: &str) -> (Option<String>, bool) {
             name = base.trim();
             break;
         }
+    }
+    if let Some(base) = strip_suffix_ci(name, " tv")
+        && !base.trim().is_empty()
+    {
+        name = base.trim();
     }
     (non_empty(name), false)
 }
