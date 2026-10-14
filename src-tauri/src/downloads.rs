@@ -640,6 +640,7 @@ pub mod testing {
     pub struct FakeMetadata {
         pub recording: Mutex<Option<RecordingMatch>>,
         pub artist: Mutex<Option<ArtistDetails>>,
+        pub photo: Mutex<Option<miupy_media::ArtistPhoto>>,
         pub lyrics: Mutex<Option<LyricsData>>,
         /// `Some(erro)` faz a próxima chamada de rede falhar.
         pub fail_with: Mutex<Option<MediaError>>,
@@ -654,6 +655,7 @@ pub mod testing {
             FakeMetadata {
                 recording: Mutex::new(None),
                 artist: Mutex::new(None),
+                photo: Mutex::new(None),
                 lyrics: Mutex::new(None),
                 fail_with: Mutex::new(None),
                 covers_for: Mutex::new(Vec::new()),
@@ -675,6 +677,14 @@ pub mod testing {
 
     #[async_trait]
     impl MetadataProvider for FakeMetadata {
+        async fn artist_photo(
+            &self,
+            _mbid: Option<&str>,
+        ) -> Result<Option<miupy_media::ArtistPhoto>> {
+            self.call()?;
+            Ok(self.photo.lock().unwrap().clone())
+        }
+
         async fn find_recording(
             &self,
             _title: &str,
