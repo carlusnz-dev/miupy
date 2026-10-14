@@ -118,6 +118,13 @@ impl AudioBackend for UnavailableBackend {
     fn load(&self, _path: &std::path::Path) -> miupy_audio::Result<()> {
         Err(self.err())
     }
+    fn load_url(
+        &self,
+        _url: &str,
+        _options: miupy_audio::StreamOptions,
+    ) -> miupy_audio::Result<()> {
+        Err(self.err())
+    }
     fn play(&self) -> miupy_audio::Result<()> {
         Err(self.err())
     }
