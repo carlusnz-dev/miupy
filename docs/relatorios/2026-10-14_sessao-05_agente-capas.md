@@ -37,6 +37,8 @@
 
 ## Pendências e problemas conhecidos
 
+- (Orquestração, após a revisão) A falha foi observada só no `npx tauri dev` (origem `http://localhost:1420`); ninguém reproduziu no build instalado (`tauri://localhost`). O registro CORS vale nos dois e é inofensivo onde não havia problema. Os `expect` de `asset_webkit.rs` viraram `log::error!` (uma falha ali só esconde as capas) e o teste que só chamava uma closure saiu.
+
 - Confirmar as capas numa janela com a biblioteca real. Os testes sem janela não provam o resultado visual no WebKitGTK, embora o binário tenha iniciado e o registro do esquema esteja coberto.
 - A tentativa de abrir o binário com dados temporários ainda emitiu avisos de dconf e Mesa do ambiente; não houve erro fatal depois de redirecionar os diretórios XDG.
 

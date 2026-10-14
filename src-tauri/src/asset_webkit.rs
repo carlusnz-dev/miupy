@@ -4,36 +4,36 @@ use webkit2gtk::{SecurityManagerExt, WebContextExt, WebViewExt};
 
 const ASSET_SCHEME: &str = "asset";
 
-fn allow_asset_cors(register: impl FnOnce(&str)) {
-    register(ASSET_SCHEME);
-}
-
-pub fn configure(app: &tauri::App) -> tauri::Result<()> {
-    let window = app.get_webview_window("main").expect("janela principal");
-    window.with_webview(|webview| {
-        let context = webview.inner().context().expect("contexto WebKit");
-        let manager = context
-            .security_manager()
-            .expect("gestor de segurança WebKit");
+/// Habilita CORS do esquema `asset` no WebKitGTK. Sem isso, a página de dev
+/// (`http://localhost:1420`) não carrega nenhuma imagem `asset://`. Uma falha aqui só
+/// esconde as capas, então vai para o log em vez de derrubar o app.
+pub fn configure(app: &tauri::App) {
+    let Some(window) = app.get_webview_window("main") else {
+        log::error!("asset: janela principal não encontrada; capas locais podem não carregar");
+        return;
+    };
+    let result = window.with_webview(|webview| {
+        let Some(manager) = webview
+            .inner()
+            .context()
+            .and_then(|context| context.security_manager())
+        else {
+            log::error!("asset: WebKit sem gestor de segurança; capas locais podem não carregar");
+            return;
+        };
         // O wry marca o protocolo como seguro, mas WebKit bloqueia imagens de uma página
         // http(s) enquanto o esquema não for habilitado para requisições entre origens.
         // O handler do Tauri ainda verifica assetProtocol.scope e devolve CORS para a janela.
-        allow_asset_cors(|scheme| manager.register_uri_scheme_as_cors_enabled(scheme));
-        debug_assert!(manager.uri_scheme_is_cors_enabled(ASSET_SCHEME));
-    })
+        manager.register_uri_scheme_as_cors_enabled(ASSET_SCHEME);
+    });
+    if let Err(e) = result {
+        log::error!("asset: não foi possível configurar o WebKit: {e}");
+    }
 }
 
 // @test RF-05
 #[cfg(test)]
 mod tests {
-    use super::*;
-    #[test]
-    fn asset_scheme_is_registered_for_cors() {
-        let mut registered = None;
-        allow_asset_cors(|scheme| registered = Some(scheme.to_owned()));
-        assert_eq!(registered.as_deref(), Some(ASSET_SCHEME));
-    }
-
     #[test]
     fn asset_protocol_remains_limited_and_allowed_by_both_csp_modes() {
         let config: serde_json::Value =

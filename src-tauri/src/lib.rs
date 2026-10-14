@@ -101,7 +101,7 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             log::info!("GPU: {}", gpu_decision);
             #[cfg(target_os = "linux")]
-            asset_webkit::configure(app)?;
+            asset_webkit::configure(app);
             let state = build_state(app.handle())?;
             state.start();
             app.manage(state);
