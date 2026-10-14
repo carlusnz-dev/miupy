@@ -22,6 +22,7 @@ pub use metadata::{
 };
 pub use resolver::{
     DownloadRequest, DownloadedAudio, MediaResolver, PlaylistInfo, ProgressFn, SearchResult,
+    StreamAudio, VideoMetadata,
 };
 pub use tagger::{AudioInfo, Cover, TagUpdate};
 pub use title::{ParsedTitle, clean_title};

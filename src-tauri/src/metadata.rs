@@ -186,6 +186,7 @@ impl MetadataService {
             artist: track.artist_name.clone(),
             album: track.album.clone(),
             cover: cover.and_then(|p| std::fs::read(p).ok()),
+            ..Default::default()
         };
         match tokio::task::spawn_blocking(move || tagger::write_tags(&file, &update)).await {
             Ok(Ok(())) => {}
@@ -367,6 +368,9 @@ mod tests {
             release_mbids: vec!["rel-1".into(), "rel-2".into(), "rel-3".into()],
             duration_ms: Some(369_000),
             score: 100,
+            genres: Vec::new(),
+            release_year: None,
+            isrc: None,
         }
     }
 

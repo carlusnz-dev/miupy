@@ -248,6 +248,7 @@ impl Downloads {
             artist: track.artist_name.clone(),
             album: track.album.clone(),
             cover: cover.as_deref().and_then(|p| std::fs::read(p).ok()),
+            ..Default::default()
         };
         let audio_path = audio.path.clone();
         match tokio::task::spawn_blocking(move || tagger::write_tags(&audio_path, &update)).await {
@@ -406,6 +407,22 @@ pub mod testing {
                 .filter(|r| r.title.to_lowercase().contains(&query.to_lowercase()))
                 .take(limit)
                 .collect())
+        }
+
+        async fn resolve_stream(&self, _video_id: &str) -> Result<miupy_media::StreamAudio> {
+            Err(MediaError::Unavailable("streaming não simulado".into()))
+        }
+
+        async fn related_tracks(
+            &self,
+            _video_id: &str,
+            _limit: usize,
+        ) -> Result<Vec<SearchResult>> {
+            Ok(Vec::new())
+        }
+
+        async fn video_metadata(&self, _video_id: &str) -> Result<miupy_media::VideoMetadata> {
+            Ok(miupy_media::VideoMetadata::default())
         }
 
         async fn download_audio(&self, request: DownloadRequest) -> Result<DownloadedAudio> {
