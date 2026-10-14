@@ -203,6 +203,7 @@
         "crates/miupy-core/src/tracks.rs:373",
         "crates/miupy-media/src/tagger.rs:93",
         "crates/miupy-media/src/tagger.rs:135",
+        "src-tauri/src/asset_webkit.rs:1",
         "src-tauri/src/commands/library.rs:10",
         "src-tauri/src/commands/library.rs:20",
         "src-tauri/src/commands/library.rs:34",
@@ -223,7 +224,9 @@
         "crates/miupy-media/src/tagger.rs:222",
         "crates/miupy-media/src/tagger.rs:280",
         "crates/miupy-media/src/tagger.rs:312",
+        "src-tauri/src/asset_webkit.rs:26",
         "src-tauri/src/state.rs:208",
+        "src/lib/ipc/tauri.test.ts:1",
         "src/lib/stores/stores.test.ts:68"
       ],
       "status": "verificado"
@@ -562,7 +565,7 @@
         "crates/miupy-core/src/activity.rs:110",
         "crates/miupy-core/src/activity.rs:120",
         "crates/miupy-core/src/activity.rs:164",
-        "src-tauri/src/lib.rs:168",
+        "src-tauri/src/lib.rs:172",
         "src-tauri/src/listening.rs:7",
         "src-tauri/src/player.rs:737"
       ],
@@ -1293,8 +1296,8 @@
         "src-tauri/src/gpu.rs:201",
         "src-tauri/src/gpu.rs:214",
         "src-tauri/src/gpu.rs:241",
-        "src-tauri/src/lib.rs:85",
-        "src-tauri/src/lib.rs:173",
+        "src-tauri/src/lib.rs:87",
+        "src-tauri/src/lib.rs:177",
         "src/App.svelte:36",
         "src/app.css:189",
         "src/lib/components/settings/GpuSection.svelte:2",
