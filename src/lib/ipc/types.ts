@@ -1,0 +1,165 @@
+// Tipos do contrato docs/arquitetura/ipc.md (manter em sincronia).
+
+export type LavaTheme = 'orange' | 'purple' | 'blue';
+export type SortDir = 'asc' | 'desc';
+export type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
+export type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
+export type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
+
+export interface Track {
+  id: string;
+  title: string;
+  artistId: string | null;
+  artistName: string | null;
+  album: string | null;
+  durationMs: number;
+  filePath: string | null;
+  coverPath: string | null;
+  source: 'youtube' | 'local';
+  sourceId: string | null;
+  codec: string | null;
+  bitrate: number | null;
+  isFavorite: boolean;
+  downloadStatus: DownloadStatus;
+  addedAt: number;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description: string | null;
+  coverPath: string | null;
+  trackCount: number;
+  totalDurationMs: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TrackQuery {
+  search?: string;
+  sortBy?: TrackSort;
+  sortDir?: SortDir;
+  favoritesOnly?: boolean;
+}
+
+export interface PlayerState {
+  status: PlayerStatus;
+  track: Track | null;
+  positionMs: number;
+  durationMs: number;
+  volume: number;
+  muted: boolean;
+  queue: string[];
+  queueIndex: number;
+}
+
+export interface SearchResult {
+  sourceId: string;
+  title: string;
+  artist: string;
+  durationMs: number;
+  thumbnailUrl: string | null;
+  inLibrary: boolean;
+}
+
+export interface DownloadJob {
+  id: string;
+  trackId: string;
+  status: DownloadStatus;
+  progress: number;
+  error: string | null;
+}
+
+export interface ArtistInfo {
+  id: string;
+  name: string;
+  mbid: string | null;
+  country: string | null;
+  genres: string[];
+  bio: string | null;
+  imagePath: string | null;
+  trackCount: number;
+}
+
+export interface Lyrics {
+  trackId: string;
+  plain: string | null;
+  synced: string | null;
+}
+
+export interface Profile {
+  displayName: string;
+  username: string;
+  email: string;
+  phone: string;
+  avatarPath: string | null;
+}
+
+export interface Settings {
+  lavaTheme: LavaTheme;
+  volume: number;
+}
+
+export interface RankedTrack {
+  track: Track;
+  plays: number;
+  listenedMs: number;
+}
+export interface RankedArtist {
+  artistId: string;
+  name: string;
+  plays: number;
+  listenedMs: number;
+}
+
+export interface LibraryStats {
+  trackCount: number;
+  downloadedCount: number;
+  playlistCount: number;
+  artistCount: number;
+  favoriteCount: number;
+  totalDurationMs: number;
+  totalListenedMs: number;
+  totalPlays: number;
+  topTracks: RankedTrack[];
+}
+
+export interface Wrapped {
+  year: number;
+  totalListenedMs: number;
+  totalPlays: number;
+  distinctTracks: number;
+  distinctArtists: number;
+  tracksAdded: number;
+  topTracks: RankedTrack[];
+  topArtists: RankedArtist[];
+  listenedMsByMonth: number[];
+  busiestDay: { date: string; listenedMs: number } | null;
+}
+
+export type IpcErrorCode =
+  | 'not_found'
+  | 'invalid_input'
+  | 'conflict'
+  | 'io'
+  | 'network'
+  | 'unavailable'
+  | 'internal';
+
+export interface IpcError {
+  code: IpcErrorCode | string;
+  message: string;
+}
+
+export interface ProgressPayload {
+  positionMs: number;
+  durationMs: number;
+}
+
+export interface EventMap {
+  'player://state': PlayerState;
+  'player://progress': ProgressPayload;
+  'download://progress': DownloadJob;
+  'library://changed': { reason: string };
+}
+export type EventName = keyof EventMap;

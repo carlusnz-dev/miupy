@@ -1,0 +1,187 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens "magma".
+ * Rocha vulcânica (basalto) em tons quentes quase pretos; a lava é a cor de destaque e muda por
+ * data-lava no <html>. Flat: sem sombras, separação por borda de 1px fraca e por superfície.
+ * @req RNF-04 RNF-05 RF-17
+ */
+:root {
+  color-scheme: dark;
+
+  /* lava (padrão: laranja/vermelho) */
+  --lava-core: #ffd27a; /* núcleo incandescente */
+  --lava: #ff6a2b; /* lava */
+  --lava-deep: #b3200f; /* brasa */
+  --lava-ember: #4a0f08; /* brasa escura */
+  --lava-text: #ff8a4d; /* destaque sobre fundo escuro (contraste AA) */
+  --lava-ink: #1a0703; /* texto sobre a lava */
+  --lava-rgb: 255 106 43;
+
+  /* basalto: um toque da brasa tinge a rocha, de leve */
+  --bg: color-mix(in oklab, #0b0908, var(--lava-deep) 5%);
+  --surface-1: color-mix(in oklab, #131010, var(--lava-deep) 6%);
+  --surface-2: color-mix(in oklab, #1a1615, var(--lava-deep) 7%);
+  --surface-3: color-mix(in oklab, #231d1b, var(--lava-deep) 8%);
+  --line: rgb(255 238 228 / 0.08);
+  --line-strong: rgb(255 238 228 / 0.16);
+  --fg: #f3ece7;
+  --fg-muted: #a99e96;
+  --fg-faint: #7a6f68;
+  --danger: #ff5d5d;
+  --ok: #6fd08c;
+
+  /* gradientes derivados */
+  --grad-lava: linear-gradient(135deg, var(--lava-core) 0%, var(--lava) 42%, var(--lava-deep) 100%);
+  --grad-lava-soft: linear-gradient(135deg, color-mix(in oklab, var(--lava) 80%, var(--bg)), color-mix(in oklab, var(--lava-deep) 90%, var(--bg)));
+  --grad-ember: linear-gradient(180deg, color-mix(in oklab, var(--lava-deep) 38%, var(--bg)) 0%, var(--bg) 100%);
+  --grad-glow: radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--lava) 30%, transparent), transparent 60%);
+
+  --sidebar-w: 15rem;
+  --player-h: 5.25rem;
+  --nav-h: 3.5rem;
+  --radius: 0.625rem;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+:root[data-lava='purple'], [data-lava-preview='purple'] {
+  --lava-core: #f0c4ff;
+  --lava: #a64dff;
+  --lava-deep: #4b1a9e;
+  --lava-ember: #1f0a45;
+  --lava-text: #c28bff;
+  --lava-ink: #12062b;
+  --lava-rgb: 166 77 255;
+}
+:root[data-lava='blue'], [data-lava-preview='blue'] {
+  --lava-core: #b0f0ff;
+  --lava: #2f8cff;
+  --lava-deep: #123f9e;
+  --lava-ember: #08204a;
+  --lava-text: #6fb0ff;
+  --lava-ink: #04122b;
+  --lava-rgb: 47 140 255;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-s1: var(--surface-1);
+  --color-s2: var(--surface-2);
+  --color-s3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-faint: var(--fg-faint);
+  --color-lava: var(--lava);
+  --color-lava-core: var(--lava-core);
+  --color-lava-deep: var(--lava-deep);
+  --color-lava-text: var(--lava-text);
+  --color-lava-ink: var(--lava-ink);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+}
+
+[data-lava-preview='orange'] { --lava-core: #ffd27a; --lava: #ff6a2b; --lava-deep: #b3200f; --lava-ember: #4a0f08; --lava-text: #ff8a4d; --lava-ink: #1a0703; }
+
+html, body, #app { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+::selection { background: color-mix(in oklab, var(--lava) 45%, transparent); }
+
+:focus-visible { outline: 2px solid var(--lava-text); outline-offset: 2px; border-radius: 4px; }
+button { cursor: pointer; color: inherit; font: inherit; }
+button:disabled { cursor: default; opacity: 0.45; }
+input, select, textarea { font: inherit; color: inherit; }
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* botões */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 2.5rem; padding: 0 1rem; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: transparent; font-weight: 600; font-size: 0.875rem;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-3); }
+.btn-primary { background: var(--grad-lava); color: var(--lava-ink); border-color: transparent; }
+.btn-primary:hover:not(:disabled) { background: var(--grad-lava); filter: brightness(1.08); }
+.btn-danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
+.btn-sm { min-height: 2rem; padding: 0 0.75rem; font-size: 0.8125rem; }
+.icon-btn {
+  display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
+  border: 0; background: transparent; color: var(--fg-muted); flex: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+.icon-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--fg); }
+.icon-btn.on { color: var(--lava-text); }
+
+/* superfícies */
+.card { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radius); }
+.field {
+  width: 100%; min-height: 2.5rem; padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+  background: var(--surface-2); border: 1px solid var(--line); outline: none;
+}
+.field:hover { border-color: var(--line-strong); }
+.field:focus-visible { border-color: var(--lava-text); outline: 1px solid var(--lava-text); outline-offset: 0; }
+.field[aria-invalid='true'] { border-color: var(--danger); }
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.125rem 0.5rem; border-radius: 999px;
+  border: 1px solid var(--line-strong); font-size: 0.75rem; color: var(--fg-muted);
+}
+.eyebrow { font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); font-weight: 600; }
+.text-grad {
+  background: var(--grad-lava); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* trilha de range (progresso/volume) */
+input[type='range'].slider {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 1.5rem; background: transparent; cursor: pointer;
+  --pct: 0%;
+}
+input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--lava-core), var(--lava)) 0 / var(--pct) 100% no-repeat, var(--surface-3);
+}
+input[type='range'].slider::-moz-range-track { height: 4px; border-radius: 4px; background: var(--surface-3); }
+input[type='range'].slider::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--lava); }
+input[type='range'].slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: var(--fg); border: 0;
+}
+input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--fg); border: 0; }
+
+/* mesh animado: só transform/opacity em camadas já compostas */
+@keyframes mesh-a { 0% { transform: translate3d(-8%, -6%, 0) scale(1); } 50% { transform: translate3d(10%, 8%, 0) scale(1.18); } 100% { transform: translate3d(-8%, -6%, 0) scale(1); } }
+@keyframes mesh-b { 0% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } }
+@keyframes mesh-c { 0% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } 100% { transform: translate3d(0, 10%, 0) scale(1); } }
+.mesh-layer { position: absolute; width: 90%; height: 90%; will-change: transform; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.mesh.paused .mesh-layer { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .mesh-layer { animation: none !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+dialog.modal {
+  border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); border-radius: 0.875rem;
+  padding: 0; width: min(28rem, calc(100vw - 2rem)); max-height: min(36rem, calc(100dvh - 2rem));
+}
+dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
+
+@media (min-width: 768px) {
+  :root { --nav-h: 0px; }
+}

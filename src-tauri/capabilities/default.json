@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissões da janela principal: eventos e utilidades do núcleo do Tauri. Os comandos do app (player_*, library_*, ...) são próprios e não precisam de permissão extra.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

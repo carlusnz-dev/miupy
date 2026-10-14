@@ -1,0 +1,27 @@
+# Rust
+/target
+**/target
+
+# Node / frontend
+node_modules
+dist
+.svelte-kit
+
+# Tauri
+src-tauri/gen/schemas
+src-tauri/gen/android/**/build
+src-tauri/gen/android/.gradle
+src-tauri/binaries
+
+# Dados locais
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+
+# SO / IDE
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json

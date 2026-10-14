@@ -1,0 +1,214 @@
+{
+  "projeto": "miupy",
+  "versao": "0.1.0",
+  "atualizadoEm": "2026-10-13",
+  "sessao": "2026-10-13_sessao-01",
+  "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
+  "statusPossiveis": [
+    "planejado",
+    "parcial",
+    "implementado",
+    "verificado"
+  ],
+  "plataformas": {
+    "linux": {
+      "status": "parcial",
+      "nota": "App nativo abre e permanece de pé (tauri dev); fluxos dentro da janela ainda não validados."
+    },
+    "windows": {
+      "status": "planejado",
+      "nota": "Não compilado."
+    },
+    "macos": {
+      "status": "planejado",
+      "nota": "Não compilado."
+    },
+    "android": {
+      "status": "planejado",
+      "nota": "SDK, NDK e targets Rust não instalados; backend de áudio é o NullBackend (silencioso)."
+    }
+  },
+  "modulos": [
+    {
+      "id": "miupy-core",
+      "caminho": "crates/miupy-core",
+      "tipo": "crate-rust",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil e configurações.",
+      "dependeDe": [],
+      "tecnologias": [
+        "rusqlite (bundled)",
+        "rusqlite_migration",
+        "serde",
+        "uuid v7",
+        "thiserror"
+      ],
+      "status": "verificado",
+      "testes": {
+        "passando": 56,
+        "falhando": 0
+      },
+      "requisitos": [
+        "RF-04",
+        "RF-05",
+        "RF-06",
+        "RF-07",
+        "RF-08",
+        "RF-13",
+        "RF-14",
+        "RF-15",
+        "RF-16",
+        "RF-17",
+        "RNF-01"
+      ]
+    },
+    {
+      "id": "miupy-audio",
+      "caminho": "crates/miupy-audio",
+      "tipo": "crate-rust",
+      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop) e NullBackend (testes e Android).",
+      "dependeDe": [],
+      "tecnologias": [
+        "rodio 0.23",
+        "crossbeam-channel",
+        "thiserror"
+      ],
+      "status": "verificado",
+      "testes": {
+        "passando": 13,
+        "falhando": 0
+      },
+      "requisitos": [
+        "RF-01",
+        "RF-02",
+        "RF-03"
+      ],
+      "limitacoes": [
+        "Testado só com WAV gerado; M4A e MP3 reais não foram provados.",
+        "AudioEvent::Error não é emitido pelo backend rodio."
+      ]
+    },
+    {
+      "id": "miupy-media",
+      "caminho": "crates/miupy-media",
+      "tipo": "crate-rust",
+      "papel": "Trait MediaResolver (yt-dlp), MetadataProvider (MusicBrainz, Cover Art Archive, LRCLIB), tagger (lofty) e limpeza de títulos.",
+      "dependeDe": [],
+      "dependenciasExternas": [
+        "yt-dlp (binário, não instalado nesta máquina)"
+      ],
+      "tecnologias": [
+        "tokio",
+        "reqwest (rustls)",
+        "lofty",
+        "async-trait"
+      ],
+      "status": "parcial",
+      "testes": {
+        "passando": 54,
+        "falhando": 0,
+        "ignorados": 5
+      },
+      "requisitos": [
+        "RF-05",
+        "RF-09",
+        "RF-10",
+        "RF-11",
+        "RF-12"
+      ],
+      "limitacoes": [
+        "Busca e download com yt-dlp real nunca foram executados; só fixtures e processo falso.",
+        "rustypipe (Android) não adicionado: é GPL-3.0 e a licença do projeto está em aberto."
+      ]
+    },
+    {
+      "id": "src-tauri",
+      "caminho": "src-tauri",
+      "tipo": "app-tauri",
+      "papel": "Casca do app: estado, 37 comandos IPC, eventos, fila de reprodução, registro de atividade e gerenciador de downloads.",
+      "dependeDe": [
+        "miupy-core",
+        "miupy-audio",
+        "miupy-media"
+      ],
+      "tecnologias": [
+        "tauri 2",
+        "tauri-plugin-log"
+      ],
+      "status": "parcial",
+      "testes": {
+        "passando": 68,
+        "falhando": 0
+      },
+      "requisitos": [
+        "RF-01",
+        "RF-02",
+        "RF-03",
+        "RF-09",
+        "RF-10",
+        "RF-11",
+        "RF-12",
+        "RF-13"
+      ],
+      "limitacoes": [
+        "App abre, mas nenhum fluxo (tocar, baixar, playlists) foi exercitado dentro da janela.",
+        "Busca e download dependem do yt-dlp, não instalado.",
+        "Sem relatório de agente: o agente de integração foi interrompido."
+      ]
+    },
+    {
+      "id": "frontend",
+      "caminho": "src",
+      "tipo": "spa-svelte",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado com mock em memória.",
+      "dependeDe": [
+        "src-tauri (via IPC)"
+      ],
+      "tecnologias": [
+        "Svelte 5",
+        "Vite",
+        "TypeScript 6",
+        "Tailwind 4",
+        "@tauri-apps/api 2"
+      ],
+      "status": "parcial",
+      "testes": {
+        "passando": 0,
+        "falhando": 0,
+        "nota": "Sem testes automatizados; svelte-check e build passam."
+      },
+      "requisitos": [
+        "RF-01 a RF-17 (interface)",
+        "RNF-04",
+        "RNF-05"
+      ],
+      "limitacoes": [
+        "Aparência não revisada.",
+        "Cliente Tauri real nunca rodou contra o backend."
+      ]
+    },
+    {
+      "id": "ferramentas",
+      "caminho": "scripts",
+      "tipo": "script-node",
+      "papel": "Gerador da matriz de rastreabilidade (scripts/rastreabilidade.mjs).",
+      "dependeDe": [],
+      "status": "verificado"
+    }
+  ],
+  "contratos": {
+    "ipc": "docs/arquitetura/ipc.md",
+    "bancoDeDados": "docs/arquitetura/banco-de-dados.md",
+    "requisitos": "docs/requisitos/requisitos.md"
+  },
+  "dadosEmDisco": {
+    "raiz": "app_data_dir() do Tauri",
+    "banco": "miupy.db",
+    "audio": "audio/<track_id>.m4a",
+    "capas": "covers/"
+  },
+  "decisoesEmAberto": [
+    "Licença do projeto (define se rustypipe GPL-3.0 pode ser o extrator no Android).",
+    "Fonte de biografia e foto de artista (TheAudioDB, Last.fm ou Wikidata).",
+    "Distribuição do yt-dlp (do sistema ou baixado e atualizado pelo app)."
+  ]
+}

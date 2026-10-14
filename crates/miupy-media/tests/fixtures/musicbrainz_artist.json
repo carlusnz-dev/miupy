@@ -1,0 +1,3 @@
+{"id": "056e4f3e-d505-4dad-8ec1-d04f521cbb56", "name": "Daft Punk", "sort-name": "Daft Punk", "type": "Group", "country": "FR", "area": {"id": "x", "name": "France"},
+ "genres": [{"id": "g1", "name": "electronic", "count": 12}, {"id": "g2", "name": "house", "count": 20}, {"id": "g3", "name": "funk", "count": 3}],
+ "tags": [{"name": "french", "count": 5}, {"name": "electronic", "count": 12}]}

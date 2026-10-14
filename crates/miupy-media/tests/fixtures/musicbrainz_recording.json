@@ -1,0 +1,6 @@
+{"created": "2026-10-13T12:00:00.000Z", "count": 2, "offset": 0, "recordings": [
+ {"id": "b1a9c0e9-d987-4042-ae91-78d6a3267d69", "score": 100, "title": "Get Lucky", "length": 369000, "video": null,
+  "artist-credit": [{"name": "Daft Punk", "joinphrase": " feat. ", "artist": {"id": "056e4f3e-d505-4dad-8ec1-d04f521cbb56", "name": "Daft Punk", "sort-name": "Daft Punk"}}, {"name": "Pharrell Williams", "artist": {"id": "160ff6b3-6a4a-4b2f-bd3f-6b9a9e2c6c3e", "name": "Pharrell Williams"}}],
+  "releases": [{"id": "a0b5b3c2-1111-4c2a-9b5e-0000000000ff", "title": "Now Hits Compilation", "status": "Bootleg", "release-group": {"primary-type": "Album", "secondary-types": ["Compilation"]}}, {"id": "a0b5b3c2-1111-4c2a-9b5e-000000000001", "title": "Random Access Memories", "status": "Official", "release-group": {"primary-type": "Album", "secondary-types": []}}, {"id": "a0b5b3c2-1111-4c2a-9b5e-000000000002", "title": "Get Lucky (single)"}]},
+ {"id": "00000000-0000-0000-0000-000000000002", "score": 62, "title": "Get Lucky (live)", "artist-credit": [{"name": "Cover Band", "artist": {"id": "00000000-0000-0000-0000-0000000000aa", "name": "Cover Band"}}]}
+]}

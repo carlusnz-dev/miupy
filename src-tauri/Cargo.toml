@@ -1,0 +1,31 @@
+[package]
+name = "miupy"
+version.workspace = true
+edition.workspace = true
+description = "Player de música offline (casca Tauri)"
+
+[lib]
+name = "miupy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+miupy-core = { path = "../crates/miupy-core" }
+miupy-audio = { path = "../crates/miupy-audio" }
+miupy-media = { path = "../crates/miupy-media" }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio-util = "0.7.20"
+async-trait = "0.1.92"
+log = "0.4.34"
+tauri = { version = "2", features = ["protocol-asset"] }
+serde = { version = "1.0.229", features = ["derive"] }
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+crossbeam-channel = "0.5.17"
+tauri-plugin-log = "2"
+
+[dev-dependencies]
+tempfile = "3.27.0"

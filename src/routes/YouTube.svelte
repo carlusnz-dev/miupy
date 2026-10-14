@@ -1,0 +1,79 @@
+<script lang="ts">
+  // Busca no YouTube: resultados, adicionar à biblioteca/playlist, baixar. @req RF-09 RF-10
+  import { api, errorMessage, type SearchResult } from '../lib/ipc';
+  import { ui } from '../lib/stores/ui.svelte';
+  import { notify, notifyError } from '../lib/stores/toast.svelte';
+  import { downloadTracks } from '../lib/actions';
+  import { fmtTime } from '../lib/util/format';
+  import PageHeader from '../lib/components/PageHeader.svelte';
+  import Cover from '../lib/components/Cover.svelte';
+  import Icon from '../lib/components/Icon.svelte';
+  import State from '../lib/components/State.svelte';
+
+  let query = $state('');
+  let results = $state<SearchResult[] | null>(null);
+  let searching = $state(false);
+  let error = $state<string | null>(null);
+  let busy = $state<string | null>(null);
+
+  async function search(e?: SubmitEvent) {
+    e?.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    searching = true; error = null;
+    try { results = await api.youtubeSearch({ query: q, limit: 20 }); }
+    catch (ex) { error = errorMessage(ex); results = null; }
+    finally { searching = false; }
+  }
+
+  async function add(r: SearchResult, then?: 'download' | 'playlist') {
+    busy = r.sourceId;
+    try {
+      const tracks = await api.youtubeAddToLibrary({ sourceIds: [r.sourceId] });
+      results = results?.map((x) => (x.sourceId === r.sourceId ? { ...x, inLibrary: true } : x)) ?? null;
+      if (then === 'download') await downloadTracks(tracks.map((t) => t.id));
+      else if (then === 'playlist') ui.pickPlaylist(tracks.map((t) => t.id));
+      else notify('Adicionada à biblioteca.');
+    } catch (e) { notifyError(e); } finally { busy = null; }
+  }
+</script>
+
+<PageHeader title="Buscar no YouTube" subtitle="Encontre músicas, adicione à biblioteca e baixe para ouvir offline." />
+
+<form class="mb-5 flex gap-2" onsubmit={search} role="search">
+  <div class="relative flex-1">
+    <Icon name="search" size={16} class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+    <input class="field !pl-9" type="search" placeholder="Nome da música ou artista" aria-label="Buscar no YouTube" bind:value={query} />
+  </div>
+  <button class="btn btn-primary" disabled={searching || !query.trim()}>Buscar</button>
+</form>
+
+{#if searching}
+  <State kind="loading" title="Buscando no YouTube…" />
+{:else if error}
+  <State kind="error" title="A busca falhou" text={error} onretry={search} />
+{:else if results === null}
+  <State kind="empty" icon="globe" title="Busque uma música" text="A busca precisa de internet. O que você baixar toca sem rede." />
+{:else if results.length === 0}
+  <State kind="empty" icon="search" title="Nada encontrado" text="Tente outro termo." />
+{:else}
+  <ul class="flex flex-col gap-1">
+    {#each results as r (r.sourceId)}
+      <li class="flex flex-wrap items-center gap-3 rounded-lg px-2 py-2 hover:bg-s2">
+        <Cover url={r.thumbnailUrl} seed={r.sourceId} size={52} rounded="0.375rem" />
+        <div class="min-w-0 flex-1 basis-40">
+          <p class="truncate text-sm font-medium">{r.title}</p>
+          <p class="truncate text-xs text-muted">{r.artist} · {fmtTime(r.durationMs)}</p>
+        </div>
+        {#if r.inLibrary}<span class="chip text-ok"><Icon name="check" size={12} />Na biblioteca</span>{/if}
+        <div class="flex gap-1.5">
+          {#if !r.inLibrary}
+            <button class="btn btn-sm" disabled={busy === r.sourceId} onclick={() => add(r)}><Icon name="plus" size={14} />Adicionar</button>
+          {/if}
+          <button class="btn btn-sm" disabled={busy === r.sourceId} onclick={() => add(r, 'playlist')}><Icon name="playlist" size={14} />Playlist</button>
+          <button class="btn btn-sm" disabled={busy === r.sourceId} onclick={() => add(r, 'download')}><Icon name="download" size={14} />Baixar</button>
+        </div>
+      </li>
+    {/each}
+  </ul>
+{/if}

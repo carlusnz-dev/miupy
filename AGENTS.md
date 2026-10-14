@@ -1,0 +1,27 @@
+# miupy — guia para agentes
+
+Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mexer:
+`docs/requisitos/requisitos.md`, `docs/arquitetura/arquitetura.md`, `docs/arquitetura/ipc.md`,
+`docs/stacks/stacks.md`.
+
+## Ambiente
+
+- Rust não está no `PATH` do shell não interativo: `export PATH="$HOME/.cargo/bin:$PATH"`.
+- Gerenciador de pacotes JS: `npm`. CLI do Tauri: `npx tauri`.
+- Adicione dependências com `cargo add` / `npm install` (versão atual), não chute versões.
+
+## Regras
+
+- `crates/miupy-core`, `miupy-audio` e `miupy-media` não dependem de Tauri nem umas das outras.
+  `src-tauri` é a única cola.
+- O contrato frontend ⇄ Rust é `docs/arquitetura/ipc.md`. Mudou o contrato, atualize o arquivo.
+- Todo código que implementa um requisito leva `// @req RF-NN`; todo teste leva `// @test RF-NN`.
+  Depois: `npm run docs:matriz`.
+- Interface e documentação em pt-BR. Identificadores de código em inglês.
+- Antes de encerrar: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`.
+
+## Fim de sessão
+
+1. Atualize `docs/arquitetura/arquitetura.json` se a estrutura mudou.
+2. Rode `npm run docs:matriz`.
+3. Salve um relatório em `docs/relatorios/` seguindo `docs/relatorios/README.md`.

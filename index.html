@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR" data-lava="orange">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e0c0b" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>miupy</title>
+    <script>
+      // Aplica a cor da lava antes da primeira pintura (cache local; a fonte da verdade é settings_get).
+      try {
+        var l = localStorage.getItem('miupy.lava');
+        if (l === 'orange' || l === 'purple' || l === 'blue') document.documentElement.dataset.lava = l;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+[
+ {"id": 1, "trackName": "Song", "artistName": "A", "albumName": "X", "duration": 300.0, "instrumental": false, "plainLyrics": "versão longa", "syncedLyrics": null},
+ {"id": 2, "trackName": "Song", "artistName": "A", "albumName": "Y", "duration": 181.4, "instrumental": false, "plainLyrics": "plain certa", "syncedLyrics": "[00:01.00] sync certa"},
+ {"id": 3, "trackName": "Song", "artistName": "A", "albumName": "Z", "duration": 181.0, "instrumental": true, "plainLyrics": null, "syncedLyrics": null}
+]

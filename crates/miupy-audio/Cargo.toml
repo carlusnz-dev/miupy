@@ -1,0 +1,14 @@
+[package]
+name = "miupy-audio"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+crossbeam-channel = "0.5.17"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+hound = "3.5.1"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rodio = "0.23"
