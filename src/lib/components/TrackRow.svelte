@@ -32,6 +32,7 @@
 
 <div
   class="group motion-item track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
+  style:animation-delay={index !== undefined && index < 14 ? `${index * 20}ms` : undefined}
   {draggable} {ondragstart} {ondragover} {ondrop} role="listitem"
 >
   {#if selectable}
@@ -93,7 +94,7 @@
 </div>
 
 <style>
-  /* Só as primeiras linhas (as que cabem na tela) fazem a entrada em mola; as de baixo, montadas em
-     blocos ou ao rolar, entram sem animar (RNF-13: centenas de animações simultâneas engasgam). */
+  /* As 14 primeiras fazem a mesma entrada em mola, com atraso pelo índice (inline); as de baixo,
+     montadas em blocos ou ao rolar, entram sem animar (RNF-13: centenas de animações simultâneas engasgam). */
   .track-row:nth-child(n + 15) { animation: none; }
 </style>
