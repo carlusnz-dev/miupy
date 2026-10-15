@@ -20,7 +20,6 @@
   import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
-  import { useShared } from '../lib/layoutPresence';
   import { dismissable } from '../lib/util/dismiss';
 
   const t = $derived(player.track);
@@ -97,15 +96,15 @@
   <MeshGradient class="min-h-full">
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
+        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" />
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <h1 class="text-2xl font-bold leading-tight" use:useShared={`track-title-${t.id}`}>{t.title}</h1>
+            <h1 class="text-2xl font-bold leading-tight">{t.title}</h1>
             <p class="mt-1 text-muted">
               {#if t.artistId}
-                <a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>
+                <a class="hover:underline" href={href(paths.artist(t.artistId))}>{t.artistName}</a>
               {:else}
-                <span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>
+                <span>{t.artistName ?? 'Artista desconhecido'}</span>
               {/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>

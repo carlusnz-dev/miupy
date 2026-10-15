@@ -26,7 +26,6 @@
   import Recommendations from '../lib/components/Recommendations.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
-  import { useShared } from '../lib/layoutPresence';
 
   let { id }: { id: string } = $props();
 
@@ -117,11 +116,11 @@
 {:else}
   <MeshGradient class="mb-5 rounded-2xl border border-line" intensity={0.8}>
     <div class="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-end md:p-6">
-      {#if pl}<PlaylistCover playlist={pl} size={144} shared={`playlist-cover-${pl.id}`} />{:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
+      {#if pl}<PlaylistCover playlist={pl} size={144} />{:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
       <div class="min-w-0 flex-1">
         <p class="eyebrow !text-fg/70">{pl?.isFavorites ? "Playlist de favoritas" : "Playlist"}</p>
         {#if pl}
-          <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl" use:useShared={`playlist-title-${pl.id}`}>{pl.name}</h1>
+          <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl">{pl.name}</h1>
         {:else}
           <Skeleton w="min(18rem, 70%)" h="2.25rem" class="my-1" />
         {/if}

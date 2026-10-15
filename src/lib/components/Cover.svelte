@@ -4,10 +4,9 @@
   import { hash } from '../util/format';
   import { assetCrossOrigin } from '../util/asset';
   import Icon from './Icon.svelte';
-  import { useShared as sharedAction } from '../layoutPresence';
 
-  type Props = { path?: string | null; url?: string | null; thumb?: string | null; seed: string; size?: number | string; rounded?: string; class?: string; label?: string; shared?: string };
-  let { path = null, url = null, thumb = null, seed, size, rounded = '0.5rem', class: cls = '', label = '', shared }: Props = $props();
+  type Props = { path?: string | null; url?: string | null; thumb?: string | null; seed: string; size?: number | string; rounded?: string; class?: string; label?: string };
+  let { path = null, url = null, thumb = null, seed, size, rounded = '0.5rem', class: cls = '', label = '' }: Props = $props();
 
   // `thumb` é a miniatura remota: a capa de quem ainda não tem arquivo de capa (faixa só em streaming).
   const src = $derived(url ?? api.resolveAsset(path) ?? thumb);
@@ -22,7 +21,6 @@
 </script>
 
 <div
-  use:sharedAction={shared ?? ''}
   class="motion-cover relative grid shrink-0 place-items-center overflow-hidden bg-s3 {cls}"
   style="border-radius:{rounded};{dim ? `width:${dim};height:${dim};` : ''}aspect-ratio:1/1"
   role={label ? 'img' : undefined}
