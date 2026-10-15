@@ -28,6 +28,7 @@ export interface Track {
   genres: string[]; // @req RF-20
   releaseYear: number | null;
   loudnessLufs: number | null; // @req RF-28
+  thumbnailUrl: string | null;
 }
 
 export interface Playlist {

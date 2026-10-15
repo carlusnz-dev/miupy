@@ -15,7 +15,7 @@
     <div class="absolute inset-x-0 top-0 h-0.5 bg-s3" aria-hidden="true"><div class="h-full" style="width:{player.progress * 100}%;background:var(--grad-lava)"></div></div>
     <div class="flex items-center gap-2 px-3 py-2">
       <button class="flex min-w-0 flex-1 items-center gap-3 text-left" onclick={() => navigate(paths.nowPlaying)} aria-label="Abrir tocando agora: {t.title}">
-        <Cover path={t.coverPath} seed={t.id} size={40} rounded="0.375rem" shared={`track-cover-${t.id}`} />
+        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} size={40} rounded="0.375rem" shared={`track-cover-${t.id}`} />
         <span class="min-w-0">
           <span class="block truncate text-sm font-medium" use:useShared={`track-title-${t.id}`}>{t.title}</span>
           <span class="block truncate text-xs text-muted" use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}{player.state.streaming ? ` · ${player.isLoading ? 'Conectando…' : 'Streaming'}` : ''}</span>

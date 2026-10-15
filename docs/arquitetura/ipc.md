@@ -39,6 +39,7 @@ interface Track {
   genres: string[];             // minúsculas, sem repetição; vazio se desconhecido (RF-20)
   releaseYear: number | null;   // RF-20
   loudnessLufs: number | null;  // loudness integrado EBU R128; null se ainda não medida (RF-28)
+  thumbnailUrl: string | null;  // miniatura remota (YouTube); capa de quem ainda não tem coverPath
 }
 
 interface Playlist {

@@ -49,8 +49,8 @@ na API de criação/edição; o banco valida que `genres` é um array JSON.
 - `UNIQUE (source, source_id) WHERE source_id IS NOT NULL`: o mesmo vídeo do YouTube entra uma vez.
 - `UNIQUE (file_path) WHERE file_path IS NOT NULL`: dois registros não apontam para o mesmo arquivo.
 - Índices: `artist_id`, `added_at`, `download_status`.
-- `thumbnail_url` não está no tipo `Track` do ipc (é só para o downloader baixar a capa);
-  leia com `Database::track_thumbnail_url`.
+- `thumbnail_url` vai no tipo `Track` do ipc (`thumbnailUrl`): é a capa da faixa que ainda não tem
+  `cover_path`, e o downloader a usa para baixar a capa (`Database::track_thumbnail_url`).
 - Faixa com `file_path` na criação (local) nasce `done`; do YouTube nasce `none`.
 
 ### `favorites`

@@ -116,6 +116,8 @@ pub struct Track {
     /// `None` enquanto a faixa não foi baixada.
     pub file_path: Option<String>,
     pub cover_path: Option<String>,
+    /// Miniatura remota; a capa das faixas ainda sem arquivo ou sem capa baixada.
+    pub thumbnail_url: Option<String>,
     pub source: Source,
     pub source_id: Option<String>,
     pub codec: Option<String>,
