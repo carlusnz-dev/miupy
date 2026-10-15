@@ -150,7 +150,7 @@ impl Database {
     // @req RF-17 RF-02
     pub fn get_settings(&self) -> Result<Settings> {
         Ok(self.conn.query_row(
-            "SELECT lava_theme, volume, normalization, eq_preset_id, sidebar_width FROM settings WHERE id = 1",
+            "SELECT lava_theme, volume, normalization, eq_preset_id, sidebar_width, favorites_playlist_id FROM settings WHERE id = 1",
             [],
             |r| {
                 Ok(Settings {
@@ -159,6 +159,7 @@ impl Database {
                     normalization: r.get(2)?,
                     eq_preset_id: r.get(3)?,
                     sidebar_width: r.get(4)?,
+                    favorites_playlist_id: r.get(5)?,
                 })
             },
         )?)

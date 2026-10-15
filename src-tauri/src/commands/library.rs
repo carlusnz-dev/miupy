@@ -48,7 +48,7 @@ pub async fn library_set_favorite(
         .db
         .run(move |db| Ok(db.set_favorite(&track_id, favorite)?))
         .await?;
-    state.events.library_changed("favorite");
+    state.events.library_changed("favorites");
     Ok(track)
 }
 

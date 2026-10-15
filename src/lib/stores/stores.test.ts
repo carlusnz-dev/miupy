@@ -96,7 +96,7 @@ describe('library', () => {
     vi.useFakeTimers();
     const { library } = await import('./library.svelte');
     await library.start();
-    fake.playlistList = vi.fn(async () => [{ id: 'pl', name: 'Lista', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: 0, updatedAt: 0 }]) as MiupyApi['playlistList'];
+    fake.playlistList = vi.fn(async () => [{ id: 'pl', name: 'Lista', description: null, coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: 0, updatedAt: 0 }]) as MiupyApi['playlistList'];
     handlers['library://changed']({ reason: 'playlist' });
     await vi.advanceTimersByTimeAsync(600);
     expect(library.playlists[0].id).toBe('pl');

@@ -130,6 +130,7 @@ pub fn run() {
             playlist::playlist_create,
             playlist::playlist_update,
             playlist::playlist_delete,
+            playlist::favorites_set_playlist,
             playlist::playlist_get_tracks,
             playlist::playlist_add_tracks,
             playlist::playlist_remove_tracks,

@@ -361,6 +361,28 @@ impl Database {
         Ok(found)
     }
 
+    // @req RF-04
+    /// IDs e favoritas de resultados do YouTube já conhecidos pela discoteca.
+    pub fn source_favorite_matches(
+        &self,
+        source_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, (String, bool)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT t.id, EXISTS(SELECT 1 FROM favorites f WHERE f.track_id = t.id)
+             FROM tracks t WHERE t.source = 'youtube' AND t.source_id = ?1",
+        )?;
+        let mut out = std::collections::HashMap::new();
+        for source_id in source_ids {
+            if let Some(pair) = stmt
+                .query_row([source_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?
+            {
+                out.insert(source_id.clone(), pair);
+            }
+        }
+        Ok(out)
+    }
+
     // @req RF-10
     /// Miniatura remota registrada na criação da faixa (para o downloader baixar a capa).
     pub fn track_thumbnail_url(&self, track_id: &str) -> Result<Option<String>> {
@@ -379,15 +401,28 @@ impl Database {
     pub fn set_favorite(&self, track_id: &str, favorite: bool) -> Result<Track> {
         self.in_tx(|| {
             self.require_track(track_id)?;
-            let changed = if favorite {
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO favorites (track_id, created_at) VALUES (?1, ?2)",
-                    params![track_id, self.now_ms()],
-                )?
-            } else {
-                self.conn
-                    .execute("DELETE FROM favorites WHERE track_id = ?1", [track_id])?
+            let playlist_id = match self.get_settings()?.favorites_playlist_id {
+                Some(id) => Some(id),
+                None if favorite => {
+                    let pl = self.create_playlist("Favoritas", None)?;
+                    self.favorites_set_playlist(&pl.id)?;
+                    Some(pl.id)
+                }
+                None => None,
             };
+            let changed = if let Some(pid) = playlist_id {
+                let exists: bool = self.conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM playlist_tracks WHERE playlist_id = ?1 AND track_id = ?2)",
+                    params![pid, track_id], |r| r.get(0)
+                )?;
+                if favorite && !exists {
+                    self.add_tracks_to_playlist(&pid, &[track_id.to_owned()])?;
+                    1
+                } else if !favorite && exists {
+                    self.remove_tracks_from_playlist(&pid, &[track_id.to_owned()])?;
+                    1
+                } else { 0 }
+            } else { 0 };
             if changed > 0 {
                 let kind = if favorite {
                     "track_favorited"

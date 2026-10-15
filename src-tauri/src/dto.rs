@@ -75,6 +75,9 @@ pub struct SearchResult {
     pub duration_ms: u64,
     pub thumbnail_url: Option<String>,
     pub in_library: bool,
+    // @req RF-04
+    pub track_id: Option<String>,
+    pub is_favorite: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -162,6 +165,8 @@ mod tests {
             duration_ms: 10,
             thumbnail_url: None,
             in_library: true,
+            track_id: Some("track".into()),
+            is_favorite: true,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["sourceId"], "abc");

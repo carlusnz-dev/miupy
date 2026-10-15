@@ -41,6 +41,7 @@ export function createTauriApi(): MiupyApi {
     libraryDeleteTrack: (a) => call('library_delete_track', a),
 
     playlistList: () => call('playlist_list'),
+    favoritesSetPlaylist: (a) => call('favorites_set_playlist', a),
     playlistCreate: (a) => call('playlist_create', a),
     playlistUpdate: (a) => call('playlist_update', a),
     playlistDelete: (a) => call('playlist_delete', a),
