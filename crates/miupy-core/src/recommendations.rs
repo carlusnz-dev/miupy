@@ -70,7 +70,9 @@ impl Database {
         }
         let mut data = TasteData::default();
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.title, t.source_id, t.artist_id, a.name, t.genres,
+            // @req RF-24: faixa sem gênero herda os do artista, como no Surfle.
+            "SELECT t.id, t.title, t.source_id, t.artist_id, a.name,
+                    CASE WHEN t.genres = '[]' THEN COALESCE(a.genres, '[]') ELSE t.genres END,
                     f.track_id IS NOT NULL, t.duration_ms,
                     e.started_at, e.listened_ms, e.completed, e.skipped
              FROM tracks t
@@ -195,27 +197,28 @@ impl Database {
             .into_iter()
             .map(|s| (s.track_id, s.score))
             .collect();
-        Ok(self
-            .get_tracks_by_ids(track_ids)?
-            .into_iter()
-            .map(|t| {
-                let genres = if t.genres.is_empty() {
-                    t.artist_id
-                        .as_deref()
-                        .and_then(|id| self.get_artist_info(id).ok())
-                        .map(|artist| artist.genres)
-                        .unwrap_or_default()
-                } else {
-                    t.genres
-                };
-                SurfleTrack {
-                    score: scores.get(&t.id).copied().unwrap_or(0.0),
-                    track_id: t.id,
-                    artist_id: t.artist_id,
-                    genres,
-                }
-            })
-            .collect())
+        let mut artist_genres: HashMap<String, Vec<String>> = HashMap::new();
+        let mut out = Vec::with_capacity(track_ids.len());
+        for t in self.get_tracks_by_ids(track_ids)? {
+            let genres = match (&t.artist_id, t.genres.is_empty()) {
+                (Some(id), true) => match artist_genres.get(id) {
+                    Some(g) => g.clone(),
+                    None => {
+                        let g = self.get_artist_info(id)?.genres;
+                        artist_genres.insert(id.clone(), g.clone());
+                        g
+                    }
+                },
+                _ => t.genres,
+            };
+            out.push(SurfleTrack {
+                score: scores.get(&t.id).copied().unwrap_or(0.0),
+                track_id: t.id,
+                artist_id: t.artist_id,
+                genres,
+            });
+        }
+        Ok(out)
     }
 
     // @req RF-25
@@ -797,8 +800,19 @@ mod tests {
                 [track.artist_id.as_deref().unwrap()],
             )
             .unwrap();
-        let prepared = db.surfle_tracks(&[track.id]).unwrap();
+        let prepared = db.surfle_tracks(&[track.id.clone()]).unwrap();
         assert_eq!(prepared[0].genres, ["rock", "samba"]);
+
+        // o gosto também herda: sem isso a afinidade de gênero do Surfle zera
+        db.set_favorite(&track.id, true).unwrap();
+        let genres: Vec<_> = db
+            .taste_profile(None)
+            .unwrap()
+            .top_genres
+            .into_iter()
+            .map(|g| g.genre)
+            .collect();
+        assert!(genres.contains(&"rock".to_string()), "{genres:?}");
     }
 
     // @test RF-25

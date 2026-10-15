@@ -21,7 +21,8 @@ evita tratar uma desistência quase no fim como rejeição forte. A faixa soma o
 é logarítmico para não deixar uma única faixa dominar só porque foi repetida em loop. Os pesos
 são constantes nomeadas em `recommendations.rs`.
 
-O perfil soma as pontuações das faixas por artista e gênero. Artistas com saldo negativo não
+O perfil soma as pontuações das faixas por artista e gênero (faixa sem gênero usa os gêneros do
+artista, como o Surfle). Artistas com saldo negativo não
 entram nos `topArtists`, mas o saldo negativo reduz candidatas desse artista. `skipRate` é
 `eventos encerrados e pulados / eventos encerrados`; `totalListenedMs` soma todo o tempo ouvido
 desses eventos. Sem eventos encerrados e sem favoritas, perfil e recomendações vazios. Só
