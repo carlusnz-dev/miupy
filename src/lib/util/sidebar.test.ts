@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { beginSidebarDrag, clampSidebarWidth, createDeferredSave, draggedSidebarWidth, keyboardSidebarWidth } from './sidebar';
+import { beginSidebarDrag, clampSidebarWidth, createDeferredSave, draggedSidebarWidth, keyboardSidebarWidth, parseCollapsed } from './sidebar';
 
 describe('largura do menu lateral', () => {
   // @test RF-33
@@ -70,5 +70,15 @@ describe('largura pelo teclado', () => {
     deferred.flush();
     expect(save).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+});
+
+describe('menu recolhido', () => {
+  // @test RF-38
+  it('só "1" conta como recolhido', () => {
+    expect(parseCollapsed('1')).toBe(true);
+    expect(parseCollapsed('0')).toBe(false);
+    expect(parseCollapsed(null)).toBe(false);
+    expect(parseCollapsed('true')).toBe(false);
   });
 });
