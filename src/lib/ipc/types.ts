@@ -6,7 +6,7 @@ export type SortDir = 'asc' | 'desc';
 export type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
 export type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
 // @req RF-24
-export type ShuffleMode = 'off' | 'random' | 'smart';
+export type ShuffleMode = 'off' | 'random' | 'surfle';
 export type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
 
 export interface Track {

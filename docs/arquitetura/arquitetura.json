@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "O banco migra para a versão 7 nos testes; a abertura da janela nesta branch não foi conferida. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
+      "nota": "O banco migra para a versão 10 nos testes; a abertura da janela nesta branch não foi conferida. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
     },
     "windows": {
       "status": "planejado",
@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006). Favoritas mantidas pela playlist marcada, com migração 0007 e view para pontuação, gosto e DNA. Histórico de buscas do YouTube (migração 0008, 50 guardadas, 10 listadas). Download automático por playlist (migração 0009).",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e Surfle, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006). Favoritas mantidas pela playlist marcada, com migração 0007 e view para pontuação, gosto e DNA. Histórico de buscas do YouTube (migração 0008, 50 guardadas, 10 listadas). Download automático por playlist (migração 0009). Surfle e conversão do modo salvo (migração 0010).",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",

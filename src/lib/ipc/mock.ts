@@ -321,7 +321,7 @@ export function createMockApi(): MiupyApi {
     },
     async playerSetVolume({ volume }) { player.volume = Math.max(0, Math.min(1, volume)); settings.volume = player.volume; return pushState(); },
     async playerSetMuted({ muted }) { player.muted = muted; return pushState(); },
-    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24
+    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24: aceita off, random e surfle
     async playerGetQueue() { return player.queue.map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t).map((t) => ({ ...t })); },
 
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },

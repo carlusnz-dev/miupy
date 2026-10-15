@@ -1,6 +1,6 @@
 //! Sorteio determinístico da fila. A casca fornece a semente e preserva a faixa atual.
 
-use crate::model::SmartTrack;
+use crate::model::{SurfleTrack, TasteGenre};
 
 // @req RF-24
 struct Rng(u64);
@@ -43,27 +43,19 @@ pub fn random_order(track_ids: &[String], seed: u64) -> Vec<String> {
 }
 
 // @req RF-24
-fn proximity(
-    candidate: &SmartTrack,
-    previous: &SmartTrack,
-    before_previous: Option<&SmartTrack>,
-) -> f64 {
-    let same_artist = candidate.artist_id.is_some() && candidate.artist_id == previous.artist_id;
-    let artist_streak = before_previous
-        .is_some_and(|older| older.artist_id.is_some() && older.artist_id == previous.artist_id);
-    if same_artist && !artist_streak {
-        return 1.0;
-    }
-    if candidate.genres.iter().any(|g| previous.genres.contains(g)) {
-        return 0.5;
-    }
-    0.0
+fn same_artist(a: &SurfleTrack, b: &SurfleTrack) -> bool {
+    a.artist_id.is_some() && a.artist_id == b.artist_id
 }
 
 // @req RF-24
 /// Sorteio ponderado sem reposição. `current` é a faixa tocando; `remaining` só traz as demais.
-/// A cada escolha, o peso é `0,10 + 0,60 * score_normalizado + 0,30 * proximidade`.
-pub fn smart_order(current: &SmartTrack, remaining: &[SmartTrack], seed: u64) -> Vec<String> {
+/// Cada ocorrência mantém peso positivo; artistas recentes recebem penalidade decrescente.
+pub fn surfle_order(
+    current: &SurfleTrack,
+    remaining: &[SurfleTrack],
+    top_genres: &[TasteGenre],
+    seed: u64,
+) -> Vec<String> {
     let mut pool = remaining.to_vec();
     let max_score = pool
         .iter()
@@ -72,14 +64,40 @@ pub fn smart_order(current: &SmartTrack, remaining: &[SmartTrack], seed: u64) ->
         .max(1.0);
     let mut rng = Rng(seed);
     let mut out = Vec::with_capacity(pool.len());
-    let mut previous = current.clone();
-    let mut before_previous: Option<SmartTrack> = None;
+    let mut recent = vec![current.clone()];
+    let max_genre = top_genres
+        .iter()
+        .map(|g| g.score.max(0.0))
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
     while !pool.is_empty() {
+        let previous = &recent[0];
+        let has_alternative = pool.iter().any(|t| !same_artist(t, previous));
         let weights: Vec<f64> = pool
             .iter()
             .map(|t| {
-                0.10 + 0.60 * (t.score.max(0.0) / max_score).min(1.0)
-                    + 0.30 * proximity(t, &previous, before_previous.as_ref())
+                if has_alternative && same_artist(t, previous) {
+                    return 0.0;
+                }
+                let genre_affinity = top_genres
+                    .iter()
+                    .filter(|g| t.genres.contains(&g.genre))
+                    .map(|g| g.score.max(0.0) / max_genre)
+                    .fold(0.0_f64, f64::max);
+                let proximity = f64::from(t.genres.iter().any(|g| previous.genres.contains(g)));
+                let base = 0.05
+                    + 0.45 * (t.score.max(0.0) / max_score).min(1.0)
+                    + 0.20 * proximity
+                    + 0.30 * genre_affinity;
+                let penalty = recent
+                    .iter()
+                    .enumerate()
+                    .skip(1)
+                    .take(2)
+                    .filter(|(_, old)| same_artist(t, old))
+                    .map(|(i, _)| if i == 1 { 0.25 } else { 0.5 })
+                    .product::<f64>();
+                base * penalty
             })
             .collect();
         let mut ticket = rng.unit() * weights.iter().sum::<f64>();
@@ -93,8 +111,8 @@ pub fn smart_order(current: &SmartTrack, remaining: &[SmartTrack], seed: u64) ->
         }
         let chosen = pool.remove(index);
         out.push(chosen.track_id.clone());
-        before_previous = Some(previous);
-        previous = chosen;
+        recent.insert(0, chosen);
+        recent.truncate(3);
     }
     out
 }
@@ -103,8 +121,8 @@ pub fn smart_order(current: &SmartTrack, remaining: &[SmartTrack], seed: u64) ->
 mod tests {
     use super::*;
 
-    fn track(id: &str, artist: &str, score: f64, genres: &[&str]) -> SmartTrack {
-        SmartTrack {
+    fn track(id: &str, artist: &str, score: f64, genres: &[&str]) -> SurfleTrack {
+        SurfleTrack {
             track_id: id.into(),
             artist_id: Some(artist.into()),
             score,
@@ -134,29 +152,74 @@ mod tests {
         let current = track("current", "A", 0.0, &["rock"]);
         let remaining = [track("high", "X", 10.0, &[]), track("low", "Y", -10.0, &[])];
         let high_first = (0..1000)
-            .filter(|seed| smart_order(&current, &remaining, *seed)[0] == "high")
+            .filter(|seed| surfle_order(&current, &remaining, &[], *seed)[0] == "high")
             .count();
         assert!(high_first > 750, "{high_first}");
-        let near = [track("near", "A", 0.0, &[]), track("far", "B", 0.0, &[])];
+        let near = [
+            track("near", "B", 0.0, &["rock"]),
+            track("far", "C", 0.0, &[]),
+        ];
         let near_first = (0..1000)
-            .filter(|seed| smart_order(&current, &near, *seed)[0] == "near")
+            .filter(|seed| surfle_order(&current, &near, &[], *seed)[0] == "near")
             .count();
         assert!(near_first > 700, "{near_first}");
     }
 
     // @test RF-24
     #[test]
-    fn duas_seguidas_do_mesmo_artista_zeram_proximidade_por_artista() {
+    fn artista_dominante_alterna_enquanto_existe_alternativa() {
         let a = track("a", "A", 0.0, &[]);
-        let b = track("b", "A", 0.0, &[]);
-        let c = track("c", "A", 0.0, &[]);
-        assert_eq!(proximity(&b, &a, None), 1.0);
-        assert_eq!(proximity(&c, &b, Some(&a)), 0.0);
-        let choices = [b, c, track("other", "B", 0.0, &[])];
-        for seed in 0..100 {
-            let out = smart_order(&a, &choices, seed);
-            assert_eq!(out.len(), 3);
-            assert!(out.contains(&"other".into()));
+        let choices = [
+            track("a2", "A", 0.0, &[]),
+            track("a3", "A", 0.0, &[]),
+            track("b", "B", 0.0, &[]),
+            track("c", "C", 0.0, &[]),
+            track("d", "D", 0.0, &[]),
+        ];
+        for seed in 0..1000 {
+            let out = surfle_order(&a, &choices, &[], seed);
+            assert_eq!(out.len(), choices.len());
+            for (i, id) in out.iter().enumerate() {
+                let artist = choices.iter().find(|t| &t.track_id == id).unwrap();
+                let previous = if i == 0 {
+                    &a
+                } else {
+                    choices.iter().find(|t| t.track_id == out[i - 1]).unwrap()
+                };
+                if same_artist(artist, previous) {
+                    assert!(
+                        !out[i + 1..].iter().any(|later| choices
+                            .iter()
+                            .any(|t| &t.track_id == later && !same_artist(t, previous))),
+                        "seed={seed}, {out:?}"
+                    );
+                }
+            }
         }
+    }
+
+    // @test RF-24
+    #[test]
+    fn genero_favorito_aumenta_chance_sem_excluir_outras_faixas() {
+        let current = track("current", "A", 0.0, &[]);
+        let choices = [
+            track("fav", "B", 0.0, &["rock"]),
+            track("other", "C", 0.0, &["jazz"]),
+        ];
+        let taste = [
+            TasteGenre {
+                genre: "rock".into(),
+                score: 8.0,
+            },
+            TasteGenre {
+                genre: "jazz".into(),
+                score: 1.0,
+            },
+        ];
+        let first = (0..1000)
+            .filter(|seed| surfle_order(&current, &choices, &taste, *seed)[0] == "fav")
+            .count();
+        assert!(first > 750 && first < 950, "{first}");
+        assert!(surfle_order(&current, &choices, &taste, 0).len() == 2);
     }
 }

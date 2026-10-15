@@ -26,5 +26,5 @@ pub use db::Database;
 pub use equalizer::{BUILTINS, EqPreset, EqPresetInput};
 pub use error::{Error, Result};
 pub use model::*;
-pub use shuffle::{random_order, smart_order};
+pub use shuffle::{random_order, surfle_order};
 pub use stats::{PLAY_THRESHOLD_MS, TOP_LIMIT};

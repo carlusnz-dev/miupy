@@ -33,7 +33,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-21 | Foto do perfil | S | Escolher, trocar e remover a foto do usuário no perfil. |
 | RF-22 | Capa da playlist | S | Escolher uma capa para a playlist; sem capa escolhida, a playlist mostra um mosaico dos 4 artistas com mais faixas nela. |
 | RF-23 | Sugestões de busca | C | Sugerir o texto da busca no YouTube enquanto o usuário digita. |
-| RF-24 | Aleatório e *smart random* | S | Tocar a fila em ordem aleatória, ou em sorteio ponderado que puxa para as faixas mais bem pontuadas e próximas da que está tocando. |
+| RF-24 | Aleatório e Surfle | S | Tocar a fila em ordem aleatória, ou em sorteio ponderado que favorece a pontuação da faixa e os gêneros preferidos, aproxima gêneros e evita repetir o artista quando há alternativa. |
 | RF-25 | Pontuação e DNA | S | Mostrar a pontuação de cada faixa e uma tela "DNA" com o estilo atual do usuário: artistas, gêneros, taxa de pulos, o que subiu e o que caiu. |
 | RF-26 | yt-dlp gerenciado pelo app | S | O app baixa, confere e atualiza o yt-dlp sozinho, sem depender de instalação no sistema. |
 | RF-27 | Foto de artista | S | Mostrar a foto do artista, vinda do Wikimedia Commons pelo Wikidata, com o crédito de autor e licença. |

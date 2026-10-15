@@ -478,9 +478,9 @@ impl Player {
         let ordered = match mode {
             ShuffleMode::Off => queue.original_order_of(&out, tail),
             ShuffleMode::Random => miupy_core::random_order(tail, seed),
-            ShuffleMode::Smart => {
-                let smart = self.db.with(|db| db.smart_tracks(&ids))?;
-                let by_id = smart
+            ShuffleMode::Surfle => {
+                let surfle = self.db.with(|db| db.surfle_tracks(&ids))?;
+                let by_id = surfle
                     .into_iter()
                     .map(|t| (t.track_id.clone(), t))
                     .collect::<std::collections::HashMap<_, _>>();
@@ -491,7 +491,8 @@ impl Player {
                         .filter_map(|id| by_id.get(id).cloned())
                         .collect::<Vec<_>>();
                     if rem.len() == tail.len() {
-                        miupy_core::smart_order(cur, &rem, seed)
+                        let taste = self.db.with(|db| db.taste_profile(None))?;
+                        miupy_core::surfle_order(cur, &rem, &taste.top_genres, seed)
                     } else {
                         miupy_core::random_order(tail, seed)
                     }
@@ -1292,7 +1293,7 @@ mod tests {
         for mode in [
             ShuffleMode::Random,
             ShuffleMode::Off,
-            ShuffleMode::Smart,
+            ShuffleMode::Surfle,
             ShuffleMode::Random,
             ShuffleMode::Off,
         ] {
@@ -1341,7 +1342,7 @@ mod tests {
             for mode in [
                 ShuffleMode::Random,
                 ShuffleMode::Off,
-                ShuffleMode::Smart,
+                ShuffleMode::Surfle,
                 ShuffleMode::Off,
             ] {
                 let state = f.player.set_shuffle(mode).unwrap();
@@ -1376,7 +1377,7 @@ mod tests {
         assert_eq!(f.player.state().queue_index, 4);
         for mode in [
             ShuffleMode::Random,
-            ShuffleMode::Smart,
+            ShuffleMode::Surfle,
             ShuffleMode::Off,
             ShuffleMode::Random,
             ShuffleMode::Off,
@@ -1420,7 +1421,7 @@ mod tests {
         let mut expected = before.queue[5..].to_vec();
         expected.sort();
 
-        for mode in [ShuffleMode::Smart, ShuffleMode::Off, ShuffleMode::Random] {
+        for mode in [ShuffleMode::Surfle, ShuffleMode::Off, ShuffleMode::Random] {
             let state = f.player.set_shuffle(mode).unwrap();
             assert_eq!(&state.queue[..=4], prefix);
             assert_eq!(state.queue_index, 4);
@@ -1456,7 +1457,7 @@ mod tests {
         f.player.play(&f.ids[0], Some(ids.clone())).unwrap();
         f.player.next().unwrap();
         f.player.next().unwrap();
-        for mode in [ShuffleMode::Random, ShuffleMode::Smart, ShuffleMode::Off] {
+        for mode in [ShuffleMode::Random, ShuffleMode::Surfle, ShuffleMode::Off] {
             let state = f.player.set_shuffle(mode).unwrap();
             assert_eq!(state.queue_index, 2);
             assert_eq!(&state.queue[..=2], &ids[..=2]);

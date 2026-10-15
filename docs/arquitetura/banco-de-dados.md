@@ -3,7 +3,7 @@
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
 `crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
-`0003_dna_shuffle_images.sql` e migrações seguintes até `0009_auto_download.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+`0003_dna_shuffle_images.sql` e migrações seguintes até `0010_surfle.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
 antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
@@ -107,7 +107,7 @@ o log sobrevive à remoção da entidade. As operações do núcleo registram as
 Linha única cada (`id INTEGER PRIMARY KEY CHECK (id = 1)`), criada pela migração.
 `profile`: `display_name`, `username`, `email`, `phone` (textos, vazios por padrão),
 `avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8) e,
-desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`auto|on|off`,
+desde 0003, `shuffle_mode` (`off|random|surfle`, padrão `off`) e `gpu_mode` (`auto|on|off`,
 padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
 `Settings.gpuMode`. Desde 0005, `eq_preset_id` guarda o perfil ativo (`flat` por padrão);
 `eq_presets` guarda até três perfis personalizados, com oito ganhos serializados em JSON.
@@ -170,8 +170,9 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
 | `0008_search_history.sql` | `feat/busca-vazia` | **Implementada:** `search_history` |
 | `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | **Implementada:** `playlists.auto_download` (0/1, padrão 0) |
-| `0010_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
-| `0011_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
+| `0010_surfle.sql` | `feat/surfle` | **Implementada:** reconstrói `settings`, converte `smart` para `surfle` e preserva a FK de favoritas |
+| `0011_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
+| `0012_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
 
 `feat/imagens-comprimidas` não cria migração: a troca de `.jpg` para `.webp` é uma tarefa da
 casca na abertura, que atualiza os caminhos já existentes.
