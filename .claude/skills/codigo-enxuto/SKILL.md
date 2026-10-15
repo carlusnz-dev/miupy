@@ -31,7 +31,8 @@ Objetivo: resolver com o que já existe, no menor diff que se lê de uma vez.
   limite de API). Nada de comentário que repete o nome da função ou narra a linha.
 - `// @req RF-NN` / `// @test RF-NN` são obrigatórios (rastreabilidade), não contam como ruído.
 - Sem dependência nova se a biblioteca padrão ou uma já usada resolve. Precisando, `cargo add` /
-  `npm install` com a versão atual, e diga por quê no relatório.
+  `npm install` com a versão atual (só no checkout principal, nunca em worktree com
+  `node_modules` ligado), e diga por quê no relatório.
 - Sem código morto, sem `TODO` sem dono, sem `console.log`/`dbg!` esquecido.
 - Teste o comportamento, não a implementação; um teste que falharia se o código estivesse errado.
 

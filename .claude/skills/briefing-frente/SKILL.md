@@ -24,7 +24,8 @@ Escreva só o que é **desta frente**; as regras fixas vêm do bloco abaixo, cop
 Leia AGENTS.md e use as skills do projeto: codigo-enxuto ao implementar, relatorio no fim,
 revisar-design/revisar-playwright se mexer na interface.
 Cargo: CARGO_BUILD_JOBS=<n> RUST_TEST_THREADS=<n> nice -n 10; nunca exporte RUSTFLAGS nem
-CARGO_TARGET_DIR. Nos worktrees do Orca, node_modules é link somente leitura: não rode npm install. Não rode
+CARGO_TARGET_DIR. Nos worktrees do Orca, node_modules é link para o do checkout principal: NUNCA rode npm ci nem
+npm install (esvazia o do checkout principal), nem você nem o seu revisor. Não rode
 npm run docs:matriz. // @req RF-NN no código, // @test RF-NN nos testes. pt-BR na interface e nos
 docs; identificadores em inglês. Commits em Conventional Commits (tipo/escopo em inglês; descrição
 em pt-BR no imperativo do projeto ("adiciona", "corrige"), minúscula, sem ponto, até 72 caracteres; escopos core, audio,
