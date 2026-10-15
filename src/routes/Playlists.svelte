@@ -21,7 +21,7 @@
   let form = $state<{ playlist: Playlist | null } | null>(null);
 
   async function remove(p: Playlist) {
-    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
+    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na discoteca.${p.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: p.id }); notify('Playlist apagada.'); } catch (e) { notifyError(e); }
   }
 </script>
@@ -47,6 +47,7 @@
         <a href={href(paths.playlist(p.id))} class="block" aria-label="Abrir playlist {p.name}">
           <PlaylistCover playlist={p} class="mb-3 w-full" shared={`playlist-cover-${p.id}`} />
           <span class="block truncate font-semibold" use:useShared={`playlist-title-${p.id}`}>{p.name}</span>
+          {#if p.isFavorites}<span class="chip text-primary"><Icon name="heart" size={12} fill />Favoritas</span>{/if}
           <span class="block text-xs text-muted">{p.trackCount} faixas · {fmtDuration(p.totalDurationMs)}</span>
           {#if p.description}<span class="mt-1 line-clamp-2 block text-xs text-faint">{p.description}</span>{/if}
         </a>
