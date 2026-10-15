@@ -147,6 +147,15 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 /* @req RF-38: trilho de ícones; a largura anima com a mola padrão. */
 .nav-shell { width: var(--sidebar-w); transition: width var(--dur-base) var(--ease-spring); }
 .nav-shell.collapsed { width: var(--rail-w); }
+/* @req RF-38 RNF-04: o fundo do app passa por trás da coluna do menu. */
+.nav-glass { background: var(--surface-1); }
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .nav-glass {
+    background: color-mix(in oklab, var(--surface-1) 78%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
 .nav-toggle {
   position: absolute; z-index: 3; top: 1.75rem; right: -0.75rem; display: grid; place-items: center;
   width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 999px; border: 1px solid var(--line-strong);
