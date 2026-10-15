@@ -264,7 +264,10 @@ mod tests {
         y.search("get lucky", None).await.unwrap();
         y.search("Daft Punk", None).await.unwrap();
         y.search("  GET LUCKY ", None).await.unwrap();
-        let _ = y.search("   ", None).await;
+        assert_eq!(
+            y.search("   ", None).await.unwrap_err().code(),
+            "invalid_input"
+        );
         assert_eq!(
             db.with(|db| db.recent_searches()).unwrap(),
             ["GET LUCKY", "Daft Punk"]
