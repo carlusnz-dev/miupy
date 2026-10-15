@@ -175,7 +175,7 @@
           {:else if lines.length}
             <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
               {#each lines as l, i}
-                <button data-i={i} class="border-0 bg-transparent px-2 {i === activeLine ? 'text-lava-text' : 'text-faint hover:text-muted'}" onclick={() => player.seek(l.timeMs)}>{l.text || '♪'}</button>
+                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint opacity-70 hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
               {/each}
             </div>
           {:else if lyrics?.plain}

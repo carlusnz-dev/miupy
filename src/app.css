@@ -261,3 +261,12 @@ dialog.modal { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); transit
 dialog.modal[open] { opacity: 1; transform: none; }
 @starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { dialog.modal { transform: none; transition: opacity 90ms, display 90ms allow-discrete, overlay 90ms allow-discrete; } }
+
+/* Letra sincronizada: a linha atual ganha glow estático (text-shadow, sem animar filter) e um gradiente
+   de texto da lava por cima (a cópia em ::after, porque texto transparente esconderia o text-shadow). */
+.lyric-line { transition: color var(--dur-fast), opacity var(--dur-fast); }
+.lyric-on span { position: relative; display: inline-block; text-shadow: 0 0 14px color-mix(in oklab, var(--lava) 55%, transparent); }
+.lyric-on span::after {
+  content: attr(data-text); position: absolute; inset: 0; color: transparent; text-shadow: none;
+  background: var(--grad-lava); -webkit-background-clip: text; background-clip: text;
+}
