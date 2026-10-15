@@ -79,6 +79,7 @@ job (volta a `queued`). `tracks.download_status` e `download_jobs.status` mudam 
 transação. Cancelar apaga o job e devolve a faixa a `none`; quem baixa descobre o cancelamento
 quando `update_download` devolve `not_found`. O sucesso passa por `mark_downloaded`, que grava
 `file_path`/`codec`/`bitrate`/capa e fecha o job.
+Em RF-31, `status = 'error'` e `error` iniciado por `auto_offline:` indicam espera pela rede; sem playlist automática vinculada, o marcador é removido e o erro pode ser limpo.
 
 ### `play_events` (RF-13)
 `id`, `track_id` (FK cascade), `playlist_id` (FK `SET NULL`, contexto opcional), `started_at`,
