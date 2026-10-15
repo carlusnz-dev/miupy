@@ -9,9 +9,6 @@ on:
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [develop, main]
-  # O matriz.yml dispara este workflow depois de commitar a matriz: push feito com GITHUB_TOKEN
-  # não dispara `pull_request`, e sem isso o commit do bot ficaria sem checks.
-  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -90,16 +87,15 @@ jobs:
         run: node scripts/rastreabilidade.mjs --check
       - name: Testes das regras de fluxo
         run: node --test scripts/ci/*.test.mjs
-      # Em PR de branch do próprio repositório para develop, o matriz.yml regenera a matriz e
-      # commita no branch; exigir a matriz em dia aqui deixaria o PR vermelho antes do commit
-      # do bot. Em todo o resto (fork, PR para main, push, execução disparada pelo matriz.yml)
-      # a matriz tem de estar em dia.
+      # A matriz só é cobrada no caminho para a main: quem gera é o branch de versão
+      # (`npm run docs:matriz` no `chore/release-vX.Y.Z`). Nos PRs de trabalho para develop
+      # ela pode ficar atrasada; assim nenhum bot commita nos branches dos PRs.
       - name: Matriz em dia
-        if: ${{ !(github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
         run: |
           node scripts/rastreabilidade.mjs
           if ! git diff --exit-code -- docs/rastreabilidade; then
-            echo "::error::A matriz de rastreabilidade está desatualizada. Rode 'npm run docs:matriz' e faça commit."
+            echo "::error::A matriz de rastreabilidade está desatualizada. Rode 'npm run docs:matriz' no branch de versão e faça commit."
             exit 1
           fi
 
