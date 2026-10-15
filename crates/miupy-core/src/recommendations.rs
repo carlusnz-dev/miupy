@@ -8,9 +8,9 @@ use rusqlite::{OptionalExtension, params};
 use crate::db::Database;
 use crate::error::{Error, Result};
 use crate::model::{
-    Dna, DnaTrend, DnaTrendKind, Recommendation, RecommendationCandidate, RecommendationReason,
-    RecommendationReasonKind, RecommendationSeed, SurfleTrack, TasteArtist, TasteGenre,
-    TasteProfile, TrackScore,
+    Dna, DnaTrend, DnaTrendKind, NewTrack, Recommendation, RecommendationCandidate,
+    RecommendationReason, RecommendationReasonKind, RecommendationSeed, SurfleTrack, TasteArtist,
+    TasteGenre, TasteProfile, TrackScore,
 };
 use crate::stats::PLAY_THRESHOLD_MS;
 use crate::tracks::normalized_genres;
@@ -515,6 +515,30 @@ impl Database {
     }
 
     // @req RF-19
+    /// Faixa nova a partir de uma candidata não dispensada. A tela de recomendações sobrevive à
+    /// reabertura do app, o cache de busca da casca não.
+    pub fn recommendation_track(&self, source_id: &str) -> Result<Option<NewTrack>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT title, artist, duration_ms, thumbnail_url FROM recommendation_candidates
+                 WHERE source_id = ?1 AND dismissed = 0",
+                params![source_id],
+                |r| {
+                    let artist: String = r.get(1)?;
+                    Ok(NewTrack::youtube(
+                        source_id,
+                        r.get::<_, String>(0)?,
+                        (!artist.trim().is_empty()).then_some(artist),
+                        r.get(2)?,
+                        r.get(3)?,
+                    ))
+                },
+            )
+            .optional()?)
+    }
+
+    // @req RF-19
     /// Ranking local; no máximo três candidatas por artista e score limitado a 0..1.
     pub fn list_recommendations(
         &self,
@@ -701,6 +725,27 @@ mod tests {
             seed_label: artist.into(),
             seed_track_id: None,
         }
+    }
+
+    // @test RF-19
+    #[test]
+    fn candidata_vira_faixa_nova_e_dispensada_nao() {
+        let db = db();
+        db.upsert_recommendation_candidate(&candidate("y", "Banda", "rock"))
+            .unwrap();
+        let t = db.recommendation_track("y").unwrap().unwrap();
+        assert_eq!(
+            (
+                t.source_id.as_deref(),
+                t.title.as_str(),
+                t.artist_name.as_deref()
+            ),
+            (Some("y"), "y", Some("Banda"))
+        );
+        assert_eq!(t.duration_ms, 60_000);
+        db.dismiss_recommendation("y").unwrap();
+        assert!(db.recommendation_track("y").unwrap().is_none());
+        assert!(db.recommendation_track("nada").unwrap().is_none());
     }
 
     // @test RF-19

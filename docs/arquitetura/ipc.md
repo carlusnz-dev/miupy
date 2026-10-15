@@ -558,7 +558,9 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
 - Uma candidata nunca é uma faixa que já está na discoteca nem uma que foi dispensada.
   `recommendations_dismiss` é permanente para aquele `sourceId`.
 - Adicionar uma recomendação é `youtube_add_to_library { sourceIds, playlistId? }`; a casca tira a
-  candidata da lista e emite `recommendations://changed`.
+  candidata da lista e emite `recommendations://changed`. Fora do cache de busca (app reaberto), os
+  dados vêm da candidata gravada; só um `sourceId` que não está no cache, na discoteca nem entre as
+  candidatas não dispensadas dá `not_found` ("Resultado da busca expirado").
 - `Track.genres` e `Track.releaseYear` são preenchidos no download e em `metadata_refresh_track`.
 
 ### Capas na interface (RF-05)

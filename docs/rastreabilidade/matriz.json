@@ -618,7 +618,7 @@
         "crates/miupy-core/src/activity.rs:110",
         "crates/miupy-core/src/activity.rs:120",
         "crates/miupy-core/src/activity.rs:164",
-        "src-tauri/src/lib.rs:181",
+        "src-tauri/src/lib.rs:182",
         "src-tauri/src/listening.rs:7",
         "src-tauri/src/player.rs:790"
       ],
@@ -1621,7 +1621,7 @@
         "src-tauri/src/gpu.rs:214",
         "src-tauri/src/gpu.rs:241",
         "src-tauri/src/lib.rs:89",
-        "src-tauri/src/lib.rs:186",
+        "src-tauri/src/lib.rs:187",
         "src/App.svelte:36",
         "src/app.css:205",
         "src/lib/components/settings/GpuSection.svelte:2",

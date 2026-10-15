@@ -48,6 +48,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-36 | Tamanho e limpeza do cache | S | As Configurações mostram quanto ocupa o cache de dados vindos da rede (fotos e dados de artista, letras, recomendações, cache do WebView) e permitem apagá-lo, avisando que algumas informações vão demorar mais para carregar. Áudio, capas de álbum, avatar e capas de playlist não entram. |
 | RF-37 | Registros do sistema | C | Com o modo de depuração ligado nas Configurações, o app grava e mostra numa tela própria os eventos do sistema: o que tocou, faixas puladas, downloads, reprocessamento de metadados, cargas em segundo plano e erros. Guarda até 30 dias ou 5.000 registros. |
 | RF-38 | Menu lateral recolhível | C | O usuário recolhe o menu lateral num trilho só com ícones (botão na borda ou Ctrl+B) e o expande de novo; cada ícone tem nome acessível e dica. O estado fica salvo entre aberturas. |
+| RF-40 | Cores da capa no Tocando | C | O fundo da tela Tocando é um mesh com as cores da capa da faixa atual, com transição ao trocar de faixa; controles seguem o tema. |
 
 ## Requisitos não funcionais
 

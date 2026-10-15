@@ -222,11 +222,12 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 @property --mesh-3 { syntax: '<color>'; inherits: true; initial-value: #ffd27a; }
 .mesh {
   --mesh-1: var(--lava); --mesh-2: var(--lava-deep); --mesh-3: var(--lava-core);
-  transition: --mesh-1 var(--dur-slow), --mesh-2 var(--dur-slow), --mesh-3 var(--dur-slow);
+  transition: --mesh-1 var(--mesh-dur, var(--dur-slow)), --mesh-2 var(--mesh-dur, var(--dur-slow)), --mesh-3 var(--mesh-dur, var(--dur-slow));
 }
 .mesh-layer { position: absolute; width: 90%; height: 90%; }
 
 @media (prefers-reduced-motion: reduce) {
+  .mesh { transition-duration: 0s; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
@@ -286,3 +287,12 @@ dialog.modal { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); transit
 dialog.modal[open] { opacity: 1; transform: none; }
 @starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { dialog.modal { transform: none; transition: opacity 90ms, display 90ms allow-discrete, overlay 90ms allow-discrete; } }
+
+/* Letra sincronizada: a linha atual ganha glow estático (text-shadow, sem animar filter) e um gradiente
+   de texto da lava por cima (a cópia em ::after, porque texto transparente esconderia o text-shadow). */
+.lyric-line { transition: color var(--dur-fast), opacity var(--dur-fast); }
+.lyric-on span { position: relative; display: inline-block; text-shadow: 0 0 14px color-mix(in oklab, var(--lava) 55%, transparent); }
+.lyric-on span::after {
+  content: attr(data-text) / ''; position: absolute; inset: 0; color: transparent; text-shadow: none;
+  background: linear-gradient(135deg, var(--lava-core), var(--lava-text) 55%, var(--lava)); -webkit-background-clip: text; background-clip: text;
+}
