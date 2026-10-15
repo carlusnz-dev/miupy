@@ -19,7 +19,7 @@ use miupy_core::{PlayEnd, SettingsPatch, ShuffleMode, Source, Track};
 use miupy_media::{MediaResolver, StreamAudio};
 
 use crate::db::Db;
-use crate::dto::{PlayerState, PlayerStatus, Progress};
+use crate::dto::{PlayerState, PlayerStatus, Progress, QueueContext, QueueContextKind};
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
 use crate::listening::ListenTracker;
@@ -33,6 +33,7 @@ const RESTART_THRESHOLD_MS: u64 = 3_000;
 
 struct Inner {
     queue: PlayQueue,
+    context: Option<QueueContext>,
     track: Option<Track>,
     /// Evento de reprodução aberto (RF-13) da faixa atual.
     event_id: Option<String>,
@@ -73,6 +74,7 @@ impl Player {
             prefs_file,
             inner: Mutex::new(Inner {
                 queue: PlayQueue::default(),
+                context: None,
                 track: None,
                 event_id: None,
                 tracker: ListenTracker::default(),
@@ -194,6 +196,7 @@ impl Player {
             volume: st.volume,
             muted: st.muted,
             queue: inner.queue.ids().to_vec(),
+            context: inner.context.clone(),
             queue_index: inner.queue.index_i64(),
         }
     }
@@ -376,20 +379,33 @@ impl Player {
     // @req RF-01 RF-03
     /// Toca `track_id`. Com `queue`, ela vira a fila (a faixa entra no começo se faltar);
     /// sem ela, usa a fila atual se a faixa estiver nela, ou uma fila só com a faixa.
+    #[cfg(test)]
     pub fn play(
         self: &Arc<Self>,
         track_id: &str,
         queue: Option<Vec<String>>,
     ) -> AppResult<PlayerState> {
+        self.play_with_context(track_id, queue, None)
+    }
+
+    // @req RF-03 RF-42
+    pub fn play_with_context(
+        self: &Arc<Self>,
+        track_id: &str,
+        queue: Option<Vec<String>>,
+        context: Option<QueueContext>,
+    ) -> AppResult<PlayerState> {
         let track = self.db.with(|db| db.get_track(track_id))?;
         let mut inner = self.lock();
         let new_queue = queue.is_some();
+        let mut implicit_new_queue = false;
         let mut q = inner.queue.clone();
         match queue {
             Some(ids) => q.replace(ids, &track.id),
             None => {
                 if !q.select(&track.id) {
                     q.replace(Vec::new(), &track.id);
+                    implicit_new_queue = true;
                 }
             }
         }
@@ -398,6 +414,9 @@ impl Player {
             self.shuffle_after_current(&mut q, inner.shuffle, true)?;
         }
         inner.queue = q;
+        if new_queue || implicit_new_queue {
+            inner.context = if new_queue { context } else { None };
+        }
         let is_stream = track.file_path.is_none() && track.source == Source::Youtube;
         if is_stream {
             let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -584,6 +603,7 @@ impl Player {
         self.close_event(&mut inner, PlayEnd::Stopped);
         self.backend.stop()?;
         inner.status = PlaybackStatus::Stopped;
+        inner.context = None;
         self.emit(&inner);
         Ok(self.snapshot(&inner))
     }
@@ -700,6 +720,9 @@ impl Player {
         let mut inner = self.lock();
         let was_current = inner.track.as_ref().is_some_and(|t| t.id == track_id);
         inner.queue.remove(track_id);
+        if inner.queue.ids().is_empty() {
+            inner.context = None;
+        }
         if was_current {
             self.close_event(&mut inner, PlayEnd::Stopped);
             let _ = self.backend.stop();
@@ -707,6 +730,25 @@ impl Player {
             inner.status = PlaybackStatus::Stopped;
         }
         self.emit(&inner);
+    }
+
+    // @req RF-42
+    pub fn playlist_updated(&self, playlist_id: &str, name: Option<&str>) {
+        let mut inner = self.lock();
+        if let Some(context) = &mut inner.context
+            && context.kind == QueueContextKind::Playlist
+            && context.id.as_deref() == Some(playlist_id)
+        {
+            if let Some(name) = name {
+                if context.label == name {
+                    return;
+                }
+                context.label = name.to_owned();
+            } else {
+                inner.context = None;
+            }
+            self.emit(&inner);
+        }
     }
 
     /// Ao fechar o app: fecha o evento aberto como `Stopped` e silencia o motor.
@@ -1225,6 +1267,97 @@ mod tests {
             f.player.play("nao-existe", None).unwrap_err().code(),
             "not_found"
         );
+    }
+
+    // @test RF-03 RF-42
+    #[test]
+    fn contexto_segue_fila_e_navegacao_e_zera_ao_parar() {
+        let f = fx(3);
+        let playlist = QueueContext {
+            kind: QueueContextKind::Playlist,
+            id: Some("pl-1".into()),
+            label: "Minha lista".into(),
+        };
+        let state = f
+            .player
+            .play_with_context(&f.ids[0], Some(f.ids[..2].to_vec()), Some(playlist.clone()))
+            .unwrap();
+        assert_eq!(state.context, Some(playlist.clone()));
+        assert_eq!(f.player.next().unwrap().context, Some(playlist.clone()));
+        assert_eq!(f.player.previous().unwrap().context, Some(playlist.clone()));
+        assert_eq!(f.player.seek(500).unwrap().context, Some(playlist.clone()));
+        assert_eq!(
+            f.player.set_shuffle(ShuffleMode::Random).unwrap().context,
+            Some(playlist.clone())
+        );
+        assert_eq!(
+            f.player
+                .play_with_context(&f.ids[1], None, None)
+                .unwrap()
+                .context,
+            Some(playlist.clone())
+        );
+        assert_eq!(f.player.stop().unwrap().context, None);
+        f.player
+            .play_with_context(&f.ids[0], Some(f.ids[..2].to_vec()), Some(playlist))
+            .unwrap();
+        assert_eq!(
+            f.player
+                .play_with_context(&f.ids[2], None, None)
+                .unwrap()
+                .context,
+            None
+        );
+    }
+
+    // @test RF-03 RF-42
+    #[test]
+    fn fila_nova_substitui_contexto_e_remocao_da_ultima_faixa_o_limpa() {
+        let f = fx(2);
+        let context = QueueContext {
+            kind: QueueContextKind::Playlist,
+            id: Some("pl-1".into()),
+            label: "Lista".into(),
+        };
+        f.player
+            .play_with_context(&f.ids[0], Some(f.ids.clone()), Some(context.clone()))
+            .unwrap();
+        assert_eq!(
+            f.player
+                .play_with_context(&f.ids[0], Some(f.ids.clone()), None)
+                .unwrap()
+                .context,
+            None
+        );
+        f.player
+            .play_with_context(&f.ids[0], Some(vec![f.ids[0].clone()]), Some(context))
+            .unwrap();
+        f.player.remove_track(&f.ids[0]);
+        assert!(f.player.state().queue.is_empty());
+        assert_eq!(f.player.state().context, None);
+    }
+
+    // @test RF-42
+    #[test]
+    fn renomear_playlist_atualiza_contexto_e_apagar_o_limpa() {
+        let f = fx(1);
+        f.player
+            .play_with_context(
+                &f.ids[0],
+                Some(f.ids.clone()),
+                Some(QueueContext {
+                    kind: QueueContextKind::Playlist,
+                    id: Some("pl-1".into()),
+                    label: "Antes".into(),
+                }),
+            )
+            .unwrap();
+        f.player.playlist_updated("outra", None);
+        assert_eq!(f.player.state().context.as_ref().unwrap().label, "Antes");
+        f.player.playlist_updated("pl-1", Some("Depois"));
+        assert_eq!(f.player.state().context.as_ref().unwrap().label, "Depois");
+        f.player.playlist_updated("pl-1", None);
+        assert_eq!(f.player.state().context, None);
     }
 
     // @test RF-01 RF-03
