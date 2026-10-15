@@ -25,9 +25,28 @@
   let tab = $state<'queue' | 'lyrics'>('queue');
   let eqOpen = $state(false);
   let eqPresets = $state<EqPreset[]>([]);
-  $effect(() => { void api.equalizerListPresets().then(v => eqPresets=v).catch(() => {}); });
-  async function openEq() { try { eqPresets=await api.equalizerListPresets(); eqOpen=true; } catch(e) {notifyError(e);} }
-  async function chooseEq(id:string) { try { await settings.setEqualizer(id); eqOpen=false; } catch(e) {notifyError(e);} }
+  $effect(() => {
+    void api.equalizerListPresets().then((list) => { eqPresets = list; }).catch(() => {});
+  });
+
+  async function openEq() {
+    try {
+      eqPresets = await api.equalizerListPresets();
+      eqOpen = true;
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
+  async function chooseEq(id: string) {
+    try {
+      await settings.setEqualizer(id);
+      eqOpen = false;
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
   let lyricsErr = $state(false);
@@ -74,7 +93,11 @@
           <div class="min-w-0">
             <h1 class="text-2xl font-bold leading-tight" use:useShared={`track-title-${t.id}`}>{t.title}</h1>
             <p class="mt-1 text-muted">
-              {#if t.artistId}<a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>{:else}<span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>{/if}
+              {#if t.artistId}
+                <a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>
+              {:else}
+                <span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>
+              {/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>
             <p class="mt-2 flex flex-wrap gap-1.5">
@@ -87,16 +110,29 @@
               {#if scores.get(t.id)}<span class="chip" title={scoreTooltip(scores.get(t.id))}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
             </p>
           </div>
-          <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+          <button
+            class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11"
+            aria-pressed={t.isFavorite}
+            aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'}
+            onclick={() => toggleFavorite(t)}
+          >
             <Icon name="heart" size={24} fill={t.isFavorite} />
           </button>
         </div>
         <div class="relative self-start">
-          <button type="button" class="btn text-sm" aria-expanded={eqOpen} onclick={openEq}>Equalizador · {eqPresets.find(p=>p.id===settings.eqPresetId)?.name ?? 'Plano'}</button>
+          <button type="button" class="btn text-sm" aria-expanded={eqOpen} onclick={openEq}>
+            Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
+          </button>
           {#if eqOpen}
             <div class="card absolute z-20 mt-1 max-h-72 min-w-44 overflow-auto p-1" aria-label="Perfis do equalizador">
-              {#each eqPresets as preset}<button type="button" class="block w-full rounded px-3 py-2 text-left text-sm hover:bg-surface" aria-current={settings.eqPresetId===preset.id ? 'true' : undefined} onclick={() => chooseEq(preset.id)}>{preset.name}</button>{/each}
-              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => eqOpen=false}>Fechar</button>
+              {#each eqPresets as preset}
+                <button
+                  type="button" class="block w-full rounded px-3 py-2 text-left text-sm hover:bg-surface"
+                  aria-current={settings.eqPresetId === preset.id ? 'true' : undefined}
+                  onclick={() => chooseEq(preset.id)}
+                >{preset.name}</button>
+              {/each}
+              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => (eqOpen = false)}>Fechar</button>
             </div>
           {/if}
         </div>
@@ -104,7 +140,8 @@
         <div class="flex items-center justify-between">
           <div class="w-24"><ShuffleButton /></div>
           <Transport big />
-          <div class="hidden w-24 md:block"></div><div class="md:hidden"><Volume /></div>
+          <div class="hidden w-24 md:block"></div>
+          <div class="md:hidden"><Volume /></div>
         </div>
         <div class="hidden justify-center md:flex"><Volume /></div>
       </section>
