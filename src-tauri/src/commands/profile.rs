@@ -17,6 +17,8 @@ pub struct SettingsDto {
     gpu_mode: GpuMode,
     normalization: Normalization,
     eq_preset_id: String,
+    // @req RF-33
+    sidebar_width: i64,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -26,6 +28,8 @@ pub struct SettingsPatchDto {
     gpu_mode: Option<GpuMode>,
     normalization: Option<Normalization>,
     eq_preset_id: Option<String>,
+    // @req RF-33
+    sidebar_width: Option<i64>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,6 +97,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
                 eq_preset_id: s.eq_preset_id,
+                sidebar_width: s.sidebar_width,
             })
         })
         .await
@@ -111,6 +116,7 @@ pub async fn settings_update(
         volume,
         normalization: settings.normalization,
         eq_preset_id: settings.eq_preset_id.clone(),
+        sidebar_width: settings.sidebar_width.map(|width| width.clamp(220, 400)),
     };
     let saved = state
         .db
@@ -125,6 +131,7 @@ pub async fn settings_update(
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
                 eq_preset_id: s.eq_preset_id,
+                sidebar_width: s.sidebar_width,
             })
         })
         .await?;

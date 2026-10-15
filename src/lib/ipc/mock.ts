@@ -121,7 +121,8 @@ export function createMockApi(): MiupyApi {
   ];
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat' };
+  // @req RF-33
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat', sidebarWidth: 280 };
   // @req RF-29
   const presets: EqPreset[] = [
     ['flat','Plano',[0,0,0,0,0,0,0,0]], ['bass','Graves',[6,5,3,1,0,0,0,0]],
@@ -554,6 +555,7 @@ export function createMockApi(): MiupyApi {
     async settingsUpdate({ settings: s }) {
       if (s.eqPresetId && !presets.some(p=>p.id===s.eqPresetId)) err('not_found','Perfil não encontrado.');
       settings = { ...settings, ...s };
+      if (s.sidebarWidth !== undefined) settings.sidebarWidth = Math.max(220, Math.min(400, Math.round(s.sidebarWidth)));
       if (s.volume !== undefined) { player.volume = s.volume; pushState(); }
       return { ...settings };
     },

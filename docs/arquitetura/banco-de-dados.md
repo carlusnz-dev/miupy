@@ -110,7 +110,9 @@ desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`au
 padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
 `Settings.gpuMode`. Desde 0005, `eq_preset_id` guarda o perfil ativo (`flat` por padrão);
 `eq_presets` guarda até três perfis personalizados, com oito ganhos serializados em JSON.
-Os oito perfis prontos vivem no código, fora do banco.
+Os oito perfis prontos vivem no código, fora do banco. Desde a migração `0006`,
+`sidebar_width` guarda a largura do menu em px (220 a 400, padrão 280); o núcleo corta valores
+fora do intervalo antes de gravar.
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).
