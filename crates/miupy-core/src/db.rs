@@ -20,6 +20,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0004_loudness.sql")),
         M::up(include_str!("../migrations/0005_equalizer.sql")),
         M::up(include_str!("../migrations/0006_sidebar_width.sql")),
+        M::up(include_str!("../migrations/0007_favorites_playlist.sql")),
     ])
 }
 
@@ -141,7 +142,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 6);
+        assert_eq!(db.schema_version().unwrap(), 7);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -182,7 +183,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 6);
+        assert_eq!(db.schema_version().unwrap(), 7);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -236,7 +237,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 6);
+        assert_eq!(db.schema_version().unwrap(), 7);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
@@ -269,12 +270,81 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 6);
+        assert_eq!(db.schema_version().unwrap(), 7);
         let settings = db.get_settings().unwrap();
         assert_eq!(settings.sidebar_width, 280);
         assert_eq!(settings.lava_theme, crate::LavaTheme::Blue);
         drop(db);
         let _ = std::fs::remove_file(path);
+    }
+
+    // @test RF-04 RF-30 RNF-01
+    #[test]
+    fn migra_favoritas_da_versao_6_com_e_sem_playlist_existente() {
+        for existing in [false, true] {
+            let path = std::env::temp_dir().join(format!("miupy-favorites-{}.db", new_id()));
+            {
+                let mut conn = Connection::open(&path).unwrap();
+                register_collation(&conn).unwrap();
+                Migrations::new(vec![
+                    M::up(include_str!("../migrations/0001_init.sql")),
+                    M::up(include_str!("../migrations/0002_recommendations.sql")),
+                    M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
+                    M::up(include_str!("../migrations/0004_loudness.sql")),
+                    M::up(include_str!("../migrations/0005_equalizer.sql")),
+                    M::up(include_str!("../migrations/0006_sidebar_width.sql")),
+                ])
+                .to_latest(&mut conn)
+                .unwrap();
+                for id in ["a", "b", "c"] {
+                    conn.execute("INSERT INTO tracks (id,title,source,source_id,added_at) VALUES (?1,?1,'youtube',?1,0)", [id]).unwrap();
+                }
+                conn.execute("INSERT INTO favorites VALUES ('b',20),('a',10)", [])
+                    .unwrap();
+                if existing {
+                    conn.execute("INSERT INTO playlists (id,name,created_at,updated_at) VALUES ('p','fAvOrItAs',1,1)", []).unwrap();
+                    conn.execute(
+                        "INSERT INTO playlist_tracks VALUES ('p','b',0,5),('p','c',1,6)",
+                        [],
+                    )
+                    .unwrap();
+                }
+            }
+            let db = Database::open(&path).unwrap();
+            assert_eq!(db.schema_version().unwrap(), 7);
+            let id = db.get_settings().unwrap().favorites_playlist_id.unwrap();
+            if existing {
+                assert_eq!(id, "p");
+            } else {
+                assert_eq!(uuid::Uuid::parse_str(&id).unwrap().get_version_num(), 7);
+            }
+            let ids: Vec<String> = db
+                .playlist_tracks(&id, &crate::TrackQuery::default())
+                .unwrap()
+                .into_iter()
+                .map(|t| t.id)
+                .collect();
+            assert_eq!(
+                ids,
+                if existing {
+                    vec!["b", "c", "a"]
+                } else {
+                    vec!["a", "b"]
+                }
+            );
+            let kind: String = db
+                .conn
+                .query_row(
+                    "SELECT type FROM sqlite_master WHERE name='favorites'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(kind, "view");
+            assert_eq!(db.library_stats().unwrap().favorite_count, ids.len() as i64);
+            drop(db);
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     // @test RF-24 RF-27 RNF-01
@@ -308,7 +378,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 6);
+        assert_eq!(db.schema_version().unwrap(), 7);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (
