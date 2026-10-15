@@ -9,6 +9,7 @@
   import { enterStyle } from '../motion';
   import { Chunked } from '../util/chunked.svelte';
   import { fmtTime } from '../util/format';
+  import { isTyping } from '../util/typing';
   import { rightPanelOpen, upcoming } from '../util/rightPanel';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
@@ -16,17 +17,29 @@
   let width = $state(typeof window === 'undefined' ? 0 : window.innerWidth);
   const open = $derived(rightPanelOpen(settings.rightPanel, width));
   const t = $derived(player.track);
+  const toggle = () => settings.setRightPanel(!open);
+  // Ctrl+J; o Ctrl+B é do menu lateral.
+  function onShortcut(e: KeyboardEvent) {
+    if (e.defaultPrevented || isTyping(e.target) || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'j') return;
+    e.preventDefault();
+    toggle();
+  }
 
   const rows = $derived(upcoming(player.queueTracks, player.state.queueIndex));
   const chunk = new Chunked();
   $effect(() => chunk.advance(rows.length));
 </script>
 
-<svelte:window bind:innerWidth={width} />
+<svelte:window bind:innerWidth={width} onkeydown={onShortcut} />
 
 <div class="right-shell absolute inset-y-0 right-0 z-20 hidden xl:static md:block" class:open>
+  <button type="button" class="right-toggle" onclick={toggle} aria-expanded={open} aria-controls="painel-direito"
+          aria-label={open ? 'Recolher painel da direita' : 'Expandir painel da direita'} title={open ? 'Recolher painel (Ctrl+J)' : 'Expandir painel (Ctrl+J)'}>
+    <Icon name={open ? 'chevron-right' : 'chevron-left'} size={14} />
+  </button>
+  <div class="h-full overflow-hidden">
   {#if open}
-    <aside class="right-panel flex h-full flex-col gap-4 overflow-y-auto border-l border-line bg-s1 p-4" aria-label="Painel da direita">
+    <aside id="painel-direito" class="right-panel flex h-full flex-col gap-4 overflow-y-auto border-l border-line bg-s1 p-4" aria-label="Painel da direita">
       {#if t}
         <section class="enter flex flex-col gap-3" aria-label="Faixa atual">
           <a href={href(paths.nowPlaying)} aria-label="Abrir tocando agora" class="block"><Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} size={288} rounded="0.5rem" /></a>
@@ -70,4 +83,5 @@
       </section>
     </aside>
   {/if}
+  </div>
 </div>
