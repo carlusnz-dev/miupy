@@ -164,11 +164,15 @@ impl Youtube {
                             let all = library.as_deref().unwrap_or_default();
                             match all.iter().find(|t| t.source_id.as_deref() == Some(sid)) {
                                 Some(t) => plan.push(Err(t.clone())),
-                                None => {
-                                    return Err(AppError::not_found(
-                                        "Resultado da busca expirado. Busque de novo.",
-                                    ));
-                                }
+                                // @req RF-19: recomendação vista antes de reabrir o app.
+                                None => match db.recommendation_track(sid)? {
+                                    Some(new) => plan.push(Ok(new)),
+                                    None => {
+                                        return Err(AppError::not_found(
+                                            "Resultado da busca expirado. Busque de novo.",
+                                        ));
+                                    }
+                                },
                             }
                         }
                     }
@@ -362,6 +366,31 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code(), "not_found");
+    }
+
+    // @test RF-09 RF-19
+    #[tokio::test]
+    async fn recomendacao_sem_cache_vira_faixa() {
+        let (y, _, db, _) = svc();
+        db.with(|db| {
+            db.upsert_recommendation_candidate(&miupy_core::RecommendationCandidate {
+                source_id: "rec1".into(),
+                title: "Drive".into(),
+                artist: "Incubus".into(),
+                duration_ms: 234_000,
+                thumbnail_url: None,
+                genres: vec![],
+                seed_kind: miupy_core::RecommendationReasonKind::Genre,
+                seed_label: "rock".into(),
+                seed_track_id: None,
+            })
+        })
+        .unwrap();
+        let t = y.add_to_library(vec!["rec1".into()], None).await.unwrap();
+        assert_eq!(
+            (t[0].title.as_str(), t[0].artist_name.as_deref()),
+            ("Drive", Some("Incubus"))
+        );
     }
 
     // @test RF-09
