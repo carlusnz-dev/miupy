@@ -20,16 +20,24 @@
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { useShared } from '../lib/layoutPresence';
+  import { dismissable } from '../lib/util/dismiss';
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
   let eqOpen = $state(false);
+  let eqButton = $state<HTMLButtonElement>();
   let eqPresets = $state<EqPreset[]>([]);
   $effect(() => {
     void api.equalizerListPresets().then((list) => { eqPresets = list; }).catch(() => {});
   });
 
+  function closeEq(refocus: boolean) {
+    eqOpen = false;
+    if (refocus) eqButton?.focus();
+  }
+
   async function openEq() {
+    if (eqOpen) { closeEq(true); return; }
     try {
       eqPresets = await api.equalizerListPresets();
       eqOpen = true;
@@ -41,7 +49,7 @@
   async function chooseEq(id: string) {
     try {
       await settings.setEqualizer(id);
-      eqOpen = false;
+      closeEq(true);
     } catch (error) {
       notifyError(error);
     }
@@ -119,8 +127,8 @@
             <Icon name="heart" size={24} fill={t.isFavorite} />
           </button>
         </div>
-        <div class="relative self-start">
-          <button type="button" class="btn text-sm" aria-expanded={eqOpen} onclick={openEq}>
+        <div class="relative self-start" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
+          <button type="button" class="btn text-sm" aria-expanded={eqOpen} bind:this={eqButton} onclick={openEq}>
             Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
           </button>
           {#if eqOpen}
@@ -132,7 +140,7 @@
                   onclick={() => chooseEq(preset.id)}
                 >{preset.name}</button>
               {/each}
-              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => (eqOpen = false)}>Fechar</button>
+              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => closeEq(true)}>Fechar</button>
             </div>
           {/if}
         </div>
