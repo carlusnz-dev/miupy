@@ -34,8 +34,8 @@
     open = false;
     button.focus();
     if (index < 0 || options[index].value === value) return;
-    value = options[index].value;
-    onchange?.(value);
+    // Com onchange o pai é dono do valor (e pode recusar a troca); sem ele, vale o bind.
+    if (onchange) onchange(options[index].value); else value = options[index].value;
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -60,9 +60,10 @@
 }}>
   <button
     bind:this={button} {id} type="button" role="combobox" class="field flex items-center justify-between gap-2 text-left"
-    aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls="{uid}-list"
+    aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${uid}-list` : undefined}
     aria-activedescendant={open ? optionId(active) : undefined}
     onclick={() => (open ? (open = false) : show())} {onkeydown}
+    onkeyup={(e) => { if (e.key === ' ') e.preventDefault(); }}
   >
     <span class="truncate">{options[selected]?.label ?? ''}</span>
     <Icon name="down" size={16} class="shrink-0 text-faint" />
