@@ -144,7 +144,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -181,7 +181,8 @@
         "RF-28",
         "RNF-12",
         "RF-29",
-        "RF-33"
+        "RF-33",
+        "RF-32"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
@@ -193,7 +194,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento e o resultado do reprocessamento de metadados.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -219,7 +220,8 @@
         "RNF-09",
         "RF-28",
         "RF-29",
-        "RF-33"
+        "RF-33",
+        "RF-32"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",
