@@ -122,6 +122,11 @@ impl Youtube {
                 Some(&serde_json::json!({ "query": query })),
             );
         });
+        // @req RF-34
+        // Falha ao gravar o histórico não derruba a busca.
+        self.db.with(|db| {
+            let _ = db.record_search(query);
+        });
         Ok(out)
     }
 
@@ -250,6 +255,29 @@ mod tests {
         let err = y.search("x", None).await.unwrap_err();
         assert_eq!(err.code(), "unavailable");
         assert!(err.to_string().contains("instale o yt-dlp"));
+    }
+
+    // @test RF-34
+    #[tokio::test]
+    async fn busca_grava_no_historico_sem_duplicar_e_vazia_nao_grava() {
+        let (y, _, db, _) = svc();
+        y.search("get lucky", None).await.unwrap();
+        y.search("Daft Punk", None).await.unwrap();
+        y.search("  GET LUCKY ", None).await.unwrap();
+        let _ = y.search("   ", None).await;
+        assert_eq!(
+            db.with(|db| db.recent_searches()).unwrap(),
+            ["GET LUCKY", "Daft Punk"]
+        );
+    }
+
+    // @test RF-34
+    #[tokio::test]
+    async fn busca_que_falha_nao_entra_no_historico() {
+        let (y, resolver, db, _) = svc();
+        *resolver.fail_with.lock().unwrap() = Some(MediaError::Unavailable("sem rede".into()));
+        assert!(y.search("x", None).await.is_err());
+        assert!(db.with(|db| db.recent_searches()).unwrap().is_empty());
     }
 
     // @test RF-04 RF-09
