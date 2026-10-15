@@ -12,7 +12,8 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
   `scripts/semear-target.sh <worktree>` antes de compilar. Não exporte `RUSTFLAGS` nem
   `CARGO_TARGET_DIR`. Detalhes em `docs/contribuicao/compilacao.md`.
 - Gerenciador de pacotes JS: `npm`. CLI do Tauri: `npx tauri`.
-- Adicione dependências com `cargo add` / `npm install` (versão atual), não chute versões.
+- Adicione dependências com `cargo add` / `npm install` (versão atual), não chute versões. `npm install`
+  só no checkout principal: num worktree do Orca o `node_modules` é link e seria esvaziado.
 
 ## Regras
 
