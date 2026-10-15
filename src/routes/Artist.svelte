@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Artista: dados de metadata_get_artist + faixas dele na discoteca. @req RF-12 RF-05 RNF-11 RNF-13
+  // Artista: dados de metadata_get_artist + faixas dele na discoteca. @req RF-12 RF-05 RF-42 RNF-11 RNF-13
   import { api, type ArtistInfo, type Track } from '../lib/ipc';
   import { mergeDeep, reconcileList } from '../lib/util/diff';
   import { Chunked } from '../lib/util/chunked.svelte';
@@ -39,6 +39,7 @@
   }
   $effect(() => { void load(); });
   const queue = $derived(tracks.map((t) => t.id));
+  const context = $derived({ kind: 'artist' as const, id, label: info?.name ?? '' });
   const chunk = new Chunked();
   $effect(() => chunk.advance(tracks.length));
   const rows = $derived(tracks.slice(0, chunk.shown));
@@ -75,14 +76,14 @@
 
   <div class="mb-3 flex items-center gap-2">
     <h2 class="text-lg font-semibold">Faixas</h2>
-    <button class="btn btn-primary btn-sm ml-auto" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={14} fill />Tocar</button>
+    <button class="btn btn-primary btn-sm ml-auto" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue, context)}><Icon name="play" size={14} fill />Tocar</button>
   </div>
   {#if tracks.length === 0}
     <State kind="empty" title="Nenhuma faixa deste artista na discoteca" />
   {:else}
     <div role="list">
       {#each rows as t, i (t.id)}
-        <TrackRow track={t} index={i} current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} />
+        <TrackRow track={t} index={i} current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue, context)} />
       {/each}
     </div>
     {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}

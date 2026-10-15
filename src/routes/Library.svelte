@@ -1,6 +1,6 @@
 <script lang="ts">
   // Discoteca: busca, ordenação, filtro de favoritas e seleção múltipla.
-  // @req RF-05 RF-08 RF-10 RNF-11 RNF-13
+  // @req RF-05 RF-08 RF-10 RF-42 RNF-11 RNF-13
   import { untrack } from 'svelte';
   import { api, type SortDir, type Track, type TrackSort } from '../lib/ipc';
   import { Resource } from '../lib/stores/resource.svelte';
@@ -73,7 +73,7 @@
 <PageHeader title="Discoteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(totalMs)}`}>
   {#snippet actions()}
     <a class="btn" href={href(paths.youtube)}><Icon name="plus" size={16} />Adicionar músicas</a>
-    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar tudo</button>
+    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue, { kind: 'library', id: null, label: 'Discoteca' })}><Icon name="play" size={16} fill />Tocar tudo</button>
   {/snippet}
 </PageHeader>
 
@@ -115,7 +115,7 @@
   <div role="list">
     {#each rows as t, i (t.id)}
       <TrackRow track={t} index={i} {info} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
-        current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} ondelete={() => removeTracks([t])} />
+        current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue, { kind: 'library', id: null, label: 'Discoteca' })} ondelete={() => removeTracks([t])} />
     {/each}
   </div>
   {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}
