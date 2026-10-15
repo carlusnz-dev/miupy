@@ -44,3 +44,22 @@ describe('reprocessamento de metadados no mock', () => {
     un();
   });
 });
+
+// @test RF-34
+describe('histórico de buscas no mock', () => {
+  it('grava ao buscar, sobe repetidas sem duplicar, limita a 10 e limpa', async () => {
+    const api = createMockApi();
+    await api.youtubeSearchHistoryClear();
+    expect(await api.youtubeSearchHistory()).toEqual([]);
+    await api.youtubeSearch({ query: 'Daft Punk' });
+    await api.youtubeSearch({ query: 'Björk' });
+    await api.youtubeSearch({ query: ' daft PUNK ' });
+    expect(await api.youtubeSearchHistory()).toEqual(['daft PUNK', 'Björk']);
+    await api.youtubeSuggest({ query: 'sugestao' });
+    expect(await api.youtubeSearchHistory()).toEqual(['daft PUNK', 'Björk']);
+    await Promise.all(Array.from({ length: 12 }, (_, i) => api.youtubeSearch({ query: `busca ${i}` })));
+    expect(await api.youtubeSearchHistory()).toHaveLength(10);
+    await api.youtubeSearchHistoryClear();
+    expect(await api.youtubeSearchHistory()).toEqual([]);
+  });
+});
