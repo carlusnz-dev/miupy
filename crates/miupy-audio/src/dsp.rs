@@ -140,13 +140,12 @@ impl<S: Source> DspSource<S> {
             let step = 1.0 / (self.input.sample_rate().get() as f32 * 0.010);
             self.gain += (target - self.gain).clamp(-step, step);
             let normalized = sample * self.gain;
-            if self.channel == 0 {
-                if let Some(gains) = self.controls.read_equalizer()
-                    && gains != self.eq_gains
-                {
-                    self.eq.set(gains);
-                    self.eq_gains = gains;
-                }
+            if self.channel == 0
+                && let Some(gains) = self.controls.read_equalizer()
+                && gains != self.eq_gains
+            {
+                self.eq.set(gains);
+                self.eq_gains = gains;
             }
             let equalized = self.eq.process(normalized, self.channel);
             let volume = f32::from_bits(self.controls.volume.load(Ordering::Relaxed));
