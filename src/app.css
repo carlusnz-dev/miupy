@@ -239,6 +239,12 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 }
 .mesh-layer { position: absolute; width: 90%; height: 90%; }
 
+/* @req RF-41: brilho temporário por opacidade, sem trabalho contínuo de GPU. */
+.dash-card { transition: border-color var(--dur-base); }
+.dash-card:hover, .dash-card:focus-within { border-color: var(--line-strong); }
+.dash-card > div:first-child { transition: opacity var(--dur-base); }
+.dash-card-link:focus-visible { outline: 2px solid var(--lava-text); outline-offset: -3px; }
+
 @media (prefers-reduced-motion: reduce) {
   .mesh { transition-duration: 0s; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
