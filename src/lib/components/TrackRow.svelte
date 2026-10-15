@@ -1,5 +1,5 @@
 <script lang="ts">
-  // @req RF-18 RNF-10
+  // @req RF-18
   // Linha de faixa: capa, título/artista, álbum, duração e ações. @req RF-04 RF-05 RF-10
   import type { Track } from '../ipc';
   import { player } from '../stores/player.svelte';
@@ -12,7 +12,7 @@
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import { scores, fmtScore, scoreTooltip } from '../stores/scores.svelte';
-  import { useShared } from '../layoutPresence';
+  import { enterStyle } from '../motion';
   $effect(() => { void scores.load([track.id]); }); // @req RF-25
 
   type Props = {
@@ -31,8 +31,8 @@
 </script>
 
 <div
-  class="group motion-item track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
-  style:animation-delay={index !== undefined && index < 14 ? `${index * 20}ms` : undefined}
+  class="group enter track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
+  style={index !== undefined ? enterStyle(index) : undefined}
   {draggable} {ondragstart} {ondragover} {ondrop} role="listitem"
 >
   {#if selectable}
@@ -54,7 +54,7 @@
     </button>
     <span class="min-w-0">
       <button class="block max-w-full truncate text-left text-sm font-medium {current ? 'text-lava-text' : ''}" onclick={onplay}>{track.title}</button>
-      <span class="block truncate text-xs text-muted" use:useShared={track.artistId ? `artist-title-${track.artistId}` : ''}>
+      <span class="block truncate text-xs text-muted">
         {#if track.artistId}<a class="hover:text-fg hover:underline" href={href(paths.artist(track.artistId))}>{track.artistName ?? 'Artista desconhecido'}</a>{:else}{track.artistName ?? 'Artista desconhecido'}{/if}{#if current && player.state.streaming} · {player.isLoading ? 'Conectando…' : 'Streaming'}{:else if track.source === 'youtube' && !track.filePath} · Disponível por streaming{/if}
       </span>
     </span>

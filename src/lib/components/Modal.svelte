@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Diálogo nativo <dialog>: já traz trap de foco, Esc e backdrop.
+  // Diálogo nativo <dialog>: já traz trap de foco, Esc e backdrop. Abre centralizado com pop-up. @req RNF-10
   import Icon from './Icon.svelte';
   type Props = { open: boolean; title: string; onclose: () => void; children: import('svelte').Snippet; footer?: import('svelte').Snippet };
   let { open, title, onclose, children, footer }: Props = $props();

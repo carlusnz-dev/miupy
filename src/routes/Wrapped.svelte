@@ -148,10 +148,10 @@
                 <p class="text-lg">Seu dia mais intenso foi <strong class="text-grad">{fmtDay(w.busiestDay.date)}</strong>, com {fmtDuration(w.busiestDay.listenedMs)} de música.</p>
               {/if}
               <dl class="grid grid-cols-2 gap-3">
-                <div><dt class="text-xs text-fg/70">Minutos</dt><dd class="tnum text-3xl font-black">{fmtMinutes(w.totalListenedMs)}</dd></div>
-                <div><dt class="text-xs text-fg/70">Reproduções</dt><dd class="tnum text-3xl font-black">{fmtNumber(w.totalPlays)}</dd></div>
-                <div><dt class="text-xs text-fg/70">Faixas</dt><dd class="tnum text-3xl font-black">{fmtNumber(w.distinctTracks)}</dd></div>
-                <div><dt class="text-xs text-fg/70">Artistas</dt><dd class="tnum text-3xl font-black">{fmtNumber(w.distinctArtists)}</dd></div>
+                <div><dt class="text-xs text-fg/70">Minutos</dt><dd class="tnum font-display text-3xl font-black">{fmtMinutes(w.totalListenedMs)}</dd></div>
+                <div><dt class="text-xs text-fg/70">Reproduções</dt><dd class="tnum font-display text-3xl font-black">{fmtNumber(w.totalPlays)}</dd></div>
+                <div><dt class="text-xs text-fg/70">Faixas</dt><dd class="tnum font-display text-3xl font-black">{fmtNumber(w.distinctTracks)}</dd></div>
+                <div><dt class="text-xs text-fg/70">Artistas</dt><dd class="tnum font-display text-3xl font-black">{fmtNumber(w.distinctArtists)}</dd></div>
               </dl>
             </div>
           </MeshGradient>

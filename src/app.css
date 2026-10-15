@@ -44,6 +44,14 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 
+  /* movimento: uma mola só (1 overshoot de ~1%), mesma curva de `spring()` em src/lib/motion.ts.
+     @req RNF-08 */
+  --ease-spring: linear(0, 0.046, 0.153, 0.287, 0.424, 0.551, 0.662, 0.755, 0.829, 0.886, 0.928, 0.959, 0.98, 0.993, 1.002, 1.007, 1.009, 1.009, 1.009, 1.008, 1.007, 1.005, 1.004, 1.003, 1);
+  --dur-fast: 180ms;
+  --dur-base: 360ms;
+  --dur-slow: 420ms;
+  --enter-y: 8px;
+
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
@@ -65,6 +73,10 @@
   --lava-ink: #04122b;
   --lava-rgb: 47 140 255;
 }
+
+/* Títulos e números grandes em serifa (decisão do autor, sessão 08); corpo e controles sem serifa. */
+@theme { --font-display: 'Source Serif 4 Variable', ui-serif, Georgia, 'Times New Roman', serif; }
+h1, h2 { font-family: var(--font-display); font-optical-sizing: auto; }
 
 @theme inline {
   --color-bg: var(--bg);
@@ -178,13 +190,16 @@ input[type='range'].slider::-webkit-slider-thumb {
 }
 input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--fg); border: 0; }
 
-/* mesh animado: só transform/opacity em camadas já compostas */
-@keyframes mesh-a { 0% { transform: translate3d(-8%, -6%, 0) scale(1); } 50% { transform: translate3d(10%, 8%, 0) scale(1.18); } 100% { transform: translate3d(-8%, -6%, 0) scale(1); } }
-@keyframes mesh-b { 0% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } }
-@keyframes mesh-c { 0% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } 100% { transform: translate3d(0, 10%, 0) scale(1); } }
-.mesh-layer { position: absolute; width: 90%; height: 90%; will-change: transform; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.mesh.paused .mesh-layer { animation-play-state: paused; will-change: auto; }
-@media (prefers-reduced-motion: reduce) { .mesh-layer { animation: none !important; } }
+/* mesh estático (animação infinita custava ~40% de CPU): só as cores transicionam quando a lava muda.
+   As variáveis são registradas para a transição interpolar a cor dentro do gradiente. */
+@property --mesh-1 { syntax: '<color>'; inherits: true; initial-value: #ff6a2b; }
+@property --mesh-2 { syntax: '<color>'; inherits: true; initial-value: #b3200f; }
+@property --mesh-3 { syntax: '<color>'; inherits: true; initial-value: #ffd27a; }
+.mesh {
+  --mesh-1: var(--lava); --mesh-2: var(--lava-deep); --mesh-3: var(--lava-core);
+  transition: --mesh-1 var(--dur-slow), --mesh-2 var(--dur-slow), --mesh-3 var(--dur-slow);
+}
+.mesh-layer { position: absolute; width: 90%; height: 90%; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
@@ -204,40 +219,37 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 
 /* Primitivas de movimento curtas; apenas transform e opacity. @req RNF-08 RNF-09 */
 @keyframes spring-in {
-  from { opacity: 0; transform: scale(.92); }
-  65% { opacity: 1; transform: scale(1.025); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); }
+  to { opacity: 1; transform: none; }
 }
-@keyframes spring-out { to { opacity: 0; transform: translate3d(0, 7px, 0) scale(.98); } }
+@keyframes spring-out { to { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @keyframes spring-bounce {
-  40% { transform: scale(.88); }
-  75% { transform: scale(1.09); }
+  40% { transform: scale(.94); }
   to { transform: scale(1); }
 }
-.motion-page { animation: spring-in 280ms both; }
-.motion-item { animation: spring-in 280ms both; }
-.motion-item:nth-child(10n + 2) { animation-delay: 25ms; }
-.motion-item:nth-child(10n + 3) { animation-delay: 50ms; }
-.motion-item:nth-child(10n + 4) { animation-delay: 75ms; }
-.motion-player { animation: spring-in 240ms both; }
-.motion-toast { animation: spring-in 260ms both; }
-.motion-bounce:active { animation: spring-bounce 220ms; will-change: transform; }
+@keyframes enter {
+  from { opacity: 0; transform: translate3d(0, var(--enter-y), 0); }
+  to { opacity: 1; transform: none; }
+}
+/* Entrada padrão (fade + Y). Em listas: style={enterStyle(i)} escalona via --enter-delay. */
+.enter { animation: enter var(--dur-base) var(--ease-spring) var(--enter-delay, 0ms) both; }
+.motion-bounce:active { animation: spring-bounce var(--dur-fast) var(--ease-spring); will-change: transform; }
 .btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover {
-  transition: transform 180ms linear(0, .43 30%, 1.1 70%, 1), opacity 160ms;
+  transition: transform var(--dur-fast) var(--ease-spring), opacity var(--dur-fast);
 }
 .btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover { transform: translate3d(0, -2px, 0); }
 .btn:active:not(:disabled), .icon-btn:active:not(:disabled), .group[role='listitem']:active { transform: scale(.96); }
 .group[role='listitem']:hover, .motion-cover:hover { transform: translate3d(0, -1px, 0); }
 .motion-cover img { animation: fade-image 180ms both; }
 @keyframes fade-image { from { opacity: 0; } to { opacity: 1; } }
-dialog.modal[open] { animation: spring-in 260ms both; transform-origin: center; }
+dialog.modal[open] { animation: spring-in var(--dur-base) var(--ease-spring) both; transform-origin: center; }
 dialog.modal[open]::backdrop { animation: backdrop-in 220ms both; }
 @keyframes backdrop-in { from { background: rgb(0 0 0 / 0); } to { background: rgb(0 0 0 / 0.6); } }
 dialog.modal.closing { animation: spring-out 190ms both; }
 dialog.modal.closing::backdrop { animation: backdrop-out 190ms both; }
 @keyframes backdrop-out { from { background: rgb(0 0 0 / 0.6); } to { background: rgb(0 0 0 / 0); } }
 @media (prefers-reduced-motion: reduce) {
-  .motion-page, .motion-item, .motion-player, .motion-toast, dialog.modal[open] { animation: fade-image 100ms both; will-change: auto; }
+  .enter, dialog.modal[open] { animation: fade-image 100ms both; }
   .motion-bounce:active { animation: none; will-change: auto; }
   .btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover { transition: none; }
   .btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover,
@@ -245,7 +257,7 @@ dialog.modal.closing::backdrop { animation: backdrop-out 190ms both; }
   .group[role='listitem']:hover, .motion-cover:hover { transform: none; }
 }
 /* Fechamento do dialog nativo com transição discreta de display. @req RNF-08 */
-dialog.modal { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); transition: opacity 180ms, transform 180ms, display 180ms allow-discrete, overlay 180ms allow-discrete; }
+dialog.modal { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); transition: opacity var(--dur-fast), transform var(--dur-fast), display var(--dur-fast) allow-discrete, overlay var(--dur-fast) allow-discrete; }
 dialog.modal[open] { opacity: 1; transform: none; }
-@starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); } }
+@starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { dialog.modal { transform: none; transition: opacity 90ms, display 90ms allow-discrete, overlay 90ms allow-discrete; } }

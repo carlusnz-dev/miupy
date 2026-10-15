@@ -57,7 +57,7 @@
     {#each cards as c}
       <div class="card p-4">
         <dt class="text-xs text-muted">{c.k}</dt>
-        <dd class="tnum mt-1 text-3xl font-bold text-grad">{c.v}</dd>
+        <dd class="tnum font-display mt-1 text-3xl font-bold text-grad">{c.v}</dd>
         {#if c.hint}<dd class="mt-0.5 text-xs text-faint">{c.hint}</dd>{/if}
       </div>
     {/each}

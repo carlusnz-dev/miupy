@@ -4,7 +4,6 @@
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
   import { springTransition, springCollapse } from './lib/motion';
-  import { captureSharedLayout } from './lib/layoutPresence';
   import { api, isMock, type MetadataRefreshStatus } from './lib/ipc';
   import { notifyError, toasts } from './lib/stores/toast.svelte';
   import { router } from './lib/stores/router.svelte';
@@ -94,14 +93,6 @@
     }
   }
   const name = $derived(router.current.name);
-  let routeKey = $state('');
-  $effect.pre(() => {
-    const next = `${router.current.name}:${router.current.params.id ?? ''}`;
-    if (routeKey && routeKey !== next) {
-      captureSharedLayout(name !== 'now-playing' && routeKey.startsWith('now-playing:'));
-    }
-    routeKey = next;
-  });
 </script>
 
 <svelte:window onkeydown={onKey} />

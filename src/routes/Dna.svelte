@@ -23,9 +23,9 @@
 {:else if !dna.data || (dna.data.listenedMs === 0 && dna.data.topArtists.length === 0 && dna.data.topGenres.length === 0)}<State kind="empty" title="Seu DNA ainda está se formando" text="Ouça algumas faixas para ver seus artistas, gêneros e tendências." />
 {:else}
   <div class="mb-5 grid gap-3 sm:grid-cols-3">
-    <div class="card p-5"><p class="text-sm text-muted">Tempo ouvido</p><p class="mt-1 text-2xl font-bold text-lava-text">{fmtDuration(dna.data.listenedMs)}</p><p class="text-xs text-faint">Antes: {fmtDuration(dna.data.previousListenedMs)}</p></div>
-    <div class="card p-5"><p class="text-sm text-muted">Taxa de pulos</p><p class="mt-1 text-2xl font-bold text-lava-text">{pct(dna.data.skipRate)}</p><p class="text-xs text-faint">Antes: {pct(dna.data.previousSkipRate)}</p></div>
-    <div class="card p-5"><p class="text-sm text-muted">Variação de pulos</p><p class="mt-1 text-2xl font-bold text-lava-text">{Math.round((dna.data.skipRate - dna.data.previousSkipRate) * 100)} pontos</p></div>
+    <div class="card p-5"><p class="text-sm text-muted">Tempo ouvido</p><p class="mt-1 font-display text-2xl font-bold text-lava-text">{fmtDuration(dna.data.listenedMs)}</p><p class="text-xs text-faint">Antes: {fmtDuration(dna.data.previousListenedMs)}</p></div>
+    <div class="card p-5"><p class="text-sm text-muted">Taxa de pulos</p><p class="mt-1 font-display text-2xl font-bold text-lava-text">{pct(dna.data.skipRate)}</p><p class="text-xs text-faint">Antes: {pct(dna.data.previousSkipRate)}</p></div>
+    <div class="card p-5"><p class="text-sm text-muted">Variação de pulos</p><p class="mt-1 font-display text-2xl font-bold text-lava-text">{Math.round((dna.data.skipRate - dna.data.previousSkipRate) * 100)} pontos</p></div>
   </div>
   <div class="grid gap-5 md:grid-cols-2">
     <section class="card p-5"><h2 class="mb-3 text-lg font-semibold">Top artistas</h2>{#each dna.data.topArtists as a}<p class="flex justify-between gap-2 py-1 text-sm"><a href={href(paths.artist(a.artistId))} class="hover:underline">{a.name}</a><span class="tnum text-lava-text">{fmtScore(a.score)}</span></p>{/each}</section>

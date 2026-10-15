@@ -59,17 +59,24 @@ o basalto (`--bg`, `--surface-1..3`, `--line`) e os gradientes derivados (`--gra
 
 ## MeshGradient
 
-4 camadas com `radial-gradient` animadas só por `transform` (compositor), sem `filter: blur`. Pausa
-fora da tela (`IntersectionObserver`) e com a aba oculta; `prefers-reduced-motion` desliga a animação.
+3 camadas com `radial-gradient` **estáticas**, sem `filter: blur` e sem animação infinita (animada, o
+mesh custava ~37% de CPU na janela e ~40% no WebKitWebProcess; parada, 4% e 2%, medido no app real).
+Só as cores transicionam (`--mesh-1..3` registradas com `@property`) quando a lava muda.
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 
+## Movimento (tokens e entrada)
+
+Tokens em `:root` (`app.css`): `--ease-spring` (curva `linear()` com um overshoot de ~1%, a mesma de
+`spring()` em `lib/motion.ts`), `--dur-fast` 180 ms, `--dur-base` 360 ms, `--dur-slow` 420 ms,
+`--enter-y` 8 px. Entrada padrão: classe `.enter` (fade + Y); em lista, `style={enterStyle(i)}`
+escalona por `--enter-delay` só nas 14 primeiras linhas. `AnimatedText` anima título letra por letra.
+Reduzido: só fade curto.
+
 ## Movimento entre telas
 
-`lib/layoutPresence.ts` registra apenas nós marcados com `use:useShared` ou a propriedade `shared` de
-`Cover`. Chaves iguais produzem FLIP por `transform` entre telas; ao trocar de rota no meio do
-movimento, a captura mais nova substitui a anterior. A animação reduzida usa apenas fade. O modal
-nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
+Sem animação de elementos compartilhados entre telas (retirada a pedido do autor, sessão 09): cada tela
+entra com `.enter`. O modal nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
 
 ## Layout
 
