@@ -96,6 +96,8 @@ body {
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 * { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
@@ -105,6 +107,7 @@ body {
 button { cursor: pointer; color: inherit; font: inherit; }
 button:disabled { cursor: default; opacity: 0.45; }
 input, select, textarea { font: inherit; color: inherit; }
+input, textarea, [contenteditable]:not([contenteditable='false']) { user-select: text; -webkit-user-select: text; }
 
 .tnum { font-variant-numeric: tabular-nums; }
 

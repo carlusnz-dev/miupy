@@ -67,7 +67,8 @@ cargo test --workspace
 Se o PR tocou em `src/`, `package.json` ou configuração do frontend:
 
 ```sh
-npm ci            # só se node_modules não existir no worktree
+# Nunca rode npm ci/npm install num worktree cujo node_modules é link (ls -la node_modules):
+# isso esvazia o node_modules do checkout principal. Só no checkout principal, se faltar.
 npm run check
 npm run build
 npm test          # se o script existir

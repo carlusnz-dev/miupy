@@ -38,7 +38,7 @@
 {#snippet item(j: DownloadJob)}
   {@const t = titles.get(j.trackId)}
   <li class="card flex items-center gap-3 p-3">
-    <Cover path={t?.coverPath} seed={j.trackId} size={44} rounded="0.375rem" />
+    <Cover path={t?.coverPath} thumb={t?.thumbnailUrl} seed={j.trackId} size={44} rounded="0.375rem" />
     <div class="min-w-0 flex-1">
       {#if t || titlesReady}
         <p class="truncate text-sm font-medium">{t?.title ?? j.trackId}</p>

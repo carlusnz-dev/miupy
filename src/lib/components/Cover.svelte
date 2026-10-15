@@ -6,10 +6,11 @@
   import Icon from './Icon.svelte';
   import { useShared as sharedAction } from '../layoutPresence';
 
-  type Props = { path?: string | null; url?: string | null; seed: string; size?: number | string; rounded?: string; class?: string; label?: string; shared?: string };
-  let { path = null, url = null, seed, size, rounded = '0.5rem', class: cls = '', label = '', shared }: Props = $props();
+  type Props = { path?: string | null; url?: string | null; thumb?: string | null; seed: string; size?: number | string; rounded?: string; class?: string; label?: string; shared?: string };
+  let { path = null, url = null, thumb = null, seed, size, rounded = '0.5rem', class: cls = '', label = '', shared }: Props = $props();
 
-  const src = $derived(url ?? api.resolveAsset(path));
+  // `thumb` é a miniatura remota: a capa de quem ainda não tem arquivo de capa (faixa só em streaming).
+  const src = $derived(url ?? api.resolveAsset(path) ?? thumb);
   // Falha lembrada por endereço: se `src` mudar a falha some sozinha, sem um $effect por capa (RNF-13).
   let failedSrc = $state<string | null>(null);
   const failed = $derived(failedSrc !== null && failedSrc === src);

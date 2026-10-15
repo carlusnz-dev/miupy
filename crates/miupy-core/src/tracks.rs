@@ -18,7 +18,8 @@ use crate::text::{clean_opt, fts_query};
 /// Colunas lidas por [`track_from_row`], nesta ordem.
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.title, t.artist_id, a.name, t.album, \
      t.duration_ms, t.file_path, t.cover_path, t.source, t.source_id, t.codec, t.bitrate, \
-     (f.track_id IS NOT NULL), t.download_status, t.added_at, t.genres, t.release_year, t.loudness_lufs";
+     (f.track_id IS NOT NULL), t.download_status, t.added_at, t.genres, t.release_year, t.loudness_lufs, \
+     t.thumbnail_url";
 
 pub(crate) const TRACK_FROM: &str = "tracks t \
      LEFT JOIN artists a ON a.id = t.artist_id \
@@ -46,6 +47,7 @@ pub(crate) fn track_from_row(r: &Row<'_>) -> rusqlite::Result<Track> {
         })?,
         release_year: r.get(16)?,
         loudness_lufs: r.get(17)?,
+        thumbnail_url: r.get(18)?,
     })
 }
 
@@ -644,6 +646,8 @@ mod tests {
             db.track_thumbnail_url(&a.track.id).unwrap().as_deref(),
             Some("http://img")
         );
+        // @test RF-10
+        assert_eq!(b.track.thumbnail_url.as_deref(), Some("http://img"));
         assert_eq!(db.list_tracks(&TrackQuery::default()).unwrap().len(), 1);
 
         let known = db
