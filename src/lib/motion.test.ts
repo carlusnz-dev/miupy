@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flipTransform, registerSharedEntry, SharedSnapshot } from './motion';
+import { flipTransform, registerSharedEntry, SharedSnapshot, springCollapse } from './motion';
 
 describe('layout presence', () => {
   // @test RNF-10
@@ -31,5 +31,15 @@ describe('layout presence', () => {
     snapshot.replace([['cover-2', 24]]);
     expect(snapshot.take('cover-1')).toBeUndefined();
     expect(snapshot.take('cover-2')).toBe(24);
+  });
+});
+
+describe('springCollapse', () => {
+  // @test RNF-04
+  it('vai da altura zero à altura medida do elemento', () => {
+    const node = { getBoundingClientRect: () => ({ height: 84 }) } as unknown as Element;
+    const { css } = springCollapse(node);
+    expect(css?.(0, 1)).toContain('height:0px');
+    expect(Number(/height:([\d.]+)px/.exec(css?.(1, 0) ?? '')?.[1])).toBeCloseTo(84, 0);
   });
 });
