@@ -610,6 +610,56 @@ mod tests {
         }
     }
 
+    // @test RF-32
+    #[tokio::test]
+    async fn lote_publica_inicio_contagem_falhas_e_fim() {
+        let f = fx();
+        track(&f);
+        f.db.with(|db| db.upsert_track(&NewTrack::youtube("vid2", "Outra", None, 1000, None)))
+            .unwrap();
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("sem rede".into()));
+        let svc = Arc::new(f.svc);
+        assert_eq!(svc.refresh_status(), MetadataRefreshStatus::default());
+        assert_eq!(svc.enqueue_library_refresh(false).unwrap(), 2);
+        let start = svc.refresh_status();
+        assert!(start.running);
+        assert_eq!((start.done, start.total, start.failed), (0, 2, 0));
+        assert!(start.started_at.is_some());
+        assert!(start.finished_at.is_none());
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while f.events.metadata.lock().unwrap().len() < 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let end = svc.refresh_status();
+        assert_eq!((end.done, end.total, end.failed), (2, 2, 1));
+        assert_eq!(end.current_track_id, None);
+        assert!(end.finished_at.unwrap() >= end.started_at.unwrap());
+        let events = f.events.metadata.lock().unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!((events[0].running, events[0].done), (true, 0));
+        assert_eq!((events[1].done, events[1].failed), (1, 1));
+        assert_eq!((events[2].done, events[2].failed), (2, 1));
+        assert!(!events[3].running);
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn segundo_pedido_devolve_conflict_sem_apagar_estado() {
+        let f = fx();
+        track(&f);
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        let status = svc.refresh_status();
+        assert_eq!(
+            svc.enqueue_library_refresh(false).unwrap_err().code(),
+            "conflict"
+        );
+        assert_eq!(svc.refresh_status(), status);
+    }
+
     // @test RF-20
     #[tokio::test]
     async fn musicbrainz_prevalece_e_persiste_identificadores() {

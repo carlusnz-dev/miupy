@@ -168,4 +168,30 @@ mod tests {
         assert_eq!(v["inLibrary"], true);
         assert!(v["thumbnailUrl"].is_null());
     }
+
+    // @test RF-32
+    #[test]
+    fn metadata_refresh_status_serializa_todos_os_campos_do_contrato() {
+        let status = MetadataRefreshStatus {
+            running: true,
+            done: 1,
+            total: 3,
+            failed: 1,
+            current_track_id: Some("trk-1".into()),
+            started_at: Some(1000),
+            finished_at: None,
+        };
+        assert_eq!(
+            serde_json::to_value(status).unwrap(),
+            serde_json::json!({
+                "running": true,
+                "done": 1,
+                "total": 3,
+                "failed": 1,
+                "currentTrackId": "trk-1",
+                "startedAt": 1000,
+                "finishedAt": null
+            })
+        );
+    }
 }
