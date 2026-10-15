@@ -6,7 +6,8 @@ use rodio::source::SeekError;
 use rodio::{SampleRate, Source};
 use std::num::NonZeroU16;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering, fence};
 use std::time::Duration;
 
 fn oversample_coefficients() -> [[f32; 8]; 3] {
@@ -32,7 +33,10 @@ fn oversample_coefficients() -> [[f32; 8]; 3] {
 pub(crate) struct DspControls {
     pub normalization: AtomicU32,
     pub volume: AtomicU32,
-    pub equalizer: [AtomicU32; 8],
+    equalizer: [AtomicU32; 8],
+    /// Seqlock dos ganhos do EQ: ímpar enquanto um escritor grava.
+    eq_version: AtomicU32,
+    eq_writer: Mutex<()>,
 }
 impl Default for DspControls {
     fn default() -> Self {
@@ -40,6 +44,8 @@ impl Default for DspControls {
             normalization: AtomicU32::new(1.0_f32.to_bits()),
             volume: AtomicU32::new(1.0_f32.to_bits()),
             equalizer: std::array::from_fn(|_| AtomicU32::new(0.0_f32.to_bits())),
+            eq_version: AtomicU32::new(0),
+            eq_writer: Mutex::new(()),
         }
     }
 }
@@ -47,9 +53,37 @@ impl Default for DspControls {
 impl DspControls {
     // @req RF-29
     pub fn set_equalizer(&self, gains: [f32; 8]) {
+        // Só serializa escritores; a thread de áudio nunca toma este lock.
+        let _guard = self.eq_writer.lock().unwrap_or_else(|e| e.into_inner());
+        let version = self.eq_version.load(Ordering::Relaxed);
+        self.eq_version
+            .store(version.wrapping_add(1), Ordering::Relaxed);
+        fence(Ordering::Release);
         for (atom, gain) in self.equalizer.iter().zip(gains) {
             atom.store(gain.to_bits(), Ordering::Relaxed);
         }
+        self.eq_version
+            .store(version.wrapping_add(2), Ordering::Release);
+    }
+
+    /// Lê os 8 ganhos de um mesmo perfil, sem lock nem alocação. Devolve `None` se um
+    /// escritor não largou a tempo (o chamador mantém os ganhos anteriores).
+    // @req RF-29
+    pub fn read_equalizer(&self) -> Option<[f32; 8]> {
+        for _ in 0..8 {
+            let before = self.eq_version.load(Ordering::Acquire);
+            if before & 1 == 1 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let gains =
+                std::array::from_fn(|i| f32::from_bits(self.equalizer[i].load(Ordering::Relaxed)));
+            fence(Ordering::Acquire);
+            if self.eq_version.load(Ordering::Relaxed) == before {
+                return Some(gains);
+            }
+        }
+        None
     }
 }
 
@@ -106,14 +140,12 @@ impl<S: Source> DspSource<S> {
             let step = 1.0 / (self.input.sample_rate().get() as f32 * 0.010);
             self.gain += (target - self.gain).clamp(-step, step);
             let normalized = sample * self.gain;
-            if self.channel == 0 {
-                let gains = std::array::from_fn(|i| {
-                    f32::from_bits(self.controls.equalizer[i].load(Ordering::Relaxed))
-                });
-                if gains != self.eq_gains {
-                    self.eq.set(gains);
-                    self.eq_gains = gains;
-                }
+            if self.channel == 0
+                && let Some(gains) = self.controls.read_equalizer()
+                && gains != self.eq_gains
+            {
+                self.eq.set(gains);
+                self.eq_gains = gains;
             }
             let equalized = self.eq.process(normalized, self.channel);
             let volume = f32::from_bits(self.controls.volume.load(Ordering::Relaxed));
@@ -276,6 +308,29 @@ mod tests {
             prev = sample;
         }
         assert!(largest < 0.15, "degrau: {largest}");
+    }
+    // @test RF-29
+    #[test]
+    fn equalizer_reads_never_mix_profiles() {
+        let controls = Arc::new(DspControls::default());
+        let writer = {
+            let controls = Arc::clone(&controls);
+            std::thread::spawn(move || {
+                for i in 0..200_000u32 {
+                    controls.set_equalizer([(i % 2) as f32 + 1.; 8]);
+                }
+            })
+        };
+        let mut seen = 0;
+        while !writer.is_finished() {
+            if let Some(g) = controls.read_equalizer() {
+                assert!(g.iter().all(|v| *v == g[0]), "mistura: {g:?}");
+                seen += 1;
+            }
+        }
+        writer.join().unwrap();
+        assert!(seen > 0);
+        assert_eq!(controls.read_equalizer(), Some([2.; 8]));
     }
     // @test RF-28 RF-29
     #[test]

@@ -265,4 +265,129 @@ mod tests {
             "invalid_input"
         );
     }
+
+    fn input(id: Option<&str>, name: &str, gain: f32) -> EqPresetInput {
+        EqPresetInput {
+            id: id.map(Into::into),
+            name: name.into(),
+            gains_db: vec![gain; 8],
+        }
+    }
+    // @test RF-29
+    #[test]
+    fn duplicate_name_ignoring_case_is_conflict() {
+        let db = Database::open_in_memory().unwrap();
+        db.save_eq_preset(&input(None, "Meu Perfil", 1.)).unwrap();
+        for name in [
+            "meu perfil",
+            "MEU PERFIL",
+            "  Meu Perfil  ",
+            "plano",
+            "ROCK",
+        ] {
+            assert_eq!(
+                db.save_eq_preset(&input(None, name, 1.))
+                    .unwrap_err()
+                    .code(),
+                "conflict",
+                "{name}"
+            );
+        }
+    }
+    // @test RF-29
+    #[test]
+    fn name_length_limit_is_30_characters() {
+        let db = Database::open_in_memory().unwrap();
+        let ok = "é".repeat(30);
+        assert_eq!(db.save_eq_preset(&input(None, &ok, 0.)).unwrap().name, ok);
+        let too_long = "a".repeat(31);
+        assert_eq!(
+            db.save_eq_preset(&input(None, &too_long, 0.))
+                .unwrap_err()
+                .code(),
+            "invalid_input"
+        );
+    }
+    // @test RF-29
+    #[test]
+    fn edit_keeps_id_and_changes_name_and_gains() {
+        let db = Database::open_in_memory().unwrap();
+        let created = db.save_eq_preset(&input(None, "Antes", 1.)).unwrap();
+        let edited = db
+            .save_eq_preset(&input(Some(&created.id), "Depois", -3.))
+            .unwrap();
+        assert_eq!(edited.id, created.id);
+        assert_eq!(edited.name, "Depois");
+        assert_eq!(edited.gains_db, vec![-3.; 8]);
+        assert!(!edited.builtin);
+        let list = db.list_eq_presets().unwrap();
+        assert_eq!(list.len(), 9);
+        assert_eq!(list[8], edited);
+        // Reaproveitar o próprio nome (outra caixa) ao editar não é conflito.
+        db.save_eq_preset(&input(Some(&created.id), "DEPOIS", 2.))
+            .unwrap();
+        assert_eq!(
+            db.save_eq_preset(&input(Some("inexistente"), "X", 0.))
+                .unwrap_err()
+                .code(),
+            "not_found"
+        );
+    }
+    // @test RF-29
+    #[test]
+    fn list_has_builtins_first_then_custom_in_creation_order() {
+        let db = Database::open_in_memory().unwrap();
+        let a = db.save_eq_preset(&input(None, "C", 1.)).unwrap();
+        let b = db.save_eq_preset(&input(None, "A", 2.)).unwrap();
+        let c = db.save_eq_preset(&input(None, "B", 3.)).unwrap();
+        // Editar não muda a posição.
+        db.save_eq_preset(&input(Some(&a.id), "C2", 4.)).unwrap();
+        let list = db.list_eq_presets().unwrap();
+        let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
+        let builtin_ids: Vec<&str> = BUILTINS.iter().map(|(id, _, _)| *id).collect();
+        assert_eq!(&ids[..8], &builtin_ids[..]);
+        assert!(list[..8].iter().all(|p| p.builtin));
+        assert_eq!(&ids[8..], [a.id.as_str(), b.id.as_str(), c.id.as_str()]);
+        assert!(list[8..].iter().all(|p| !p.builtin));
+    }
+    // @test RF-29
+    #[test]
+    fn at_most_three_custom_and_slot_frees_after_delete() {
+        let db = Database::open_in_memory().unwrap();
+        let mut ids = vec![];
+        for n in 0..3 {
+            ids.push(
+                db.save_eq_preset(&input(None, &format!("P{n}"), 0.))
+                    .unwrap()
+                    .id,
+            );
+        }
+        assert_eq!(
+            db.save_eq_preset(&input(None, "P3", 0.))
+                .unwrap_err()
+                .code(),
+            "conflict"
+        );
+        // Editar com 3 existentes continua permitido.
+        db.save_eq_preset(&input(Some(&ids[0]), "P0b", 1.)).unwrap();
+        db.delete_eq_preset(&ids[1]).unwrap();
+        db.save_eq_preset(&input(None, "P3", 0.)).unwrap();
+        assert_eq!(db.list_eq_presets().unwrap().len(), 11);
+    }
+    // @test RF-29
+    #[test]
+    fn deleting_active_custom_falls_back_to_flat_but_keeps_other_selection() {
+        let db = Database::open_in_memory().unwrap();
+        let a = db.save_eq_preset(&input(None, "A", 1.)).unwrap();
+        let b = db.save_eq_preset(&input(None, "B", 2.)).unwrap();
+        db.update_settings(&crate::SettingsPatch {
+            eq_preset_id: Some(b.id.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+        db.delete_eq_preset(&a.id).unwrap();
+        assert_eq!(db.get_settings().unwrap().eq_preset_id, b.id);
+        db.delete_eq_preset(&b.id).unwrap();
+        assert_eq!(db.get_settings().unwrap().eq_preset_id, "flat");
+    }
 }
