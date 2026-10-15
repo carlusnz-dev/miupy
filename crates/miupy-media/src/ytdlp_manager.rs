@@ -4,6 +4,7 @@ use crate::error::{MediaError, Result};
 use crate::resolver::ProgressFn;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -60,6 +61,8 @@ pub struct YtDlpManager {
     release_url: String,
     http: reqwest::Client,
     lock: tokio::sync::Mutex<()>,
+    env_override: Arc<dyn Fn() -> Option<OsString> + Send + Sync>,
+    clock: Arc<dyn Fn() -> u64 + Send + Sync>,
 }
 
 // @req RF-26
@@ -88,12 +91,14 @@ impl YtDlpManager {
             release_url: release_url.into(),
             http,
             lock: tokio::sync::Mutex::new(()),
+            env_override: Arc::new(|| std::env::var_os("MIUPY_YTDLP")),
+            clock: Arc::new(now_ms),
         })
     }
 
     /// Caminho do executável gerenciado ou de `MIUPY_YTDLP`, quando definido.
     pub fn binary_path(&self) -> PathBuf {
-        if let Some(override_path) = std::env::var_os("MIUPY_YTDLP").filter(|s| !s.is_empty()) {
+        if let Some(override_path) = self.override_path() {
             return PathBuf::from(override_path);
         }
         self.dir.join(asset_name().unwrap_or("yt-dlp"))
@@ -133,8 +138,12 @@ impl YtDlpManager {
     /// Consulta a última release; `force` ignora o intervalo diário.
     pub async fn update(&self, force: bool, progress: Option<ProgressFn>) -> Result<YtDlpStatus> {
         let _guard = self.lock.lock().await;
-        let path = self.binary_path();
-        if std::env::var_os("MIUPY_YTDLP").is_some_and(|s| !s.is_empty()) {
+        let override_path = self.override_path();
+        let path = override_path.as_ref().map_or_else(
+            || self.dir.join(asset_name().unwrap_or("yt-dlp")),
+            PathBuf::from,
+        );
+        if override_path.is_some() {
             return if path.is_file() {
                 Ok(self.status().await)
             } else {
@@ -149,7 +158,7 @@ impl YtDlpManager {
             && self
                 .read_stamp()
                 .await
-                .is_some_and(|s| now_ms().saturating_sub(s.checked_at) < 86_400_000)
+                .is_some_and(|s| (self.clock)().saturating_sub(s.checked_at) < 86_400_000)
         {
             return Ok(self.status().await);
         }
@@ -313,6 +322,9 @@ impl YtDlpManager {
         }
         Ok(response)
     }
+    fn override_path(&self) -> Option<OsString> {
+        (self.env_override)().filter(|value| !value.is_empty())
+    }
     async fn read_stamp(&self) -> Option<Stamp> {
         let bytes = tokio::fs::read(self.dir.join("yt-dlp-status.json"))
             .await
@@ -322,7 +334,7 @@ impl YtDlpManager {
     async fn write_stamp(&self, version: &str) -> Result<()> {
         let bytes = serde_json::to_vec(&Stamp {
             version: version.into(),
-            checked_at: now_ms(),
+            checked_at: (self.clock)(),
         })
         .map_err(|e| MediaError::Internal(e.to_string()))?;
         let tmp = self.dir.join("yt-dlp-status.json.part");
