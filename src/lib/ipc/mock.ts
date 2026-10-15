@@ -409,7 +409,9 @@ export function createMockApi(): MiupyApi {
       await wait(500);
       const q = query.trim().toLowerCase();
       if (!q) err('invalid_input', 'Digite algo para buscar.');
-      searchHistory = [query.trim(), ...searchHistory.filter((h) => h.toLocaleLowerCase('pt-BR') !== query.trim().toLocaleLowerCase('pt-BR'))].slice(0, 50); // @req RF-34
+      const shown = query.split(/\s+/).filter(Boolean).join(' '); // @req RF-34 (como o Rust: sem espaços extras, caixa nem acento)
+      const key = (v: string) => v.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('pt-BR');
+      searchHistory = [shown, ...searchHistory.filter((h) => key(h) !== key(shown))].slice(0, 50);
       const lib = tracks.filter((t) => [t.title, t.artistName].some((v) => v?.toLowerCase().includes(q)));
       const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true, trackId: t.id, isFavorite: t.isFavorite }));
       const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId), trackId: youtubeIds.get(p.sourceId) ?? null, isFavorite: tracks.find((t) => t.id === youtubeIds.get(p.sourceId))?.isFavorite ?? false }));
