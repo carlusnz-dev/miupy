@@ -46,6 +46,8 @@
   $effect(() => res.attach());
 
   const pl = $derived(library.playlists.find((p) => p.id === id));
+  let autoDownloadOverride = $state<boolean | null>(null);
+  const autoDownloadChecked = $derived(autoDownloadOverride ?? pl?.autoDownload ?? false);
   const canReorder = $derived(sortBy === 'position' && !search.trim() && !favoritesOnly);
   const queue = $derived(tracks.map((t) => t.id));
   const chunk = new Chunked();
@@ -87,6 +89,19 @@
     if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.${pl.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: id }); navigate(paths.playlists); } catch (e) { notifyError(e); }
   }
+  // @req RF-31
+  async function setAutoDownload(enabled: boolean) {
+    const previous = autoDownloadChecked;
+    autoDownloadOverride = enabled;
+    try {
+      await api.playlistUpdate({ playlistId: id, autoDownload: enabled });
+      await library.reloadPlaylists();
+      autoDownloadOverride = null;
+    } catch (e) {
+      autoDownloadOverride = previous;
+      notifyError(e);
+    }
+  }
 
   // arrastar e soltar (desktop; no toque, use os botões subir/descer)
   let coverInput = $state<HTMLInputElement>();
@@ -119,6 +134,11 @@
   <div class="mb-4 flex flex-wrap items-center gap-2">
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar</button>
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
+    <!-- @req RF-31 -->
+    <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">
+      <input type="checkbox" checked={autoDownloadChecked} disabled={!pl} onchange={(e) => setAutoDownload(e.currentTarget.checked)} />
+      Baixar automaticamente
+    </label>
     <button class="btn" onclick={() => (editing = { playlist: pl ?? null })} disabled={!pl}><Icon name="edit" size={16} />Renomear</button>
     <input bind:this={coverInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher capa" onchange={(e) => { const file = e.currentTarget.files?.[0]; if (file) void setCover(file); e.currentTarget.value = ''; }} />
     <button class="btn" disabled={!pl} onclick={() => coverInput?.click()}>Escolher capa</button>

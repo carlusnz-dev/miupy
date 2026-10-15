@@ -4,6 +4,7 @@
 
 #[cfg(target_os = "linux")]
 mod asset_webkit;
+mod auto_download;
 mod commands;
 mod db;
 mod downloads;

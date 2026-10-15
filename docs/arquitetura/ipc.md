@@ -628,15 +628,19 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 ### Baixar playlist automaticamente (RF-31)
 
 - `playlist_update { autoDownload: true }` enfileira na hora todas as faixas da playlist ainda sem
-  arquivo (`downloadStatus` `none` ou `error`) e emite `download://auto` com `reason: 'enabled'`.
+  arquivo (`downloadStatus` `none` ou `error`) e, se houver alguma, emite `download://auto` com `reason: 'enabled'`.
   Desligar não cancela o que já está na fila.
 - Com a opção ligada, toda faixa nova que entra na playlist (`playlist_add_tracks`,
   `youtube_add_to_library` com `playlistId`, favoritar na playlist de favoritas) é enfileirada, com
   um `download://auto` por operação (`reason: 'added'`).
 - Download automático que falha por rede fica esperando, sem novo toast para cada faixa: um único
   `download://auto` com `reason: 'offline'`. A casca tenta de novo a cada 5 minutos enquanto houver
-  pendentes e na próxima abertura (`reason: 'retry'`). Outros erros ficam como `error`, como nos
-  downloads manuais.
+  pendentes e na próxima abertura (`reason: 'retry'` apenas nessa abertura). Os ciclos do timer
+  são silenciosos enquanto a rede continuar indisponível. O job aguardando rede usa
+  `status: 'error'` e `error` começando por `auto_offline:`; a interface mostra “Aguardando rede”
+  e permite cancelar. Ao perder o vínculo com todas as playlists automáticas, esse job passa a
+  erro comum e pode ser removido por “Limpar concluídos”. Outros erros ficam como `error`, como
+  nos downloads manuais.
 
 ### Reprocessamento de metadados (RF-32)
 

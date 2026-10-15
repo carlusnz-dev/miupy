@@ -17,7 +17,8 @@ const PLAYLIST_SQL: &str = "SELECT p.id, p.name, p.description, p.cover_path,
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM playlist_tracks pt
             JOIN tracks t ON t.id = pt.track_id WHERE pt.playlist_id = p.id),
         p.created_at, p.updated_at,
-        COALESCE(p.id = (SELECT favorites_playlist_id FROM settings WHERE id = 1), 0)
+        COALESCE(p.id = (SELECT favorites_playlist_id FROM settings WHERE id = 1), 0),
+        p.auto_download
      FROM playlists p";
 
 fn playlist_from_row(r: &Row<'_>) -> rusqlite::Result<Playlist> {
@@ -32,6 +33,7 @@ fn playlist_from_row(r: &Row<'_>) -> rusqlite::Result<Playlist> {
         created_at: r.get(6)?,
         updated_at: r.get(7)?,
         is_favorites: r.get(8)?,
+        auto_download: r.get(9)?,
     })
 }
 
@@ -191,11 +193,55 @@ impl Database {
             };
             self.conn.execute(
                 "UPDATE playlists SET name = ?2, description = ?3, cover_path = ?4,
-                        updated_at = ?5 WHERE id = ?1",
-                params![playlist_id, name, description, cover, self.now_ms()],
+                        updated_at = ?5, auto_download = ?6 WHERE id = ?1",
+                params![
+                    playlist_id,
+                    name,
+                    description,
+                    cover,
+                    self.now_ms(),
+                    patch.auto_download.unwrap_or(cur.auto_download)
+                ],
             )?;
             self.get_playlist(playlist_id)
         })
+    }
+
+    // @req RF-31
+    /// IDs sem arquivo que podem entrar na fila automática, em ordem da playlist.
+    pub fn playlist_auto_pending_tracks(&self, playlist_id: &str) -> Result<Vec<String>> {
+        self.get_playlist(playlist_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id
+             WHERE pt.playlist_id = ?1 AND t.download_status IN ('none', 'error')
+             ORDER BY pt.position, t.id",
+        )?;
+        Ok(stmt
+            .query_map([playlist_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-31
+    /// Playlists automáticas que contêm a faixa, inclusive a de favoritas.
+    pub fn auto_playlists_for_track(&self, track_id: &str) -> Result<Vec<String>> {
+        self.require_track(track_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT p.id FROM playlists p JOIN playlist_tracks pt ON pt.playlist_id = p.id
+             WHERE pt.track_id = ?1 AND p.auto_download = 1 ORDER BY p.created_at, p.id",
+        )?;
+        Ok(stmt
+            .query_map([track_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-31
+    pub fn auto_playlist_ids(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM playlists WHERE auto_download = 1 ORDER BY created_at, id")?;
+        Ok(stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
     }
 
     // @req RF-06
@@ -372,6 +418,79 @@ mod tests {
     use super::*;
     use crate::model::{SortDir, TrackSort};
     use crate::testutil::*;
+
+    // @test RF-31
+    #[test]
+    fn auto_download_persiste_e_consulta_apenas_faixas_elegiveis() {
+        let db = db();
+        let p = db.create_playlist("Auto", None).unwrap();
+        assert!(!p.auto_download);
+        let a = db
+            .upsert_track(&crate::NewTrack::youtube("auto-a", "A", None, 1000, None))
+            .unwrap()
+            .track;
+        let b = db
+            .upsert_track(&crate::NewTrack::youtube("auto-b", "B", None, 1000, None))
+            .unwrap()
+            .track;
+        let local = db
+            .upsert_track(&crate::NewTrack::local("/tmp/auto-local.m4a", "Local"))
+            .unwrap()
+            .track;
+        db.add_tracks_to_playlist(&p.id, &[a.id.clone(), local.id.clone(), b.id.clone()])
+            .unwrap();
+        let other = db.create_playlist("Outra", None).unwrap();
+        db.add_tracks_to_playlist(&other.id, std::slice::from_ref(&a.id))
+            .unwrap();
+        assert!(db.auto_playlists_for_track(&a.id).unwrap().is_empty());
+        let p = db
+            .update_playlist(
+                &p.id,
+                &PlaylistPatch {
+                    auto_download: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p.auto_download);
+        assert_eq!(
+            db.playlist_auto_pending_tracks(&p.id).unwrap(),
+            vec![a.id.clone(), b.id.clone()]
+        );
+        assert_eq!(
+            db.auto_playlists_for_track(&a.id).unwrap(),
+            vec![p.id.clone()]
+        );
+        let jobs = db.enqueue_downloads(&[a.id.clone(), b.id.clone()]).unwrap();
+        db.update_download(
+            &jobs[1].id,
+            &crate::DownloadUpdate {
+                status: crate::DownloadStatus::Error,
+                progress: None,
+                error: Some("falha".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            db.playlist_auto_pending_tracks(&p.id).unwrap(),
+            vec![b.id.clone()]
+        );
+        db.update_playlist(
+            &p.id,
+            &PlaylistPatch {
+                auto_download: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(db.auto_playlists_for_track(&a.id).unwrap().is_empty());
+        assert!(
+            db.list_downloads()
+                .unwrap()
+                .iter()
+                .any(|j| j.track_id == a.id)
+        );
+    }
 
     fn positions(db: &Database, pid: &str) -> Vec<(String, i64)> {
         let mut stmt = db

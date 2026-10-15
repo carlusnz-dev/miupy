@@ -1,6 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { createMockApi } from './mock';
 
+// @test RF-31
+describe('download automático no mock', () => {
+  it('enfileira apenas o que falta, avisa uma vez e não cancela ao desligar', async () => {
+    const api = createMockApi();
+    const p = (await api.playlistList())[0];
+    const tracks = await api.playlistGetTracks({ playlistId: p.id });
+    expect(tracks.length).toBeGreaterThan(1);
+    const events: { playlistId: string; count: number; reason: string }[] = [];
+    const off = await api.on('download://auto', (e) => events.push(e));
+    await api.playlistUpdate({ playlistId: p.id, autoDownload: true });
+    expect((await api.playlistList())[0].autoDownload).toBe(true);
+    expect(events).toEqual([{ playlistId: p.id, count: tracks.filter((t) => t.downloadStatus !== 'done').length, reason: 'enabled' }]);
+    const before = await api.downloadList();
+    expect(before.length).toBeGreaterThan(0);
+    await api.playlistUpdate({ playlistId: p.id, autoDownload: false });
+    expect(await api.downloadList()).toHaveLength(before.length);
+    const extra = (await api.libraryListTracks()).find((t) => !tracks.some((x) => x.id === t.id) && t.downloadStatus === 'none')!;
+    expect(extra).toBeTruthy();
+    await api.playlistUpdate({ playlistId: p.id, autoDownload: true });
+    await api.playlistAddTracks({ playlistId: p.id, trackIds: [extra.id, extra.id] });
+    expect(events.at(-1)).toEqual({ playlistId: p.id, count: 1, reason: 'added' });
+    expect((await api.downloadList()).filter((j) => j.trackId === extra.id)).toHaveLength(1);
+    off();
+  });
+});
+
 describe('favoritas no mock', () => {
   // @test RF-04 RF-30
   it('segue a playlist marcada, copia sem repetir e recria após exclusão', async () => {

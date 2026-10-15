@@ -30,7 +30,8 @@ export interface MiupyApi {
   playlistList(): Promise<Playlist[]>;
   favoritesSetPlaylist(a: { playlistId: string }): Promise<Playlist>; // @req RF-30
   playlistCreate(a: { name: string; description?: string }): Promise<Playlist>;
-  playlistUpdate(a: { playlistId: string; name?: string; description?: string }): Promise<Playlist>;
+  // @req RF-31
+  playlistUpdate(a: { playlistId: string; name?: string; description?: string; autoDownload?: boolean }): Promise<Playlist>;
   playlistDelete(a: { playlistId: string }): Promise<void>;
   playlistGetTracks(a: { playlistId: string; query?: TrackQuery }): Promise<Track[]>;
   playlistAddTracks(a: { playlistId: string; trackIds: string[] }): Promise<Playlist>;

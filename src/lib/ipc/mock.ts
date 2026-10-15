@@ -2,6 +2,7 @@
 // Mock em memória do contrato IPC, para navegar a UI sem backend (npm run dev no navegador).
 // Mesma interface (MiupyApi) do cliente real. Dados fictícios.
 import type { MiupyApi } from './api';
+import { isWaitingNetwork } from './download';
 import type {
   ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist, YtDlpStatus,
   EqPreset, Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
@@ -126,9 +127,9 @@ export function createMockApi(): MiupyApi {
   let tracks = buildTracks();
   const now = Date.now();
   let playlists: (Playlist & { ids: string[] })[] = [
-    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
-    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
-    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
+    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
+    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
+    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
   ];
   playlists[2].ids.push(...tracks.filter((t) => t.isFavorite && !playlists[2].ids.includes(t.id)).map((t) => t.id));
   tracks.forEach((t) => { t.isFavorite = playlists[2].ids.includes(t.id); });
@@ -281,6 +282,14 @@ export function createMockApi(): MiupyApi {
     return out;
   }
 
+  // @req RF-31
+  function autoEnqueue(p: Playlist & { ids: string[] }, ids: string[], reason: 'enabled' | 'added') {
+    if (!p.autoDownload) return;
+    const pending = [...new Set(ids)].filter((id) => ['none', 'error'].includes(byId(id).downloadStatus));
+    enqueue(pending);
+    emit('download://auto', { playlistId: p.id, count: pending.length, reason });
+  }
+
   const artistTracks = (id: string) => tracks.filter((t) => t.artistId === id);
 
   const api: MiupyApi = {
@@ -322,11 +331,13 @@ export function createMockApi(): MiupyApi {
     async librarySetFavorite({ trackId, favorite }) {
       const t = byId(trackId);
       if (favorite && !settings.favoritesPlaylistId) {
-        const p = { id: uid('pl'), name: 'Favoritas', description: null, coverPath: null, mosaicPaths: [], isFavorites: true, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+        const p = { id: uid('pl'), name: 'Favoritas', description: null, coverPath: null, mosaicPaths: [], isFavorites: true, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
         playlists.push(p); settings.favoritesPlaylistId = p.id;
       }
       const p = settings.favoritesPlaylistId ? getPl(settings.favoritesPlaylistId) : null;
+      const addedFavorite = !!p && favorite && !p.ids.includes(trackId);
       if (p) p.ids = favorite ? [...new Set([...p.ids, trackId])] : p.ids.filter((id) => id !== trackId);
+      if (addedFavorite && p) autoEnqueue(p, [trackId], 'added');
       t.isFavorite = !!p?.ids.includes(trackId);
       if (player.track?.id === trackId) { player.track = { ...t }; pushState(); }
       changed('favorites');
@@ -355,15 +366,17 @@ export function createMockApi(): MiupyApi {
     async playlistCreate({ name, description }) {
       if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.');
       if (playlists.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) err('conflict', 'Já existe uma playlist com esse nome.');
-      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
       playlists.push(p);
       changed('playlist');
       return plOut(p);
     },
-    async playlistUpdate({ playlistId, name, description }) {
+    async playlistUpdate({ playlistId, name, description, autoDownload }) {
       const p = getPl(playlistId);
       if (name !== undefined) { if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.'); p.name = name.trim(); }
       if (description !== undefined) p.description = description.trim() || null;
+      // @req RF-31
+      if (autoDownload !== undefined) { const was = p.autoDownload; p.autoDownload = autoDownload; if (autoDownload && !was) autoEnqueue(p, p.ids, 'enabled'); }
       p.updatedAt = Date.now();
       changed('playlist');
       return plOut(p);
@@ -377,7 +390,9 @@ export function createMockApi(): MiupyApi {
     },
     async playlistAddTracks({ playlistId, trackIds }) {
       const p = getPl(playlistId);
-      for (const id of trackIds) { byId(id); if (!p.ids.includes(id)) p.ids.push(id); }
+      const added: string[] = [];
+      for (const id of trackIds) { byId(id); if (!p.ids.includes(id)) { p.ids.push(id); added.push(id); } }
+      autoEnqueue(p, added, 'added');
       p.updatedAt = Date.now();
       if (p.id === settings.favoritesPlaylistId) { tracks.forEach((t) => { t.isFavorite = p.ids.includes(t.id); }); changed('favorites'); }
       changed('playlist');
@@ -453,7 +468,7 @@ export function createMockApi(): MiupyApi {
         youtubeIds.set(sid, t.id);
         out.push({ ...t });
       }
-      if (playlistId) { const p = getPl(playlistId); out.forEach((t) => !p.ids.includes(t.id) && p.ids.push(t.id)); }
+      if (playlistId) { const p = getPl(playlistId); const added: string[] = []; out.forEach((t) => { if (!p.ids.includes(t.id)) { p.ids.push(t.id); added.push(t.id); } }); autoEnqueue(p, added, 'added'); }
       changed('youtube-add');
       return out;
     },
@@ -461,14 +476,19 @@ export function createMockApi(): MiupyApi {
     async downloadEnqueue({ trackIds }) { await wait(40); return enqueue(trackIds); },
     async downloadEnqueuePlaylist({ playlistId }) { await wait(40); return enqueue(getPl(playlistId).ids); },
     async downloadList() { await wait(30); return jobs.map((j) => ({ ...j })); },
-    async downloadClearFinished() { const n = jobs.filter((j) => j.status === 'done' || j.status === 'error').length; jobs = jobs.filter((j) => j.status !== 'done' && j.status !== 'error'); return n; },
+    async downloadClearFinished() { // @req RF-31
+      for (const j of jobs) if (isWaitingNetwork(j) && !playlists.some((p) => p.autoDownload && p.ids.includes(j.trackId))) j.error = j.error?.slice('auto_offline:'.length) ?? null;
+      const n = jobs.filter((j) => j.status === 'done' || (j.status === 'error' && !isWaitingNetwork(j))).length;
+      jobs = jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || isWaitingNetwork(j)));
+      return n;
+    },
     async downloadCancel({ jobId }) {
       const j = jobs.find((x) => x.id === jobId) ?? err('not_found', 'Download não encontrado.');
-      if (j.status === 'queued' || j.status === 'downloading') {
-        j.status = 'error'; j.error = 'Cancelado pelo usuário.';
+      if (j.status !== 'done') {
+        jobs = jobs.filter((x) => x.id !== jobId);
         const t = tracks.find((x) => x.id === j.trackId);
         if (t) t.downloadStatus = 'none';
-        emit('download://progress', { ...j });
+        emit('download://progress', { ...j, status: 'none', error: null });
         changed('download');
       }
     },

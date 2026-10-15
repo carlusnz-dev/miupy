@@ -457,6 +457,8 @@ pub struct Playlist {
     pub mosaic_paths: Vec<String>,
     // @req RF-30
     pub is_favorites: bool,
+    // @req RF-31
+    pub auto_download: bool,
     pub track_count: i64,
     pub total_duration_ms: i64,
     pub created_at: i64,
@@ -469,6 +471,8 @@ pub struct Playlist {
 #[serde(rename_all = "camelCase", default)]
 pub struct PlaylistPatch {
     pub name: Option<String>,
+    // @req RF-31
+    pub auto_download: Option<bool>,
     #[serde(deserialize_with = "double_option")]
     pub description: Option<Option<String>>,
     #[serde(deserialize_with = "double_option")]

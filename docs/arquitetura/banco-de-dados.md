@@ -3,7 +3,7 @@
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
 `crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
-`0003_dna_shuffle_images.sql` e migrações seguintes até `0008_search_history.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+`0003_dna_shuffle_images.sql` e migrações seguintes até `0009_auto_download.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
 antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
@@ -79,6 +79,7 @@ job (volta a `queued`). `tracks.download_status` e `download_jobs.status` mudam 
 transação. Cancelar apaga o job e devolve a faixa a `none`; quem baixa descobre o cancelamento
 quando `update_download` devolve `not_found`. O sucesso passa por `mark_downloaded`, que grava
 `file_path`/`codec`/`bitrate`/capa e fecha o job.
+Em RF-31, `status = 'error'` e `error` iniciado por `auto_offline:` indicam espera pela rede; sem playlist automática vinculada, o marcador é removido e o erro pode ser limpo.
 
 ### `play_events` (RF-13)
 `id`, `track_id` (FK cascade), `playlist_id` (FK `SET NULL`, contexto opcional), `started_at`,
@@ -168,7 +169,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | `0006_sidebar_width.sql` | `feat/visual-flat` | **Implementada:** `settings.sidebar_width` |
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
 | `0008_search_history.sql` | `feat/busca-vazia` | **Implementada:** `search_history` |
-| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | `playlists.auto_download` |
+| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | **Implementada:** `playlists.auto_download` (0/1, padrão 0) |
 | `0010_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
 | `0011_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
 
