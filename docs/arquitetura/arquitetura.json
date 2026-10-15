@@ -2,7 +2,7 @@
   "projeto": "miupy",
   "versao": "0.2.1",
   "atualizadoEm": "2026-10-14",
-  "sessao": "2026-10-14_sessao-05",
+  "sessao": "2026-10-14_sessao-06",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -13,7 +13,7 @@
   "plataformas": {
     "linux": {
       "status": "parcial",
-      "nota": "O banco migra para a versão 5 nos testes; a abertura da janela nesta branch não foi conferida. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
+      "nota": "O banco migra para a versão 7 nos testes; a abertura da janela nesta branch não foi conferida. Em Wayland/NVIDIA, abertura malsucedida com gpu_mode salvo como on recua para software e restaura auto; fluxo ainda não observado em janela real."
     },
     "windows": {
       "status": "planejado",
@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006).",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006). Favoritas mantidas pela playlist marcada, com migração 0007 e view para pontuação, gosto e DNA.",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",
@@ -44,12 +44,13 @@
       ],
       "status": "verificado",
       "testes": {
-        "passando": 82,
+        "passando": 84,
         "falhando": 0
       },
       "requisitos": [
         "RF-03",
         "RF-04",
+        "RF-30",
         "RF-05",
         "RF-06",
         "RF-07",
@@ -144,7 +145,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -158,7 +159,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 101,
+        "passando": 102,
         "falhando": 0,
         "ignorados": 2,
         "nota": "Os ignorados são provas reais (streaming, yt-dlp, sugestões, foto); passaram à mão em 2026-10-14 (a de foto 2 de 3, 503 do MusicBrainz)."
@@ -167,6 +168,8 @@
         "RF-01",
         "RF-02",
         "RF-03",
+        "RF-04",
+        "RF-30",
         "RF-05",
         "RF-09",
         "RF-10",
@@ -193,7 +196,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -207,7 +210,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 27,
+        "passando": 53,
         "falhando": 0,
         "nota": "Vitest com cliente falso; validado na versão web por agente Sonnet + Playwright (12 itens, transições medidas)."
       },
@@ -219,6 +222,7 @@
         "RNF-09",
         "RF-28",
         "RF-29",
+        "RF-30",
         "RF-33"
       ],
       "limitacoes": [

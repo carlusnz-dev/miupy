@@ -3,7 +3,7 @@
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
 `crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
-`0003_dna_shuffle_images.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+`0003_dna_shuffle_images.sql` e migrações seguintes até `0007_favorites_playlist.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
 antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
@@ -18,7 +18,7 @@ antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescreve
 
 ```
 artists 1─* tracks 1─* playlist_tracks *─1 playlists
-                 │ 1─1 favorites
+                 │  view favorites
                  │ 1─1 lyrics
                  │ 1─1 download_jobs
                  └ 1─* play_events *─0..1 playlists (contexto)
@@ -53,8 +53,7 @@ na API de criação/edição; o banco valida que `genres` é um array JSON.
 - Faixa com `file_path` na criação (local) nasce `done`; do YouTube nasce `none`.
 
 ### `favorites`
-`track_id` (PK, FK cascade), `created_at`. Favorito é presença da linha; `Track.isFavorite` vem de
-um `LEFT JOIN`.
+Desde a migração 0007 é uma *view* (`track_id`, `created_at = playlist_tracks.added_at`) sobre as faixas da playlist marcada em `settings.favorites_playlist_id`. `Track.isFavorite`, estatísticas, pontuação, gosto e DNA consultam a mesma fonte. Ao apagar a playlist marcada, a FK em `settings` aplica `ON DELETE SET NULL`; a próxima faixa favoritada cria e marca uma playlist nova "Favoritas".
 
 ### `playlists` e `playlist_tracks`
 `playlists`: `id`, `name`, `description`, `cover_path`, `created_at`, `updated_at`.
@@ -112,7 +111,7 @@ padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o
 `eq_presets` guarda até três perfis personalizados, com oito ganhos serializados em JSON.
 Os oito perfis prontos vivem no código, fora do banco. Desde a migração `0006`,
 `sidebar_width` guarda a largura do menu em px (220 a 400, padrão 280); o núcleo corta valores
-fora do intervalo antes de gravar.
+fora do intervalo antes de gravar. Desde 0007, `favorites_playlist_id` referencia a playlist marcada (`ON DELETE SET NULL`).
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).
@@ -160,7 +159,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | `0004_loudness.sql` | `feat/normalizacao-volume` | **Implementada:** `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` (`normal` por padrão) |
 | `0005_equalizer.sql` | `feat/equalizador` | **Implementada:** `eq_presets` (personalizados); `settings.eq_preset_id` |
 | `0006_sidebar_width.sql` | `feat/visual-flat` | `settings.sidebar_width` |
-| `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | `settings.favorites_playlist_id`; cria "Favoritas" a partir de `favorites` |
+| `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
 | `0008_search_history.sql` | `feat/busca-vazia` | `search_history` |
 | `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | `playlists.auto_download` |
 | `0010_artist_refresh.sql` | `feat/skeleton-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
