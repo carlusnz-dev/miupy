@@ -142,8 +142,9 @@
 <Toasts />
 {#if metadata?.running && hiddenBatch !== metadata.startedAt}
   {@const status = metadata}
-  <PinnedToast title={`Reprocessando metadados — ${status.done} de ${status.total}`} onclose={() => { hiddenBatch = status.startedAt; }}>
+  <PinnedToast title="Reprocessando metadados" onclose={() => { hiddenBatch = status.startedAt; }}>
     {#snippet content()}
+      <p class="mt-1 text-xs text-muted">{status.done} de {status.total} faixas</p>
       <div class="mt-3 h-2 overflow-hidden rounded-full bg-s3" role="progressbar" aria-label="Andamento do reprocessamento de metadados" aria-valuemin="0" aria-valuemax={Math.max(status.total, 1)} aria-valuenow={status.done}>
         <div class="h-full bg-lava" style:width={`${status.total ? status.done / status.total * 100 : 0}%`}></div>
       </div>
