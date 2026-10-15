@@ -183,6 +183,15 @@ pub fn configure_mode(saved_mode: Option<&str>, root: Option<&Path>) -> String {
             )
         };
     }
+    if nvidia_sync_workaround(
+        selected.renderer == "gpu",
+        wayland,
+        nvidia,
+        std::env::var_os(NV_SYNC).is_some(),
+    ) {
+        // SAFETY: mesmo ponto do set_var acima, antes de qualquer thread do app.
+        unsafe { std::env::set_var(NV_SYNC, "1") };
+    }
     let hardware = match override_value.as_deref().and_then(|v| v.to_str()) {
         Some("0") => true,
         Some("1") => false,
@@ -195,6 +204,17 @@ pub fn configure_mode(saved_mode: Option<&str>, root: Option<&Path>) -> String {
         marker,
     });
     format!("{} ({})", selected.renderer, selected.reason)
+}
+
+#[cfg(target_os = "linux")]
+const NV_SYNC: &str = "__NV_DISABLE_EXPLICIT_SYNC";
+
+/// Com GPU em Wayland + NVIDIA, a sincronização explícita do driver faz o WebKitGTK engasgar
+/// (e já derrubou a janela com "Error 71"); desliga-a, salvo se o usuário a definiu.
+// @req RNF-09 RNF-13
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn nvidia_sync_workaround(gpu: bool, wayland: bool, nvidia: bool, user_set: bool) -> bool {
+    gpu && wayland && nvidia && !user_set
 }
 
 /// Chamado após a interface montar e permanecer aberta por alguns segundos.
@@ -252,6 +272,16 @@ mod tests {
     use super::*;
 
     // @test RNF-09
+    // @test RNF-09 RNF-13
+    #[test]
+    fn desliga_sync_explicito_so_com_gpu_em_wayland_nvidia() {
+        assert!(nvidia_sync_workaround(true, true, true, false));
+        assert!(!nvidia_sync_workaround(true, true, true, true));
+        assert!(!nvidia_sync_workaround(false, true, true, false));
+        assert!(!nvidia_sync_workaround(true, false, true, false));
+        assert!(!nvidia_sync_workaround(true, true, false, false));
+    }
+
     #[test]
     fn decide_gpu_por_modo_e_ambiente() {
         assert_eq!(
