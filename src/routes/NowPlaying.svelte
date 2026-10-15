@@ -22,6 +22,8 @@
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { dismissable } from '../lib/util/dismiss';
+  import { assetCrossOrigin } from '../lib/util/asset';
+  import { coverPalette } from '../lib/util/palette';
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
@@ -55,6 +57,16 @@
       notifyError(error);
     }
   }
+
+  // Cores da capa para o mesh; sem capa ou com canvas "tainted" fica `undefined` e vale o tema.
+  let meshColors = $state<string[] | undefined>();
+  $effect(() => {
+    const src = api.resolveAsset(t?.coverPath ?? null) ?? t?.thumbnailUrl;
+    if (!src) { meshColors = undefined; return; }
+    let cancelled = false;
+    void coverPalette(src, assetCrossOrigin(src)).then((colors) => { if (!cancelled) meshColors = colors?.length ? colors : undefined; });
+    return () => { cancelled = true; };
+  });
 
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
@@ -94,7 +106,7 @@
     <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
   </State>
 {:else}
-  <MeshGradient class="min-h-full">
+  <MeshGradient class="min-h-full" colors={meshColors}>
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
         <div class="enter flex w-full max-w-[22rem] self-center">
