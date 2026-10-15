@@ -6,7 +6,7 @@
   import { settings } from '../lib/stores/settings.svelte';
   import { notifyError } from '../lib/stores/toast.svelte';
   import { player } from '../lib/stores/player.svelte';
-  import { href, paths } from '../lib/stores/router.svelte';
+  import { href, paths, router } from '../lib/stores/router.svelte';
   import { toggleFavorite } from '../lib/actions';
   import { favorites } from '../lib/stores/favorites.svelte';
   import { fmtTime, parseLrc } from '../lib/util/format';
@@ -106,7 +106,8 @@
     <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
   </State>
 {:else}
-  <MeshGradient class="min-h-full" colors={meshColors}>
+  <!-- @req RF-40 RNF-05 RNF-13 -->
+  <MeshGradient class="min-h-full" colors={meshColors} animated={router.current.name === 'now-playing'}>
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
         <div class="enter flex w-full max-w-[22rem] self-center">
