@@ -1,6 +1,6 @@
 // @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
-  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, PlayerState, Playlist,
+  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist,
   EqPreset, EqPresetInput, GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
 } from './types';
 
@@ -51,6 +51,7 @@ export interface MiupyApi {
   downloadClearFinished(): Promise<number>;
 
   metadataRefreshLibrary(a: { onlyMissing?: boolean }): Promise<number>; // @req RF-12 RF-20
+  metadataRefreshStatus(): Promise<MetadataRefreshStatus>; // @req RF-32
   metadataRefreshTrack(a: { trackId: string }): Promise<Track>;
   metadataGetArtist(a: { artistId: string }): Promise<ArtistInfo>;
   metadataGetLyrics(a: { trackId: string }): Promise<Lyrics>;

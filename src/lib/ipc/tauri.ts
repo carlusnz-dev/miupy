@@ -65,6 +65,7 @@ export function createTauriApi(): MiupyApi {
 
     metadataRefreshTrack: (a) => call('metadata_refresh_track', a),
     metadataRefreshLibrary: (a) => call('metadata_refresh_library', a), // @req RF-12 RF-20
+    metadataRefreshStatus: () => call('metadata_refresh_status'), // @req RF-32
     metadataGetArtist: (a) => call('metadata_get_artist', a),
     metadataGetLyrics: (a) => call('metadata_get_lyrics', a),
 

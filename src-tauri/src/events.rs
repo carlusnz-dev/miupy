@@ -5,7 +5,7 @@ use miupy_core::DownloadJob;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::dto::{PlayerState, Progress, YtDlpStatus};
+use crate::dto::{MetadataRefreshStatus, PlayerState, Progress, YtDlpStatus};
 
 pub const EV_PLAYER_STATE: &str = "player://state";
 pub const EV_PLAYER_PROGRESS: &str = "player://progress";
@@ -20,7 +20,7 @@ pub trait Events: Send + Sync + 'static {
     fn player_progress(&self, progress: Progress);
     fn player_error(&self, track_id: &str, code: &str, message: &str);
     fn ytdlp_status(&self, status: &YtDlpStatus);
-    fn metadata_progress(&self, done: usize, total: usize);
+    fn metadata_progress(&self, status: &MetadataRefreshStatus);
     fn download_progress(&self, job: &DownloadJob);
     fn library_changed(&self, reason: &str);
     fn recommendations_changed(&self, count: usize);
@@ -57,11 +57,9 @@ impl Events for TauriEvents {
     fn ytdlp_status(&self, status: &YtDlpStatus) {
         self.emit("ytdlp://status", status);
     }
-    fn metadata_progress(&self, done: usize, total: usize) {
-        self.emit(
-            "metadata://progress",
-            serde_json::json!({"done":done,"total":total}),
-        );
+    // @req RF-32
+    fn metadata_progress(&self, status: &MetadataRefreshStatus) {
+        self.emit("metadata://progress", status);
     }
     fn download_progress(&self, job: &DownloadJob) {
         self.emit(EV_DOWNLOAD_PROGRESS, job);
@@ -91,6 +89,7 @@ pub mod testing {
         pub downloads: Mutex<Vec<DownloadJob>>,
         pub library: Mutex<Vec<String>>,
         pub recommendations: Mutex<Vec<usize>>,
+        pub metadata: Mutex<Vec<MetadataRefreshStatus>>,
     }
 
     impl Events for RecordingEvents {
@@ -107,7 +106,9 @@ pub mod testing {
                 .push((track_id.into(), code.into(), message.into()));
         }
         fn ytdlp_status(&self, _status: &YtDlpStatus) {}
-        fn metadata_progress(&self, _done: usize, _total: usize) {}
+        fn metadata_progress(&self, status: &MetadataRefreshStatus) {
+            self.metadata.lock().unwrap().push(status.clone());
+        }
         fn download_progress(&self, job: &DownloadJob) {
             self.downloads.lock().unwrap().push(job.clone());
         }

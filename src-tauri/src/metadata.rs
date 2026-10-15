@@ -2,16 +2,14 @@
 //! `MetadataProvider`. Falha de rede nunca derruba a leitura local.
 
 use std::collections::HashMap;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
 use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, tagger};
 
 use crate::db::Db;
+use crate::dto::MetadataRefreshStatus;
 use crate::error::AppResult;
 use crate::events::Events;
 use crate::paths::Dirs;
@@ -23,6 +21,23 @@ const RETRY_AFTER: Duration = Duration::from_secs(300);
 /// Falha temporária pode ser consultada novamente em breve, sem repetir imediatamente.
 const TEMPORARY_RETRY_AFTER: Duration = Duration::from_secs(10);
 
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+// @req RF-32
+/// Fecha o lote ao sair da tarefa, inclusive por pânico; no fim normal não faz nada.
+struct BatchGuard(Arc<MetadataService>);
+
+impl Drop for BatchGuard {
+    fn drop(&mut self) {
+        self.0.abort_batch();
+    }
+}
+
 pub struct MetadataService {
     db: Db,
     provider: Arc<dyn MetadataProvider>,
@@ -30,7 +45,7 @@ pub struct MetadataService {
     dirs: Dirs,
     events: Arc<dyn Events>,
     attempts: Mutex<HashMap<String, Instant>>,
-    batch_running: AtomicBool,
+    batch_status: Mutex<MetadataRefreshStatus>,
 }
 
 impl MetadataService {
@@ -48,41 +63,103 @@ impl MetadataService {
             dirs,
             events,
             attempts: Mutex::new(HashMap::new()),
-            batch_running: AtomicBool::new(false),
+            batch_status: Mutex::new(MetadataRefreshStatus::default()),
         }
     }
 
-    // @req RF-12 RF-20
+    // @req RF-32
+    pub fn refresh_status(&self) -> MetadataRefreshStatus {
+        self.batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn update_batch_status(&self, update: impl FnOnce(&mut MetadataRefreshStatus)) {
+        let status = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            update(&mut status);
+            status.clone()
+        };
+        self.events.metadata_progress(&status);
+    }
+
+    // @req RF-12 RF-20 RF-32
     pub fn enqueue_library_refresh(self: &Arc<Self>, only_missing: bool) -> AppResult<usize> {
-        if self.batch_running.swap(true, Ordering::AcqRel) {
-            return Err(crate::error::AppError::new(
-                "conflict",
-                "Um reprocessamento já está em andamento.",
-            ));
-        }
+        let previous = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            if status.running {
+                return Err(crate::error::AppError::new(
+                    "conflict",
+                    "Um reprocessamento já está em andamento.",
+                ));
+            }
+            let previous = status.clone();
+            status.running = true;
+            previous
+        };
         let tracks = match self
             .db
             .with(|db| db.tracks_for_metadata_refresh(only_missing))
         {
             Ok(t) => t,
             Err(e) => {
-                self.batch_running.store(false, Ordering::Release);
+                *self.batch_status.lock().unwrap_or_else(|e| e.into_inner()) = previous;
                 return Err(e.into());
             }
         };
         let total = tracks.len();
+        self.update_batch_status(|status| {
+            *status = MetadataRefreshStatus {
+                running: true,
+                total,
+                started_at: Some(now_ms()),
+                ..MetadataRefreshStatus::default()
+            };
+        });
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
+            // Se a tarefa morrer no meio (pânico), o lote não fica preso em `running`.
+            let _guard = BatchGuard(this.clone());
             for (i, t) in tracks.into_iter().enumerate() {
+                this.batch_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .current_track_id = Some(t.id.clone());
+                let mut failed = false;
                 if let Err(e) = this.refresh_track(&t.id).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
+                    failed = true;
                 }
-                this.events.metadata_progress(i + 1, total);
+                this.update_batch_status(|status| {
+                    status.done = i + 1;
+                    status.failed += usize::from(failed);
+                });
             }
             this.events.library_changed("metadata_batch_finished");
-            this.batch_running.store(false, Ordering::Release);
+            this.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
         });
         Ok(total)
+    }
+
+    /// Encerra o lote em andamento (usado quando a tarefa do lote termina sem chegar ao fim).
+    fn abort_batch(&self) {
+        let running = self
+            .batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .running;
+        if running {
+            self.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
+        }
     }
 
     /// `true` se vale tentar a consulta `key` agora; registra a tentativa.
@@ -559,6 +636,74 @@ mod tests {
             release_year: None,
             isrc: None,
         }
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn lote_publica_inicio_contagem_falhas_e_fim() {
+        let f = fx();
+        track(&f);
+        f.db.with(|db| db.upsert_track(&NewTrack::youtube("vid2", "Outra", None, 1000, None)))
+            .unwrap();
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("sem rede".into()));
+        let svc = Arc::new(f.svc);
+        assert_eq!(svc.refresh_status(), MetadataRefreshStatus::default());
+        assert_eq!(svc.enqueue_library_refresh(false).unwrap(), 2);
+        let start = svc.refresh_status();
+        assert!(start.running);
+        assert_eq!((start.done, start.total, start.failed), (0, 2, 0));
+        assert!(start.started_at.is_some());
+        assert!(start.finished_at.is_none());
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while f.events.metadata.lock().unwrap().len() < 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let end = svc.refresh_status();
+        assert_eq!((end.done, end.total, end.failed), (2, 2, 1));
+        assert_eq!(end.current_track_id, None);
+        assert!(end.finished_at.unwrap() >= end.started_at.unwrap());
+        let events = f.events.metadata.lock().unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!((events[0].running, events[0].done), (true, 0));
+        assert_eq!((events[1].done, events[1].failed), (1, 1));
+        assert_eq!((events[2].done, events[2].failed), (2, 1));
+        assert!(!events[3].running);
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn segundo_pedido_devolve_conflict_sem_apagar_estado() {
+        let f = fx();
+        track(&f);
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        let status = svc.refresh_status();
+        assert_eq!(
+            svc.enqueue_library_refresh(false).unwrap_err().code(),
+            "conflict"
+        );
+        assert_eq!(svc.refresh_status(), status);
+    }
+
+    // @test RF-32
+    #[test]
+    fn guarda_do_lote_encerra_lote_interrompido_e_libera_novo_pedido() {
+        let f = fx();
+        let svc = Arc::new(f.svc);
+        svc.batch_status.lock().unwrap().running = true;
+        svc.batch_status.lock().unwrap().current_track_id = Some("t".into());
+        // A tarefa do lote "morre" (pânico) sem chegar ao fim: só a guarda é solta.
+        drop(BatchGuard(svc.clone()));
+        let status = svc.refresh_status();
+        assert!(!status.running);
+        assert_eq!(status.current_track_id, None);
+        assert!(status.finished_at.is_some());
+        // Lote já encerrado: a guarda não mexe em nada.
+        drop(BatchGuard(svc.clone()));
+        assert_eq!(svc.refresh_status(), status);
     }
 
     // @test RF-20
