@@ -14,11 +14,11 @@ pub async fn enqueue(
     reason: &'static str,
 ) -> AppResult<usize> {
     let id = playlist_id.clone();
-    let (jobs, enabled) = state
+    let jobs = state
         .db
         .run(move |db| {
             if !db.get_playlist(&id)?.auto_download {
-                return Ok((Vec::new(), false));
+                return Ok(Vec::new());
             }
             let ids = match track_ids {
                 Some(ids) => {
@@ -35,7 +35,7 @@ pub async fn enqueue(
                 }
                 None => db.playlist_auto_pending_tracks(&id)?,
             };
-            Ok((db.enqueue_downloads(&ids)?, true))
+            Ok(db.enqueue_downloads(&ids)?)
         })
         .await?;
     if !jobs.is_empty() {
@@ -45,7 +45,7 @@ pub async fn enqueue(
         state.events.library_changed("download_queued");
         state.downloads.wake();
     }
-    if enabled {
+    if !jobs.is_empty() {
         state.events.download_auto(&playlist_id, jobs.len(), reason);
     }
     Ok(jobs.len())
@@ -106,6 +106,19 @@ mod tests {
             events.auto.lock().unwrap().as_slice(),
             &[(p.id.clone(), 1, "enabled".into())]
         );
+        assert_eq!(st.db.with(|db| db.list_downloads()).unwrap().len(), 1);
+        // @test RF-31: segunda ativação e faixa já presente não duplicam job nem evento.
+        assert_eq!(
+            enqueue(&st, p.id.clone(), None, "enabled").await.unwrap(),
+            0
+        );
+        assert_eq!(
+            enqueue(&st, p.id.clone(), Some(vec![a.id.clone()]), "added")
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(events.auto.lock().unwrap().len(), 1);
         assert_eq!(st.db.with(|db| db.list_downloads()).unwrap().len(), 1);
         st.db
             .with(|db| {

@@ -144,11 +144,7 @@ pub async fn playlist_add_tracks(
                 .collect::<std::collections::HashSet<_>>())
         })
         .await?;
-    let added = track_ids
-        .iter()
-        .filter(|id| !existing.contains(*id))
-        .cloned()
-        .collect();
+    let added = newly_added_track_ids(&existing, &track_ids);
     let pl = state
         .db
         .run(move |db| Ok(db.add_tracks_to_playlist(&playlist_id, &track_ids)?))
@@ -161,6 +157,34 @@ pub async fn playlist_add_tracks(
         crate::auto_download::enqueue(&state, pl.id.clone(), Some(added), "added").await?;
     }
     Ok(pl)
+}
+
+// @req RF-31
+fn newly_added_track_ids(
+    existing: &std::collections::HashSet<String>,
+    requested: &[String],
+) -> Vec<String> {
+    requested
+        .iter()
+        .filter(|id| !existing.contains(*id))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod auto_download_tests {
+    use super::newly_added_track_ids;
+    use std::collections::HashSet;
+
+    // @test RF-31
+    #[test]
+    fn playlist_add_tracks_so_considera_faixas_novas() {
+        let existing = HashSet::from(["antiga".to_owned()]);
+        assert_eq!(
+            newly_added_track_ids(&existing, &["antiga".into(), "nova".into()]),
+            vec!["nova"]
+        );
+    }
 }
 
 // @req RF-06
