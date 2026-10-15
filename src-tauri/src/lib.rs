@@ -21,6 +21,8 @@ mod queue;
 mod recommendations;
 mod state;
 mod tz;
+#[cfg(target_os = "linux")]
+mod webkit_frames;
 mod youtube;
 
 use std::sync::Arc;
@@ -104,6 +106,8 @@ pub fn run() {
             log::info!("GPU: {}", gpu_decision);
             #[cfg(target_os = "linux")]
             asset_webkit::configure(app);
+            #[cfg(target_os = "linux")]
+            webkit_frames::configure(app, gpu::current_status().0);
             let state = build_state(app.handle())?;
             state.start();
             app.manage(state);
