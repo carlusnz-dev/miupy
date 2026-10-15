@@ -21,6 +21,8 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0005_equalizer.sql")),
         M::up(include_str!("../migrations/0006_sidebar_width.sql")),
         M::up(include_str!("../migrations/0007_favorites_playlist.sql")),
+        // @req RF-31: 0008 pertence a outra frente; inserir antes desta na integração.
+        M::up(include_str!("../migrations/0009_auto_download.sql")),
     ])
 }
 
@@ -132,6 +134,73 @@ pub(crate) fn new_id() -> String {
 mod tests {
     use super::*;
 
+    // @test RF-31
+    #[test]
+    fn migra_playlists_existentes_e_rejeita_valor_invalido() {
+        let path = std::env::temp_dir().join(format!("miupy-auto-{}.db", new_id()));
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            register_collation(&conn).unwrap();
+            Migrations::new(vec![
+                M::up(include_str!("../migrations/0001_init.sql")),
+                M::up(include_str!("../migrations/0002_recommendations.sql")),
+                M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
+                M::up(include_str!("../migrations/0004_loudness.sql")),
+                M::up(include_str!("../migrations/0005_equalizer.sql")),
+                M::up(include_str!("../migrations/0006_sidebar_width.sql")),
+                M::up(include_str!("../migrations/0007_favorites_playlist.sql")),
+            ])
+            .to_latest(&mut conn)
+            .unwrap();
+            conn.execute(
+                "INSERT INTO playlists(id,name,created_at,updated_at) VALUES('old','Antiga',1,1)",
+                [],
+            )
+            .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert!(!db.get_playlist("old").unwrap().auto_download);
+        assert_eq!(db.schema_version().unwrap(), 8);
+        db.conn
+            .execute(
+                "UPDATE playlists SET auto_download = 1 WHERE id = 'old'",
+                [],
+            )
+            .unwrap();
+        assert!(db.get_playlist("old").unwrap().auto_download);
+        assert!(
+            db.conn
+                .execute(
+                    "UPDATE playlists SET auto_download = 2 WHERE id = 'old'",
+                    []
+                )
+                .is_err()
+        );
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
+
+    // @test RF-31
+    #[test]
+    fn sql_0009_funciona_sobre_banco_na_versao_8() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE playlists(id TEXT PRIMARY KEY, name TEXT NOT NULL); INSERT INTO playlists VALUES('old','Antiga'); PRAGMA user_version = 8;").unwrap();
+        conn.execute_batch(include_str!("../migrations/0009_auto_download.sql"))
+            .unwrap();
+        let value: i64 = conn
+            .query_row(
+                "SELECT auto_download FROM playlists WHERE id='old'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, 0);
+        assert!(
+            conn.execute("UPDATE playlists SET auto_download=3 WHERE id='old'", [])
+                .is_err()
+        );
+    }
+
     // @test RNF-01
     #[test]
     fn migracoes_sao_validas() {
@@ -142,7 +211,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -183,7 +252,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -237,7 +306,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
@@ -270,7 +339,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let settings = db.get_settings().unwrap();
         assert_eq!(settings.sidebar_width, 280);
         assert_eq!(settings.lava_theme, crate::LavaTheme::Blue);
@@ -311,7 +380,7 @@ mod tests {
                 }
             }
             let db = Database::open(&path).unwrap();
-            assert_eq!(db.schema_version().unwrap(), 7);
+            assert_eq!(db.schema_version().unwrap(), 8);
             let id = db.get_settings().unwrap().favorites_playlist_id.unwrap();
             if existing {
                 assert_eq!(id, "p");
@@ -378,7 +447,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (
