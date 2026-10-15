@@ -28,6 +28,16 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+/// Fecha o lote. Parar depois da última faixa conta como concluído, não como "Parado em 3 de 3".
+// @req RF-32
+fn finish_batch(status: &mut MetadataRefreshStatus) {
+    status.running = false;
+    status.cancelled = status.stopping && status.done < status.total;
+    status.stopping = false;
+    status.current_track_id = None;
+    status.finished_at = Some(now_ms());
+}
+
 // @req RF-32
 /// Fecha o lote ao sair da tarefa, inclusive por pânico; no fim normal não faz nada.
 struct BatchGuard(Arc<MetadataService>);
@@ -153,13 +163,7 @@ impl MetadataService {
                 });
             }
             this.events.library_changed("metadata_batch_finished");
-            this.update_batch_status(|status| {
-                status.running = false;
-                status.cancelled = status.stopping;
-                status.stopping = false;
-                status.current_track_id = None;
-                status.finished_at = Some(now_ms());
-            });
+            this.update_batch_status(finish_batch);
         });
         Ok(total)
     }
@@ -172,13 +176,7 @@ impl MetadataService {
             .unwrap_or_else(|e| e.into_inner())
             .running;
         if running {
-            self.update_batch_status(|status| {
-                status.running = false;
-                status.cancelled = status.stopping;
-                status.stopping = false;
-                status.current_track_id = None;
-                status.finished_at = Some(now_ms());
-            });
+            self.update_batch_status(finish_batch);
         }
     }
 
@@ -634,6 +632,28 @@ mod tests {
     use super::*;
     use crate::downloads::testing::FakeMetadata;
     use crate::events::testing::RecordingEvents;
+
+    // @test RF-32
+    #[test]
+    fn parar_na_ultima_faixa_conta_como_concluido() {
+        let mut status = MetadataRefreshStatus {
+            running: true,
+            stopping: true,
+            done: 3,
+            total: 3,
+            ..Default::default()
+        };
+        finish_batch(&mut status);
+        assert!(!status.cancelled && !status.running && !status.stopping);
+        status = MetadataRefreshStatus {
+            stopping: true,
+            done: 1,
+            total: 3,
+            ..Default::default()
+        };
+        finish_batch(&mut status);
+        assert!(status.cancelled);
+    }
     use miupy_core::{Database, NewTrack};
     use miupy_media::{ArtistDetails, LyricsData, RecordingMatch};
 
