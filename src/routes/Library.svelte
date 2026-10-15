@@ -10,7 +10,7 @@
   import { Selection } from '../lib/stores/selection.svelte';
   import { ui } from '../lib/stores/ui.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
-  import { downloadTracks } from '../lib/actions';
+  import { downloadTracks, removeTracks } from '../lib/actions';
   import { fmtDuration } from '../lib/util/format';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import TrackToolbar from '../lib/components/TrackToolbar.svelte';
@@ -77,6 +77,7 @@
     <span class="mr-auto text-sm font-medium">{sel.count} {sel.count === 1 ? 'selecionada' : 'selecionadas'}</span>
     <button class="btn btn-sm" onclick={async () => { await downloadTracks(sel.ids); sel.clear(); }}><Icon name="download" size={16} />Baixar</button>
     <button class="btn btn-sm" onclick={() => { ui.pickPlaylist([...sel.ids]); }}><Icon name="playlist" size={16} />Adicionar à playlist</button>
+    <button class="btn btn-sm" onclick={async () => { if (await removeTracks(tracks.filter((t) => sel.has(t.id)))) sel.clear(); }}><Icon name="trash" size={16} />Remover</button>
     <button class="btn btn-sm" onclick={() => sel.clear()}>Limpar</button>
   </div>
 {/if}
@@ -99,7 +100,7 @@
   <div role="list">
     {#each rows as t, i (t.id)}
       <TrackRow track={t} index={i} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
-        current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} />
+        current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} ondelete={() => removeTracks([t])} />
     {/each}
   </div>
   {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}

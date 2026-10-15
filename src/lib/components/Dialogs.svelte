@@ -63,6 +63,9 @@
 
 <Modal open={ui.confirmState !== null} title={ui.confirmState?.title ?? ''} onclose={() => ui.answer(false)}>
   <p class="text-sm text-muted">{ui.confirmState?.text}</p>
+  {#if ui.confirmState?.option}
+    <label class="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" class="h-4 w-4 accent-[var(--lava)]" bind:checked={ui.confirmState.checked} />{ui.confirmState.option}</label>
+  {/if}
   {#snippet footer()}
     <button class="btn btn-sm" onclick={() => ui.answer(false)}>Cancelar</button>
     <button class="btn btn-sm {ui.confirmState?.danger ? 'btn-danger' : 'btn-primary'}" onclick={() => ui.answer(true)}>{ui.confirmState?.confirmLabel}</button>
