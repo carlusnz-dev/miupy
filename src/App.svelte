@@ -12,6 +12,7 @@
   import { downloads } from './lib/stores/downloads.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { profile } from './lib/stores/profile.svelte';
+  import { isTyping } from './lib/util/typing';
   import Nav from './lib/components/Nav.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
   import MiniPlayer from './lib/components/MiniPlayer.svelte';
@@ -68,13 +69,6 @@
 
   let main: HTMLElement;
   $effect(() => { router.current; main?.scrollTo({ top: 0 }); });
-
-  function isTyping(t: EventTarget | null) {
-    const el = t as HTMLElement | null;
-    if (!el) return false;
-    const tag = el.tagName;
-    return tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes((el as HTMLInputElement).type) || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
-  }
 
   // Atalhos (desktop): espaço, setas esquerda/direita (seek 5 s), cima/baixo (volume), M (mudo).
   function onKey(e: KeyboardEvent) {

@@ -7,6 +7,7 @@
   import Avatar from './Avatar.svelte';
   import { settings } from '../stores/settings.svelte';
   import { notifyError } from '../stores/toast.svelte';
+  import { isTyping } from '../util/typing';
   import { beginSidebarDrag, clampSidebarWidth, createDeferredSave, keyboardSidebarWidth, SIDEBAR_DEFAULT } from '../util/sidebar';
 
   let { variant }: { variant: 'side' | 'bottom' } = $props();
@@ -39,9 +40,9 @@
 
   // @req RF-38
   const collapsed = $derived(settings.sidebarCollapsed);
-  const toggleCollapsed = () => settings.setSidebarCollapsed(!collapsed);
+  const toggleCollapsed = () => { keySave.flush(); settings.setSidebarCollapsed(!collapsed); };
   function onShortcut(e: KeyboardEvent) {
-    if (variant !== 'side' || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b') return;
+    if (variant !== 'side' || e.defaultPrevented || isTyping(e.target) || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b') return;
     e.preventDefault();
     toggleCollapsed();
   }
@@ -108,7 +109,7 @@
 </script>
 
 {#snippet link(i: Item, rail = false)}
-  <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={rail ? i.label : undefined} title={rail ? i.label : undefined}
+  <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={rail ? (i.path === paths.downloads && downloads.activeCount > 0 ? `${i.label}, ${downloads.activeCount} em andamento` : i.label) : undefined} title={rail ? i.label : undefined}
      class="relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-muted hover:bg-s2 hover:text-fg aria-[current=page]:bg-s2 aria-[current=page]:text-fg">
     <Icon name={i.icon} size={20} class="shrink-0 {isOn(i) ? 'text-lava-text' : ''}" />
     {#if !rail}<span class="enter flex-1">{i.label}</span>{/if}

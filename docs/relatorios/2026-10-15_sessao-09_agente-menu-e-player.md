@@ -35,6 +35,7 @@
 - `npm run check`: 0 erros, 0 avisos. `npm test`: 20 arquivos, 89 testes passaram (inclui novos `@test RF-38`).
 - `npm run build`: ok. `node scripts/rastreabilidade.mjs --check`: ok, 51 requisitos.
 - Cargo (fmt/clippy/test): **não rodado**, sem `target/` e nenhum Rust alterado; o CI roda.
+- Revisão do PR: aprovada; ajustados Ctrl+B ignorado ao digitar, nome acessível do contador no trilho e flush da largura ao recolher.
 - Playwright (`revisar-playwright`): **não rodado**, o MCP não está disponível nesta sessão (não há Chromium).
   `revisar-design` foi feita só lendo o diff.
 
