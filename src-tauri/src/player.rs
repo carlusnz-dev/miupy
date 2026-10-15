@@ -97,6 +97,19 @@ impl Player {
     pub fn restore_prefs(&self) {
         match self.db.with(|db| db.get_settings()) {
             Ok(s) => {
+                match self.db.with(|db| db.get_eq_preset(&s.eq_preset_id)) {
+                    Ok(eq) => match <[f32; 8]>::try_from(eq.gains_db) {
+                        Ok(gains) => {
+                            if let Err(e) = self.backend.set_equalizer(gains) {
+                                log::warn!("não consegui aplicar o equalizador salvo: {e}");
+                            }
+                        }
+                        Err(g) => {
+                            log::warn!("perfil de EQ salvo com {} bandas; usando Plano", g.len())
+                        }
+                    },
+                    Err(e) => log::warn!("não consegui ler o perfil de EQ salvo: {e}"),
+                }
                 if let Err(e) = self.backend.set_volume(s.volume as f32) {
                     log::warn!("não consegui aplicar o volume salvo: {e}");
                 }
@@ -240,7 +253,21 @@ impl Player {
         } else {
             None
         };
+        // @req RF-28
+        let gain = if stream.is_none() {
+            let mode = self.db.with(|db| db.get_settings())?.normalization;
+            let peak = self.db.with(|db| db.get_true_peak_db(&track.id))?;
+            mode.gain_db(track.loudness_lufs, peak)
+        } else {
+            0.0
+        };
         self.close_event(inner, end_prev);
+        // @req RF-18
+        // Daqui em diante o motor muda (ou fica parado, se o carregamento falhar): nenhuma
+        // resolução de streaming pedida antes pode mais ser aceita para a faixa antiga.
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        inner.resolving = false;
+        self.backend.set_normalization_gain_db(gain)?;
         let loaded = if let Some(stream) = &stream {
             self.load_stream(stream, &track, true)
         } else {
@@ -451,9 +478,9 @@ impl Player {
         let ordered = match mode {
             ShuffleMode::Off => queue.original_order_of(&out, tail),
             ShuffleMode::Random => miupy_core::random_order(tail, seed),
-            ShuffleMode::Smart => {
-                let smart = self.db.with(|db| db.smart_tracks(&ids))?;
-                let by_id = smart
+            ShuffleMode::Surfle => {
+                let surfle = self.db.with(|db| db.surfle_tracks(&ids))?;
+                let by_id = surfle
                     .into_iter()
                     .map(|t| (t.track_id.clone(), t))
                     .collect::<std::collections::HashMap<_, _>>();
@@ -464,7 +491,8 @@ impl Player {
                         .filter_map(|id| by_id.get(id).cloned())
                         .collect::<Vec<_>>();
                     if rem.len() == tail.len() {
-                        miupy_core::smart_order(cur, &rem, seed)
+                        let taste = self.db.with(|db| db.taste_profile(None))?;
+                        miupy_core::surfle_order(cur, &rem, &taste.top_genres, seed)
                     } else {
                         miupy_core::random_order(tail, seed)
                     }
@@ -614,7 +642,32 @@ impl Player {
         Ok(self.snapshot(&inner))
     }
 
+    // @req RF-29
+    pub fn refresh_equalizer(&self) -> AppResult<()> {
+        let gains = self.db.with(|db| {
+            let s = db.get_settings()?;
+            db.get_eq_preset(&s.eq_preset_id).map(|p| p.gains_db)
+        })?;
+        self.backend
+            .set_equalizer(gains.try_into().unwrap_or([0.; 8]))?;
+        Ok(())
+    }
+
     // @req RF-02
+    // @req RF-28
+    pub fn refresh_normalization(&self) -> AppResult<()> {
+        let current = self.lock().track.clone();
+        let gain = if let Some(track) = current.filter(|t| t.file_path.is_some()) {
+            let mode = self.db.with(|db| db.get_settings())?.normalization;
+            let peak = self.db.with(|db| db.get_true_peak_db(&track.id))?;
+            mode.gain_db(track.loudness_lufs, peak)
+        } else {
+            0.0
+        };
+        self.backend.set_normalization_gain_db(gain)?;
+        Ok(())
+    }
+
     /// Define o volume (0.0 a 1.0), aplica ao motor e persiste em `settings`.
     pub fn set_volume(&self, volume: f64) -> AppResult<PlayerState> {
         if !volume.is_finite() {
@@ -1101,6 +1154,58 @@ mod tests {
         }
     }
 
+    // @test RF-03 RF-18
+    #[test]
+    fn navegar_sem_faixa_tocavel_descarta_url_antiga() {
+        for previous in [false, true] {
+            let f = fx(1);
+            let track = f
+                .db
+                .with(|db| db.upsert_track(&NewTrack::youtube("lenta", "Lenta", None, 1000, None)))
+                .unwrap()
+                .track;
+            // A faixa local fica ao lado da que está resolvendo; o carregamento dela vai falhar.
+            let queue = if previous {
+                vec![f.ids[0].clone(), track.id.clone()]
+            } else {
+                vec![track.id.clone(), f.ids[0].clone()]
+            };
+            let (started_tx, started_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            *f.resolver.stream_gate.lock().unwrap() = Some((started_tx, release_rx));
+            f.player.play(&track.id, Some(queue)).unwrap();
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+
+            f.backend.set_fail_loads(true);
+            if previous {
+                f.player.previous().unwrap();
+            } else {
+                f.player.next().unwrap();
+            }
+            f.backend.set_fail_loads(false);
+            // A tentativa de tocar a vizinha já parou o motor e limpou a faixa atual.
+            assert!(f.player.state().track.is_none(), "previous={previous}");
+            release_tx.send(()).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while Arc::strong_count(&f.player) > 1 && std::time::Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+            assert_eq!(Arc::strong_count(&f.player), 1);
+            let state = f.player.state();
+            assert_eq!(state.status, PlayerStatus::Stopped, "previous={previous}");
+            assert!(state.track.is_none(), "previous={previous}");
+            // O motor também não pode ter recebido a URL antiga.
+            assert_ne!(
+                f.backend.state().status,
+                PlaybackStatus::Playing,
+                "previous={previous}"
+            );
+            assert!(f.backend.state().url.is_none(), "previous={previous}");
+        }
+    }
+
     // @test RF-01
     #[test]
     fn arquivo_ausente_no_disco_devolve_unavailable() {
@@ -1188,7 +1293,7 @@ mod tests {
         for mode in [
             ShuffleMode::Random,
             ShuffleMode::Off,
-            ShuffleMode::Smart,
+            ShuffleMode::Surfle,
             ShuffleMode::Random,
             ShuffleMode::Off,
         ] {
@@ -1203,6 +1308,90 @@ mod tests {
                 assert_eq!(state.queue, f.ids);
             }
         }
+    }
+
+    // @test RF-24
+    #[test]
+    fn remover_faixa_ja_tocada_e_alternar_aleatorio_mantem_prefixo_e_restante() {
+        for shuffled_first in [false, true] {
+            let f = fx(6);
+            f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+            for _ in 0..3 {
+                f.player.next().unwrap();
+            }
+            if shuffled_first {
+                f.player.set_shuffle(ShuffleMode::Random).unwrap();
+            }
+            let played = f.player.state().queue[..=3].to_vec();
+            let removed = played[1].clone();
+            f.player.remove_track(&removed);
+
+            let after_remove = f.player.state();
+            let prefix = played
+                .iter()
+                .filter(|id| **id != removed)
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(after_remove.queue_index, 2);
+            assert_eq!(after_remove.track.as_ref().unwrap().id, f.ids[3]);
+            assert_eq!(&after_remove.queue[..=2], prefix);
+            let mut remaining = after_remove.queue[3..].to_vec();
+            remaining.sort();
+            assert_eq!(remaining, vec![f.ids[4].clone(), f.ids[5].clone()]);
+
+            for mode in [
+                ShuffleMode::Random,
+                ShuffleMode::Off,
+                ShuffleMode::Surfle,
+                ShuffleMode::Off,
+            ] {
+                let state = f.player.set_shuffle(mode).unwrap();
+                assert_eq!(state.queue_index, 2, "{mode:?}");
+                assert_eq!(state.track.as_ref().unwrap().id, f.ids[3], "{mode:?}");
+                assert_eq!(&state.queue[..=2], prefix, "{mode:?}");
+                assert!(!state.queue.contains(&removed), "{mode:?}");
+                let mut tail = state.queue[3..].to_vec();
+                tail.sort();
+                assert_eq!(tail, remaining, "{mode:?}");
+                if mode == ShuffleMode::Off {
+                    let expected = f
+                        .ids
+                        .iter()
+                        .filter(|id| **id != removed)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    assert_eq!(state.queue, expected);
+                }
+            }
+        }
+    }
+
+    // @test RF-24
+    #[test]
+    fn alternar_aleatorio_com_a_atual_na_ultima_posicao_nao_mexe_na_fila() {
+        let f = fx(5);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        for _ in 0..4 {
+            f.player.next().unwrap();
+        }
+        assert_eq!(f.player.state().queue_index, 4);
+        for mode in [
+            ShuffleMode::Random,
+            ShuffleMode::Surfle,
+            ShuffleMode::Off,
+            ShuffleMode::Random,
+            ShuffleMode::Off,
+        ] {
+            let state = f.player.set_shuffle(mode).unwrap();
+            assert_eq!(state.queue, f.ids, "{mode:?}");
+            assert_eq!(state.queue_index, 4, "{mode:?}");
+            assert_eq!(state.track.as_ref().unwrap().id, f.ids[4], "{mode:?}");
+        }
+        // Continua sem próxima, e o aleatório ligado não inventa faixa.
+        f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        let end = f.player.next().unwrap();
+        assert_eq!(end.queue_index, 4);
+        assert_eq!(end.track.unwrap().id, f.ids[4]);
     }
 
     // @test RF-24
@@ -1232,7 +1421,7 @@ mod tests {
         let mut expected = before.queue[5..].to_vec();
         expected.sort();
 
-        for mode in [ShuffleMode::Smart, ShuffleMode::Off, ShuffleMode::Random] {
+        for mode in [ShuffleMode::Surfle, ShuffleMode::Off, ShuffleMode::Random] {
             let state = f.player.set_shuffle(mode).unwrap();
             assert_eq!(&state.queue[..=4], prefix);
             assert_eq!(state.queue_index, 4);
@@ -1268,7 +1457,7 @@ mod tests {
         f.player.play(&f.ids[0], Some(ids.clone())).unwrap();
         f.player.next().unwrap();
         f.player.next().unwrap();
-        for mode in [ShuffleMode::Random, ShuffleMode::Smart, ShuffleMode::Off] {
+        for mode in [ShuffleMode::Random, ShuffleMode::Surfle, ShuffleMode::Off] {
             let state = f.player.set_shuffle(mode).unwrap();
             assert_eq!(state.queue_index, 2);
             assert_eq!(&state.queue[..=2], &ids[..=2]);
@@ -1532,5 +1721,105 @@ mod tests {
         let p = f.events.progress.lock().unwrap().clone();
         assert_eq!(p.len(), 2);
         assert_eq!(p[1].position_ms, 1000);
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+    use crate::events::testing::RecordingEvents;
+    use miupy_audio::NullBackend;
+    use miupy_core::{Database, DownloadedFile, NewTrack, Normalization, SettingsPatch};
+    // @test RF-28
+    #[test]
+    fn loading_and_mode_change_apply_gain_without_changing_volume() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let track = db
+            .with(|d| d.upsert_track(&NewTrack::youtube("loud", "Música", None, 1000, None)))
+            .unwrap()
+            .track;
+        let file = dir.path().join("song.m4a");
+        std::fs::write(&file, b"fake").unwrap();
+        db.with(|d| {
+            d.mark_downloaded(
+                &track.id,
+                &DownloadedFile {
+                    file_path: file.to_string_lossy().into_owned(),
+                    codec: None,
+                    bitrate: None,
+                    cover_path: None,
+                    duration_ms: None,
+                },
+            )?;
+            d.set_loudness(&track.id, -20.0, -2.0)
+        })
+        .unwrap();
+        let backend = Arc::new(NullBackend::new());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.play(&track.id, None).unwrap();
+        assert_eq!(backend.normalization_gain_db(), 1.0);
+        db.with(|d| {
+            d.update_settings(&SettingsPatch {
+                normalization: Some(Normalization::Loud),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        player.refresh_normalization().unwrap();
+        assert_eq!(backend.normalization_gain_db(), 9.0);
+        assert_eq!(backend.state().volume, 1.0);
+    }
+    // @test RF-29
+    #[test]
+    fn saved_profile_reaches_false_backend_on_open_and_edit() {
+        use miupy_core::EqPresetInput;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let preset = db
+            .with(|d| {
+                d.save_eq_preset(&EqPresetInput {
+                    id: None,
+                    name: "Meu som".into(),
+                    gains_db: vec![2.; 8],
+                })
+            })
+            .unwrap();
+        db.with(|d| {
+            d.update_settings(&SettingsPatch {
+                eq_preset_id: Some(preset.id.clone()),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let backend = Arc::new(NullBackend::new());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.restore_prefs();
+        assert_eq!(backend.equalizer(), [2.; 8]);
+        db.with(|d| {
+            d.save_eq_preset(&EqPresetInput {
+                id: Some(preset.id.clone()),
+                name: "Meu som".into(),
+                gains_db: vec![4.; 8],
+            })
+        })
+        .unwrap();
+        player.refresh_equalizer().unwrap();
+        assert_eq!(backend.equalizer(), [4.; 8]);
+        db.with(|d| d.delete_eq_preset(&preset.id)).unwrap();
+        player.refresh_equalizer().unwrap();
+        assert_eq!(backend.equalizer(), [0.; 8]);
     }
 }

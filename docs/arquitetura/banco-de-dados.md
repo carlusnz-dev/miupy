@@ -3,7 +3,7 @@
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
 `crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
-`0003_dna_shuffle_images.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+`0003_dna_shuffle_images.sql` e migrações seguintes até `0010_surfle.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
 antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
@@ -18,11 +18,12 @@ antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescreve
 
 ```
 artists 1─* tracks 1─* playlist_tracks *─1 playlists
-                 │ 1─1 favorites
+                 │  view favorites
                  │ 1─1 lyrics
                  │ 1─1 download_jobs
                  └ 1─* play_events *─0..1 playlists (contexto)
 user_actions (log solto, sem FK)        profile, settings (linha única)
+search_history (sem FK)
 tracks_fts (FTS5)  ←  triggers em tracks e artists
 recommendation_candidates (source_id único; sem FK para a faixa candidata)
 ```
@@ -48,13 +49,12 @@ na API de criação/edição; o banco valida que `genres` é um array JSON.
 - `UNIQUE (source, source_id) WHERE source_id IS NOT NULL`: o mesmo vídeo do YouTube entra uma vez.
 - `UNIQUE (file_path) WHERE file_path IS NOT NULL`: dois registros não apontam para o mesmo arquivo.
 - Índices: `artist_id`, `added_at`, `download_status`.
-- `thumbnail_url` não está no tipo `Track` do ipc (é só para o downloader baixar a capa);
-  leia com `Database::track_thumbnail_url`.
+- `thumbnail_url` vai no tipo `Track` do ipc (`thumbnailUrl`): é a capa da faixa que ainda não tem
+  `cover_path`, e o downloader a usa para baixar a capa (`Database::track_thumbnail_url`).
 - Faixa com `file_path` na criação (local) nasce `done`; do YouTube nasce `none`.
 
 ### `favorites`
-`track_id` (PK, FK cascade), `created_at`. Favorito é presença da linha; `Track.isFavorite` vem de
-um `LEFT JOIN`.
+Desde a migração 0007 é uma *view* (`track_id`, `created_at = playlist_tracks.added_at`) sobre as faixas da playlist marcada em `settings.favorites_playlist_id`. `Track.isFavorite`, estatísticas, pontuação, gosto e DNA consultam a mesma fonte. Ao apagar a playlist marcada, a FK em `settings` aplica `ON DELETE SET NULL`; a próxima faixa favoritada cria e marca uma playlist nova "Favoritas".
 
 ### `playlists` e `playlist_tracks`
 `playlists`: `id`, `name`, `description`, `cover_path`, `created_at`, `updated_at`.
@@ -79,6 +79,7 @@ job (volta a `queued`). `tracks.download_status` e `download_jobs.status` mudam 
 transação. Cancelar apaga o job e devolve a faixa a `none`; quem baixa descobre o cancelamento
 quando `update_download` devolve `not_found`. O sucesso passa por `mark_downloaded`, que grava
 `file_path`/`codec`/`bitrate`/capa e fecha o job.
+Em RF-31, `status = 'error'` e `error` iniciado por `auto_offline:` indicam espera pela rede; sem playlist automática vinculada, o marcador é removido e o erro pode ser limpo.
 
 ### `play_events` (RF-13)
 `id`, `track_id` (FK cascade), `playlist_id` (FK `SET NULL`, contexto opcional), `started_at`,
@@ -106,12 +107,22 @@ o log sobrevive à remoção da entidade. As operações do núcleo registram as
 Linha única cada (`id INTEGER PRIMARY KEY CHECK (id = 1)`), criada pela migração.
 `profile`: `display_name`, `username`, `email`, `phone` (textos, vazios por padrão),
 `avatar_path`. `settings`: `lava_theme` (`orange` por padrão), `volume` (0..1, padrão 0.8) e,
-desde 0003, `shuffle_mode` (`off|random|smart`, padrão `off`) e `gpu_mode` (`auto|on|off`,
+desde 0003, `shuffle_mode` (`off|random|surfle`, padrão `off`) e `gpu_mode` (`auto|on|off`,
 padrão `auto`). O modo aleatório é lido à parte do tipo `Settings` do IPC; o de GPU vira
-`Settings.gpuMode`.
+`Settings.gpuMode`. Desde 0005, `eq_preset_id` guarda o perfil ativo (`flat` por padrão);
+`eq_presets` guarda até três perfis personalizados, com oito ganhos serializados em JSON.
+Os oito perfis prontos vivem no código, fora do banco. Desde a migração `0006`,
+`sidebar_width` guarda a largura do menu em px (220 a 400, padrão 280); o núcleo corta valores
+fora do intervalo antes de gravar. Desde 0007, `favorites_playlist_id` referencia a playlist marcada (`ON DELETE SET NULL`).
 Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam por conferência
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).
+
+### `search_history`
+Desde 0008. `query_key` (PK; consulta sem espaços extras, caixa e acento, como `name_key`), `query`
+(texto da última digitação) e `searched_at` (ms). `youtube_search` grava; repetir uma consulta
+apaga a linha e a insere de novo, subindo-a ao topo sem duplicar. Depois de gravar, ficam só as 50
+mais recentes; a listagem devolve as 10 mais recentes. Sem FK.
 
 ### `tracks_fts` (busca)
 Tabela FTS5 própria (`title`, `artist`, `album`), `rowid = tracks.rowid`, tokenizer
@@ -143,6 +154,28 @@ JS, `-new Date().getTimezoneOffset()`). Um evento pertence ao dia/mês/ano do se
 (`started_at`); um evento que cruza a meia-noite não é partido. `tracksAdded` usa `added_at` no
 mesmo critério. Limitação: um único deslocamento vale para o ano todo (horário de verão no meio
 do ano não é modelado).
+
+## Migrações reservadas para a v0.3
+
+Várias frentes criam migrações ao mesmo tempo. Para não haver duas `0004`, cada frente usa o
+número reservado abaixo, mesmo que outra entre antes. Se uma frente for integrada antes de uma de
+número menor, a orquestração renumera antes do merge: a lista em `db.rs` é aplicada na ordem e
+uma migração já aplicada no banco do autor não pode mudar de posição.
+
+| Número | Frente | Conteúdo |
+|---|---|---|
+| `0004_loudness.sql` | `feat/normalizacao-volume` | **Implementada:** `tracks.loudness_lufs`, `tracks.true_peak_db`; `settings.normalization` (`normal` por padrão) |
+| `0005_equalizer.sql` | `feat/equalizador` | **Implementada:** `eq_presets` (personalizados); `settings.eq_preset_id` |
+| `0006_sidebar_width.sql` | `feat/visual-flat` | **Implementada:** `settings.sidebar_width` |
+| `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
+| `0008_search_history.sql` | `feat/busca-vazia` | **Implementada:** `search_history` |
+| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | **Implementada:** `playlists.auto_download` (0/1, padrão 0) |
+| `0010_surfle.sql` | `feat/surfle` | **Implementada:** reconstrói `settings`, converte `smart` para `surfle` e preserva a FK de favoritas |
+| `0011_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
+| `0012_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
+
+`feat/imagens-comprimidas` não cria migração: a troca de `.jpg` para `.webp` é uma tarefa da
+casca na abertura, que atualiza os caminhos já existentes.
 
 ## Decisões
 

@@ -2,6 +2,9 @@
 //! `miupy-core` (banco), `miupy-audio` (motor de reprodução) e `miupy-media` (YouTube,
 //! metadados e tags). É a única parte do projeto que conhece o Tauri.
 
+#[cfg(target_os = "linux")]
+mod asset_webkit;
+mod auto_download;
 mod commands;
 mod db;
 mod downloads;
@@ -9,6 +12,7 @@ mod dto;
 mod error;
 mod events;
 mod gpu;
+mod image_migration;
 mod listening;
 mod metadata;
 mod paths;
@@ -98,6 +102,8 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "linux")]
             log::info!("GPU: {}", gpu_decision);
+            #[cfg(target_os = "linux")]
+            asset_webkit::configure(app);
             let state = build_state(app.handle())?;
             state.start();
             app.manage(state);
@@ -125,6 +131,7 @@ pub fn run() {
             playlist::playlist_create,
             playlist::playlist_update,
             playlist::playlist_delete,
+            playlist::favorites_set_playlist,
             playlist::playlist_get_tracks,
             playlist::playlist_add_tracks,
             playlist::playlist_remove_tracks,
@@ -132,6 +139,8 @@ pub fn run() {
             playlist::playlist_set_cover,
             yt::youtube_search,
             yt::youtube_suggest,
+            yt::youtube_search_history,
+            yt::youtube_search_history_clear,
             yt::ytdlp_status,
             yt::ytdlp_update,
             yt::youtube_add_to_library,
@@ -144,6 +153,7 @@ pub fn run() {
             meta::metadata_get_artist,
             meta::metadata_get_lyrics,
             meta::metadata_refresh_library,
+            meta::metadata_refresh_status,
             stats::stats_library,
             stats::stats_wrapped,
             stats::stats_wrapped_years,
@@ -158,6 +168,9 @@ pub fn run() {
             profile::profile_set_avatar,
             profile::settings_get,
             profile::settings_update,
+            profile::equalizer_list_presets,
+            profile::equalizer_save_preset,
+            profile::equalizer_delete_preset,
             profile::system_gpu_status,
             profile::system_gpu_startup_confirmed,
         ])

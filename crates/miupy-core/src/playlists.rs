@@ -16,7 +16,9 @@ const PLAYLIST_SQL: &str = "SELECT p.id, p.name, p.description, p.cover_path,
         (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id),
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM playlist_tracks pt
             JOIN tracks t ON t.id = pt.track_id WHERE pt.playlist_id = p.id),
-        p.created_at, p.updated_at
+        p.created_at, p.updated_at,
+        COALESCE(p.id = (SELECT favorites_playlist_id FROM settings WHERE id = 1), 0),
+        p.auto_download
      FROM playlists p";
 
 fn playlist_from_row(r: &Row<'_>) -> rusqlite::Result<Playlist> {
@@ -30,6 +32,8 @@ fn playlist_from_row(r: &Row<'_>) -> rusqlite::Result<Playlist> {
         total_duration_ms: r.get(5)?,
         created_at: r.get(6)?,
         updated_at: r.get(7)?,
+        is_favorites: r.get(8)?,
+        auto_download: r.get(9)?,
     })
 }
 
@@ -90,6 +94,29 @@ impl Database {
             playlist.mosaic_paths = self.playlist_mosaic_paths(&playlist.id)?;
         }
         Ok(playlists)
+    }
+
+    // @req RF-30
+    /// Marca outra playlist; preserva a ordem da antiga ao copiar faixas ainda ausentes.
+    pub fn favorites_set_playlist(&self, playlist_id: &str) -> Result<Playlist> {
+        self.in_tx(|| {
+            self.get_playlist(playlist_id)?;
+            let old = self.get_settings()?.favorites_playlist_id;
+            if old.as_deref() == Some(playlist_id) {
+                return self.get_playlist(playlist_id);
+            }
+            if let Some(old_id) = old {
+                let ids: Vec<String> = self.conn.prepare(
+                    "SELECT track_id FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position, track_id"
+                )?.query_map([&old_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+                self.add_tracks_to_playlist(playlist_id, &ids)?;
+            }
+            self.conn.execute(
+                "UPDATE settings SET favorites_playlist_id = ?1, updated_at = ?2 WHERE id = 1",
+                params![playlist_id, self.now_ms()],
+            )?;
+            self.get_playlist(playlist_id)
+        })
     }
 
     // @req RF-22
@@ -166,11 +193,55 @@ impl Database {
             };
             self.conn.execute(
                 "UPDATE playlists SET name = ?2, description = ?3, cover_path = ?4,
-                        updated_at = ?5 WHERE id = ?1",
-                params![playlist_id, name, description, cover, self.now_ms()],
+                        updated_at = ?5, auto_download = ?6 WHERE id = ?1",
+                params![
+                    playlist_id,
+                    name,
+                    description,
+                    cover,
+                    self.now_ms(),
+                    patch.auto_download.unwrap_or(cur.auto_download)
+                ],
             )?;
             self.get_playlist(playlist_id)
         })
+    }
+
+    // @req RF-31
+    /// IDs sem arquivo que podem entrar na fila automática, em ordem da playlist.
+    pub fn playlist_auto_pending_tracks(&self, playlist_id: &str) -> Result<Vec<String>> {
+        self.get_playlist(playlist_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id
+             WHERE pt.playlist_id = ?1 AND t.download_status IN ('none', 'error')
+             ORDER BY pt.position, t.id",
+        )?;
+        Ok(stmt
+            .query_map([playlist_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-31
+    /// Playlists automáticas que contêm a faixa, inclusive a de favoritas.
+    pub fn auto_playlists_for_track(&self, track_id: &str) -> Result<Vec<String>> {
+        self.require_track(track_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT p.id FROM playlists p JOIN playlist_tracks pt ON pt.playlist_id = p.id
+             WHERE pt.track_id = ?1 AND p.auto_download = 1 ORDER BY p.created_at, p.id",
+        )?;
+        Ok(stmt
+            .query_map([track_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-31
+    pub fn auto_playlist_ids(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM playlists WHERE auto_download = 1 ORDER BY created_at, id")?;
+        Ok(stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
     }
 
     // @req RF-06
@@ -348,6 +419,79 @@ mod tests {
     use crate::model::{SortDir, TrackSort};
     use crate::testutil::*;
 
+    // @test RF-31
+    #[test]
+    fn auto_download_persiste_e_consulta_apenas_faixas_elegiveis() {
+        let db = db();
+        let p = db.create_playlist("Auto", None).unwrap();
+        assert!(!p.auto_download);
+        let a = db
+            .upsert_track(&crate::NewTrack::youtube("auto-a", "A", None, 1000, None))
+            .unwrap()
+            .track;
+        let b = db
+            .upsert_track(&crate::NewTrack::youtube("auto-b", "B", None, 1000, None))
+            .unwrap()
+            .track;
+        let local = db
+            .upsert_track(&crate::NewTrack::local("/tmp/auto-local.m4a", "Local"))
+            .unwrap()
+            .track;
+        db.add_tracks_to_playlist(&p.id, &[a.id.clone(), local.id.clone(), b.id.clone()])
+            .unwrap();
+        let other = db.create_playlist("Outra", None).unwrap();
+        db.add_tracks_to_playlist(&other.id, std::slice::from_ref(&a.id))
+            .unwrap();
+        assert!(db.auto_playlists_for_track(&a.id).unwrap().is_empty());
+        let p = db
+            .update_playlist(
+                &p.id,
+                &PlaylistPatch {
+                    auto_download: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p.auto_download);
+        assert_eq!(
+            db.playlist_auto_pending_tracks(&p.id).unwrap(),
+            vec![a.id.clone(), b.id.clone()]
+        );
+        assert_eq!(
+            db.auto_playlists_for_track(&a.id).unwrap(),
+            vec![p.id.clone()]
+        );
+        let jobs = db.enqueue_downloads(&[a.id.clone(), b.id.clone()]).unwrap();
+        db.update_download(
+            &jobs[1].id,
+            &crate::DownloadUpdate {
+                status: crate::DownloadStatus::Error,
+                progress: None,
+                error: Some("falha".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            db.playlist_auto_pending_tracks(&p.id).unwrap(),
+            vec![b.id.clone()]
+        );
+        db.update_playlist(
+            &p.id,
+            &PlaylistPatch {
+                auto_download: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(db.auto_playlists_for_track(&a.id).unwrap().is_empty());
+        assert!(
+            db.list_downloads()
+                .unwrap()
+                .iter()
+                .any(|j| j.track_id == a.id)
+        );
+    }
+
     fn positions(db: &Database, pid: &str) -> Vec<(String, i64)> {
         let mut stmt = db
             .conn
@@ -413,10 +557,60 @@ mod tests {
             "invalid_input"
         );
 
-        assert_eq!(db.list_playlists().unwrap().len(), 1);
+        assert_eq!(db.list_playlists().unwrap().len(), 2);
         db.delete_playlist(&pl.id).unwrap();
         assert_eq!(db.delete_playlist(&pl.id).unwrap_err().code(), "not_found");
-        assert!(db.list_playlists().unwrap().is_empty());
+        assert_eq!(db.list_playlists().unwrap().len(), 1);
+    }
+
+    // @test RF-04 RF-30
+    #[test]
+    fn trocar_favoritas_copia_sem_repetir_e_apagar_limpa_marcacao() {
+        let db = db();
+        let a = db
+            .upsert_track(&crate::NewTrack::youtube("a", "A", None, 1, None))
+            .unwrap()
+            .track;
+        let b = db
+            .upsert_track(&crate::NewTrack::youtube("b", "B", None, 1, None))
+            .unwrap()
+            .track;
+        let c = db
+            .upsert_track(&crate::NewTrack::youtube("c", "C", None, 1, None))
+            .unwrap()
+            .track;
+        let old = db.get_settings().unwrap().favorites_playlist_id.unwrap();
+        db.set_favorite(&a.id, true).unwrap();
+        db.set_favorite(&b.id, true).unwrap();
+        let next = db.create_playlist("Nova", None).unwrap();
+        db.add_tracks_to_playlist(&next.id, &[b.id.clone(), c.id.clone()])
+            .unwrap();
+        let marked = db.favorites_set_playlist(&next.id).unwrap();
+        assert!(marked.is_favorites);
+        assert!(!db.get_playlist(&old).unwrap().is_favorites);
+        let ids: Vec<String> = db
+            .playlist_tracks(&next.id, &TrackQuery::default())
+            .unwrap()
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![b.id.clone(), c.id, a.id.clone()]);
+        assert_eq!(db.favorites_set_playlist(&next.id).unwrap().track_count, 3);
+        assert_eq!(
+            db.favorites_set_playlist("missing").unwrap_err().code(),
+            "not_found"
+        );
+        db.set_favorite(&a.id, false).unwrap();
+        assert!(!db.get_track(&a.id).unwrap().is_favorite);
+        assert_eq!(db.get_playlist(&old).unwrap().track_count, 2);
+        db.delete_playlist(&next.id).unwrap();
+        assert_eq!(db.get_settings().unwrap().favorites_playlist_id, None);
+        assert!(!db.get_track(&b.id).unwrap().is_favorite);
+        db.set_favorite(&b.id, false).unwrap();
+        assert_eq!(db.get_settings().unwrap().favorites_playlist_id, None);
+        db.set_favorite(&b.id, true).unwrap();
+        assert!(db.get_settings().unwrap().favorites_playlist_id.is_some());
+        assert!(db.get_track(&b.id).unwrap().is_favorite);
     }
 
     // @test RF-06

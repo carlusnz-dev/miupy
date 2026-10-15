@@ -37,18 +37,39 @@ pub async fn library_get_track(state: State<'_, AppState>, track_id: String) -> 
     state.db.run(move |db| Ok(db.get_track(&track_id)?)).await
 }
 
-// @req RF-04
+// @req RF-04 RF-31
 #[tauri::command]
 pub async fn library_set_favorite(
     state: State<'_, AppState>,
     track_id: String,
     favorite: bool,
 ) -> R<Track> {
+    let id = track_id.clone();
+    let was_favorite = state
+        .db
+        .run(move |db| Ok(db.get_track(&id)?.is_favorite))
+        .await?;
     let track = state
         .db
         .run(move |db| Ok(db.set_favorite(&track_id, favorite)?))
         .await?;
-    state.events.library_changed("favorite");
+    state.events.library_changed("favorites");
+    if favorite && !was_favorite {
+        let id = track.id.clone();
+        let playlists = state
+            .db
+            .run(move |db| Ok(db.auto_playlists_for_track(&id)?))
+            .await?;
+        for playlist_id in playlists {
+            crate::auto_download::enqueue(
+                &state,
+                playlist_id,
+                Some(vec![track.id.clone()]),
+                "added",
+            )
+            .await?;
+        }
+    }
     Ok(track)
 }
 

@@ -51,6 +51,20 @@ pub struct Progress {
     pub duration_ms: u64,
 }
 
+// @req RF-32
+/// Estado do lote de metadados nesta abertura, conforme `ipc.md`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataRefreshStatus {
+    pub running: bool,
+    pub done: usize,
+    pub total: usize,
+    pub failed: usize,
+    pub current_track_id: Option<String>,
+    pub started_at: Option<u64>,
+    pub finished_at: Option<u64>,
+}
+
 /// `SearchResult` de `ipc.md`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +75,9 @@ pub struct SearchResult {
     pub duration_ms: u64,
     pub thumbnail_url: Option<String>,
     pub in_library: bool,
+    // @req RF-04
+    pub track_id: Option<String>,
+    pub is_favorite: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -148,10 +165,38 @@ mod tests {
             duration_ms: 10,
             thumbnail_url: None,
             in_library: true,
+            track_id: Some("track".into()),
+            is_favorite: true,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["sourceId"], "abc");
         assert_eq!(v["inLibrary"], true);
         assert!(v["thumbnailUrl"].is_null());
+    }
+
+    // @test RF-32
+    #[test]
+    fn metadata_refresh_status_serializa_todos_os_campos_do_contrato() {
+        let status = MetadataRefreshStatus {
+            running: true,
+            done: 1,
+            total: 3,
+            failed: 1,
+            current_track_id: Some("trk-1".into()),
+            started_at: Some(1000),
+            finished_at: None,
+        };
+        assert_eq!(
+            serde_json::to_value(status).unwrap(),
+            serde_json::json!({
+                "running": true,
+                "done": 1,
+                "total": 3,
+                "failed": 1,
+                "currentTrackId": "trk-1",
+                "startedAt": 1000,
+                "finishedAt": null
+            })
+        );
     }
 }

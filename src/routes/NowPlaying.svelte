@@ -2,10 +2,13 @@
   // @req RF-18 RF-20
   // Tela cheia "tocando agora": capa, metadados, controles, seek, volume, favorito, fila e letra.
   // @req RF-01 RF-02 RF-03 RF-04 RF-05 RF-12
-  import { api, type Lyrics } from '../lib/ipc';
+  import { api, type EqPreset, type Lyrics } from '../lib/ipc';
+  import { settings } from '../lib/stores/settings.svelte';
+  import { notifyError } from '../lib/stores/toast.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { toggleFavorite } from '../lib/actions';
+  import { favorites } from '../lib/stores/favorites.svelte';
   import { fmtTime, parseLrc } from '../lib/util/format';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
   import Cover from '../lib/components/Cover.svelte';
@@ -16,10 +19,43 @@
   import ShuffleButton from '../lib/components/ShuffleButton.svelte';
   import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { useShared } from '../lib/layoutPresence';
+  import { dismissable } from '../lib/util/dismiss';
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
+  let eqOpen = $state(false);
+  let eqButton = $state<HTMLButtonElement>();
+  let eqPresets = $state<EqPreset[]>([]);
+  $effect(() => {
+    void api.equalizerListPresets().then((list) => { eqPresets = list; }).catch(() => {});
+  });
+
+  function closeEq(refocus: boolean) {
+    eqOpen = false;
+    if (refocus) eqButton?.focus();
+  }
+
+  async function openEq() {
+    if (eqOpen) { closeEq(true); return; }
+    try {
+      eqPresets = await api.equalizerListPresets();
+      eqOpen = true;
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
+  async function chooseEq(id: string) {
+    try {
+      await settings.setEqualizer(id);
+      closeEq(true);
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
   let lyricsErr = $state(false);
@@ -61,12 +97,16 @@
   <MeshGradient class="min-h-full">
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <Cover path={t.coverPath} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
+        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h1 class="text-2xl font-bold leading-tight" use:useShared={`track-title-${t.id}`}>{t.title}</h1>
             <p class="mt-1 text-muted">
-              {#if t.artistId}<a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>{:else}<span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>{/if}
+              {#if t.artistId}
+                <a class="hover:underline" href={href(paths.artist(t.artistId))} use:useShared={`track-artist-${t.id}`}>{t.artistName}</a>
+              {:else}
+                <span use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</span>
+              {/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>
             <p class="mt-2 flex flex-wrap gap-1.5">
@@ -79,17 +119,24 @@
               {#if scores.get(t.id)}<span class="chip" title={scoreTooltip(scores.get(t.id))}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
             </p>
           </div>
-          <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
-            <Icon name="heart" size={24} fill={t.isFavorite} />
+        </div>
+        <div class="relative self-start" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
+          <button type="button" class="btn text-sm" aria-expanded={eqOpen} bind:this={eqButton} onclick={openEq}>
+            Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
           </button>
+          {#if eqOpen}
+            <div class="card absolute z-20 mt-1 max-h-72 min-w-44 overflow-auto p-1" aria-label="Perfis do equalizador">
+              {#each eqPresets as preset}
+                <button
+                  type="button" class="block w-full rounded px-3 py-2 text-left text-sm hover:bg-surface"
+                  aria-current={settings.eqPresetId === preset.id ? 'true' : undefined}
+                  onclick={() => chooseEq(preset.id)}
+                >{preset.name}</button>
+              {/each}
+              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => closeEq(true)}>Fechar</button>
+            </div>
+          {/if}
         </div>
-        <Seek />
-        <div class="flex items-center justify-between">
-          <div class="w-24"><ShuffleButton /></div>
-          <Transport big />
-          <div class="hidden w-24 md:block"></div><div class="md:hidden"><Volume /></div>
-        </div>
-        <div class="hidden justify-center md:flex"><Volume /></div>
       </section>
 
       <section class="min-w-0" aria-label="Fila e letra">
@@ -120,7 +167,7 @@
               </ol>
             {/if}
           {:else if lyricsLoading}
-            <State kind="loading" title="Buscando letra…" />
+            <SkeletonList variant="lines" label="Buscando letra" />
           {:else if lyricsErr}
             <State kind="error" title="Não deu para buscar a letra" text="A letra vem de um serviço online; sem rede ela não aparece." />
           {:else if lines.length}
@@ -134,6 +181,21 @@
           {:else}
             <State kind="empty" icon="mic" title="Sem letra para esta faixa" text="Não encontramos letra no serviço de metadados." />
           {/if}
+        </div>
+      </section>
+
+      <section class="mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" aria-label="Controles">
+        <Seek />
+        <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
+          <div class="flex justify-end md:justify-start"><ShuffleButton /></div>
+          <Transport big />
+          <div class="flex items-center justify-end gap-1">
+            <button class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+              <Icon name="heart" size={20} fill={favorites.is(t)} />
+            </button>
+            <button class="icon-btn {tab === 'queue' ? 'on' : ''}" aria-pressed={tab === 'queue'} aria-label="Mostrar a fila" onclick={() => (tab = 'queue')}><Icon name="queue" size={20} /></button>
+            <Volume />
+          </div>
         </div>
       </section>
     </div>

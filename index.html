@@ -12,6 +12,11 @@
         var l = localStorage.getItem('miupy.lava');
         if (l === 'orange' || l === 'purple' || l === 'blue') document.documentElement.dataset.lava = l;
       } catch (e) {}
+      // @req RF-33: largura em cache antes da primeira pintura; settings_get confirma depois.
+      try {
+        var w = Number(localStorage.getItem('miupy.sidebarWidth'));
+        if (Number.isFinite(w) && w >= 220 && w <= 400) document.documentElement.style.setProperty('--sidebar-w', Math.round(w) + 'px');
+      } catch (e) {}
     </script>
   </head>
   <body>

@@ -1,4 +1,4 @@
-use miupy_core::{GpuMode, Profile, SettingsPatch};
+use miupy_core::{GpuMode, Normalization, Profile, SettingsPatch};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -15,6 +15,12 @@ pub struct SettingsDto {
     lava_theme: miupy_core::LavaTheme,
     volume: f64,
     gpu_mode: GpuMode,
+    normalization: Normalization,
+    eq_preset_id: String,
+    // @req RF-33
+    sidebar_width: i64,
+    // @req RF-30
+    favorites_playlist_id: Option<String>,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -22,6 +28,10 @@ pub struct SettingsPatchDto {
     lava_theme: Option<miupy_core::LavaTheme>,
     volume: Option<f64>,
     gpu_mode: Option<GpuMode>,
+    normalization: Option<Normalization>,
+    eq_preset_id: Option<String>,
+    // @req RF-33
+    sidebar_width: Option<i64>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,6 +97,10 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 lava_theme: s.lava_theme,
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
+                normalization: s.normalization,
+                eq_preset_id: s.eq_preset_id,
+                sidebar_width: s.sidebar_width,
+                favorites_playlist_id: s.favorites_playlist_id,
             })
         })
         .await
@@ -103,6 +117,9 @@ pub async fn settings_update(
     let core = SettingsPatch {
         lava_theme: settings.lava_theme,
         volume,
+        normalization: settings.normalization,
+        eq_preset_id: settings.eq_preset_id.clone(),
+        sidebar_width: settings.sidebar_width.map(|width| width.clamp(220, 400)),
     };
     let saved = state
         .db
@@ -115,6 +132,10 @@ pub async fn settings_update(
                 lava_theme: s.lava_theme,
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
+                normalization: s.normalization,
+                eq_preset_id: s.eq_preset_id,
+                sidebar_width: s.sidebar_width,
+                favorites_playlist_id: s.favorites_playlist_id,
             })
         })
         .await?;
@@ -128,6 +149,14 @@ pub async fn settings_update(
     if let Some(v) = volume {
         let player = state.player.clone();
         blocking(move || player.set_volume(v).map(|_| ())).await?;
+    }
+    if settings.eq_preset_id.is_some() {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
+    }
+    if settings.normalization.is_some() {
+        let player = state.player.clone();
+        blocking(move || player.refresh_normalization()).await?;
     }
     Ok(saved)
 }
@@ -159,4 +188,71 @@ pub async fn system_gpu_status(state: State<'_, AppState>) -> R<GpuStatusDto> {
 pub async fn system_gpu_startup_confirmed() -> R<()> {
     crate::gpu::confirm_startup()?;
     Ok(())
+}
+
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_list_presets(state: State<'_, AppState>) -> R<Vec<miupy_core::EqPreset>> {
+    state.db.run(|db| Ok(db.list_eq_presets()?)).await
+}
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_save_preset(
+    state: State<'_, AppState>,
+    preset: miupy_core::EqPresetInput,
+) -> R<miupy_core::EqPreset> {
+    let saved = state
+        .db
+        .run(move |db| Ok(db.save_eq_preset(&preset)?))
+        .await?;
+    let active = state
+        .db
+        .run(|db| Ok(db.get_settings()?.eq_preset_id))
+        .await?;
+    if active == saved.id {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
+    }
+    Ok(saved)
+}
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_delete_preset(state: State<'_, AppState>, preset_id: String) -> R<()> {
+    let active = state
+        .db
+        .run(|db| Ok(db.get_settings()?.eq_preset_id))
+        .await?;
+    let changed = active == preset_id;
+    state
+        .db
+        .run(move |db| Ok(db.delete_eq_preset(&preset_id)?))
+        .await?;
+    if changed {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod favorites_tests {
+    use super::*;
+
+    // @test RF-30
+    #[test]
+    fn settings_dto_expoe_playlist_de_favoritas() {
+        let dto = SettingsDto {
+            lava_theme: miupy_core::LavaTheme::Orange,
+            volume: 0.8,
+            gpu_mode: GpuMode::Auto,
+            normalization: Normalization::Normal,
+            eq_preset_id: "flat".into(),
+            sidebar_width: 280,
+            favorites_playlist_id: Some("p".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(dto).unwrap()["favoritesPlaylistId"],
+            "p"
+        );
+    }
 }

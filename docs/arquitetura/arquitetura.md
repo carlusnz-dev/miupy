@@ -53,6 +53,10 @@ Trait `AudioBackend` (carregar, tocar, pausar, seek, volume, estado) e a impleme
 sobre `rodio`. O motor roda em uma thread própria, recebe comandos por canal e publica eventos
 (posição, fim de faixa, erro). Não conhece fila nem banco: toca um arquivo por vez.
 
+Cadeia de áudio (v0.3): decodificação → ganho da normalização (RF-28) → equalizador de 8 bandas
+(RF-29) → volume do usuário → limitador em −1 dBTP. A medição de loudness (EBU R128) também fica
+aqui, como função pura sobre um arquivo; a casca decide quando medir e guarda o resultado no banco.
+
 No Android esta implementação não é usada: a reprodução passa por um plugin Tauri em Kotlin com
 Media3 (`MediaSessionService`), que é o que permite tocar em segundo plano e aparecer na notificação
 e na tela de bloqueio.
@@ -68,15 +72,21 @@ Tudo que fala com a internet ou mexe no arquivo de mídia:
 ### `src-tauri`
 A casca. Guarda o estado do app (banco, backend de áudio, fila de reprodução, fila de downloads),
 expõe os comandos de [`ipc.md`](ipc.md), emite eventos e faz a orquestração que cruza crates:
+- No Linux, habilita CORS para o esquema `asset` no contexto do WebKitGTK. O handler do Tauri
+  continua restringindo os arquivos ao escopo configurado em `tauri.conf.json`; isso permite
+  mostrar capas tanto com a origem de desenvolvimento HTTP quanto com a origem do app instalado.
 - **Fila de reprodução**: próxima/anterior, avanço automático ao fim da faixa.
 - **Registro de atividade**: abre um evento de reprodução ao iniciar a faixa e acumula o tempo
   realmente ouvido (pausa não conta) até trocar ou parar.
-- **Downloads**: fila com concorrência limitada; baixa, grava tags, salva a capa, atualiza o banco.
+- **Downloads**: fila com concorrência limitada; baixa, grava tags, salva a capa em WebP, atualiza o banco.
+- **Imagens**: codifica uploads, capas e fotos em WebP com perda; migra JPEG/PNG antigos em segundo plano e atualiza os caminhos no banco.
 
 ### `src/` (frontend)
 SPA em Svelte 5. Camadas: `lib/ipc` (cliente tipado, com *mock* para rodar no navegador sem Tauri),
-`lib/stores` (player, biblioteca, tema), `lib/components`, `routes`. O tema é um conjunto de
-variáveis CSS trocado pelo atributo `data-lava` no `<html>`.
+`lib/stores` (player, biblioteca, tema e o `Resource`, cache por consulta que as telas usam para mostrar
+o último dado na hora e atualizar em segundo plano), `lib/components` (inclusive o esqueleto de
+carregamento), `routes`. O tema é um conjunto de variáveis CSS trocado pelo atributo `data-lava` no
+`<html>`.
 
 ## Fluxos principais
 
@@ -102,9 +112,9 @@ miupy.db          banco SQLite
 gpu-startup-pending  sentinela temporária da abertura com GPU forçada em Wayland/NVIDIA
 bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
-covers/           <track_id>.jpg, albuns/<chave>.jpg, artistas/<artist_id>.jpg
-avatars/          imagens de perfil enviadas pelo usuário
-playlists/        capas de playlists enviadas pelo usuário
+covers/           <track_id>.webp, albuns/<chave>.webp, artistas/<artist_id>.webp (RNF-12)
+avatars/          imagens de perfil enviadas pelo usuário em WebP
+playlists/        capas de playlists enviadas pelo usuário em WebP
 ```
 
 ## Android

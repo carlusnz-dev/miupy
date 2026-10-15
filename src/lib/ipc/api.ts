@@ -1,7 +1,7 @@
 // @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
-  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, PlayerState, Playlist,
-  GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
+  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist,
+  EqPreset, EqPresetInput, GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
 } from './types';
 
 /** Interface única implementada pelo cliente real (Tauri) e pelo mock em memória. */
@@ -28,8 +28,10 @@ export interface MiupyApi {
   libraryDeleteTrack(a: { trackId: string; deleteFile: boolean }): Promise<void>;
 
   playlistList(): Promise<Playlist[]>;
+  favoritesSetPlaylist(a: { playlistId: string }): Promise<Playlist>; // @req RF-30
   playlistCreate(a: { name: string; description?: string }): Promise<Playlist>;
-  playlistUpdate(a: { playlistId: string; name?: string; description?: string }): Promise<Playlist>;
+  // @req RF-31
+  playlistUpdate(a: { playlistId: string; name?: string; description?: string; autoDownload?: boolean }): Promise<Playlist>;
   playlistDelete(a: { playlistId: string }): Promise<void>;
   playlistGetTracks(a: { playlistId: string; query?: TrackQuery }): Promise<Track[]>;
   playlistAddTracks(a: { playlistId: string; trackIds: string[] }): Promise<Playlist>;
@@ -39,6 +41,8 @@ export interface MiupyApi {
 
   youtubeSearch(a: { query: string; limit?: number }): Promise<SearchResult[]>;
   youtubeSuggest(a: { query: string }): Promise<string[]>; // @req RF-23
+  youtubeSearchHistory(): Promise<string[]>; // @req RF-34
+  youtubeSearchHistoryClear(): Promise<void>; // @req RF-34
   ytdlpStatus(): Promise<YtDlpStatus>; // @req RF-26
   ytdlpUpdate(): Promise<YtDlpStatus>;
   youtubeAddToLibrary(a: { sourceIds: string[]; playlistId?: string }): Promise<Track[]>;
@@ -50,6 +54,7 @@ export interface MiupyApi {
   downloadClearFinished(): Promise<number>;
 
   metadataRefreshLibrary(a: { onlyMissing?: boolean }): Promise<number>; // @req RF-12 RF-20
+  metadataRefreshStatus(): Promise<MetadataRefreshStatus>; // @req RF-32
   metadataRefreshTrack(a: { trackId: string }): Promise<Track>;
   metadataGetArtist(a: { artistId: string }): Promise<ArtistInfo>;
   metadataGetLyrics(a: { trackId: string }): Promise<Lyrics>;
@@ -67,8 +72,12 @@ export interface MiupyApi {
   profileGet(): Promise<Profile>;
   profileSetAvatar(a: { image: ImageUpload | null }): Promise<Profile>; // @req RF-21
   profileUpdate(a: { profile: Profile }): Promise<Profile>;
+  // @req RF-29
+  equalizerListPresets(): Promise<EqPreset[]>;
+  equalizerSavePreset(a: { preset: EqPresetInput }): Promise<EqPreset>;
+  equalizerDeletePreset(a: { presetId: string }): Promise<void>;
   settingsGet(): Promise<Settings>;
-  settingsUpdate(a: { settings: Partial<Settings> }): Promise<Settings>;
+  settingsUpdate(a: { settings: Partial<Omit<Settings, 'favoritesPlaylistId'>> }): Promise<Settings>;
   systemGpuStatus(): Promise<GpuStatus>;
   systemGpuStartupConfirmed(): Promise<void>; // @req RNF-09
 

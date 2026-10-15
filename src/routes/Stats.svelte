@@ -1,24 +1,36 @@
 <script lang="ts">
-  // @req RF-19
+  // @req RF-19 RNF-11 RNF-13
   // Estatísticas da discoteca. @req RF-14
-  import { api, errorMessage, type LibraryStats, type TasteProfile } from '../lib/ipc';
-  import { library } from '../lib/stores/library.svelte';
+  import { api, type LibraryStats, type TasteProfile } from '../lib/ipc';
+  import { mergeDeep } from '../lib/util/diff';
+  import { Resource } from '../lib/stores/resource.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { fmtDuration, fmtNumber } from '../lib/util/format';
   import PageHeader from '../lib/components/PageHeader.svelte';
   import TrackRow from '../lib/components/TrackRow.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Icon from '../lib/components/Icon.svelte';
 
-  let s = $state<LibraryStats | null>(null);
-  let taste = $state<TasteProfile | null>(null);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
+  type StatsData = { s: LibraryStats; taste: TasteProfile };
+  const res = new Resource<StatsData>(['tracks', 'stats'], (prev, next) => {
+    const s = mergeDeep(prev?.s, next.s), taste = mergeDeep(prev?.taste, next.taste);
+    return prev && prev.s === s && prev.taste === taste ? prev : { s, taste };
+  });
+  res.prime('stats');
+  const s = $derived(res.data?.s ?? null);
+  const taste = $derived(res.data?.taste ?? null);
+  const loading = $derived(res.loading);
+  const error = $derived(res.data === undefined ? res.error : null);
+  $effect(() => res.attach());
   async function load() {
-    try { [s, taste] = await Promise.all([api.statsLibrary(), api.statsTaste()]); error = null; } catch (e) { error = errorMessage(e); } finally { loading = false; }
+    await res.load('stats', async () => {
+      const [s, taste] = await Promise.all([api.statsLibrary(), api.statsTaste()]);
+      return { s, taste };
+    });
   }
-  $effect(() => { library.version; void load(); });
+  $effect(() => { void load(); });
 
   const cards = $derived(s ? [
     { k: 'Faixas', v: fmtNumber(s.trackCount), hint: `${fmtNumber(s.downloadedCount)} baixadas` },
@@ -36,7 +48,8 @@
 </PageHeader>
 
 {#if loading}
-  <State kind="loading" />
+  <SkeletonList variant="stats" class="mb-8" label="Carregando as estatísticas" />
+  <SkeletonList variant="tracks" count={6} />
 {:else if error}
   <State kind="error" text={error} onretry={load} />
 {:else if s}

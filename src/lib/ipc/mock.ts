@@ -2,9 +2,10 @@
 // Mock em memória do contrato IPC, para navegar a UI sem backend (npm run dev no navegador).
 // Mesma interface (MiupyApi) do cliente real. Dados fictícios.
 import type { MiupyApi } from './api';
+import { isWaitingNetwork } from './download';
 import type {
-  ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist, YtDlpStatus,
-  Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
+  ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist, YtDlpStatus,
+  EqPreset, Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
 } from './types';
 
 const MIN = 60_000;
@@ -19,7 +20,9 @@ function mockArt(seed: number): string {
 function err(code: string, message: string): never {
   throw { code, message };
 }
-const wait = (ms = 70) => new Promise((r) => setTimeout(r, ms));
+/** `?latency=ms` soma atraso a toda chamada do mock: serve para ver os esqueletos (RNF-11). */
+const extraLatency = typeof location === 'undefined' ? 0 : Number(new URLSearchParams(location.search).get('latency')) || 0;
+const wait = (ms = 70) => new Promise((r) => setTimeout(r, ms + extraLatency));
 let seq = 1000;
 const uid = (p: string) => `${p}-${(seq++).toString(16).padStart(6, '0')}`;
 
@@ -72,10 +75,19 @@ const LYRICS_SYNCED = `[00:00.00] (introdução)
 [01:50.00] A noite sobe devagar sobre a pedra
 [01:58.00] e o chão ainda guarda o calor do dia`;
 
+/** `?perfTracks=N` (RNF-13): replica o acervo de exemplo para medir com uma discoteca de verdade. */
+function perfTrackCount(): number {
+  const n = typeof location === 'undefined' ? 0 : Number(new URLSearchParams(location.search).get('perfTracks'));
+  return Number.isFinite(n) && n > TITLES.length ? Math.min(n, 5000) : TITLES.length;
+}
+
 function buildTracks(): Track[] {
   const r = rng(7);
   const now = Date.now();
-  return TITLES.map(([ai, title, album, secs], i) => {
+  const count = perfTrackCount();
+  return Array.from({ length: count }, (_, i) => [...TITLES[i % TITLES.length], i] as const).map(([ai, title0, album, secs, i0]) => {
+    const i = i0;
+    const title = i < TITLES.length ? title0 : `${title0} ${Math.floor(i / TITLES.length) + 1}`;
     const a = ARTISTS[ai];
     const status = r() < 0.7 ? 'done' : r() < 0.5 ? 'none' : 'queued';
     const dl = i % 9 === 8 ? 'error' : status;
@@ -95,12 +107,12 @@ function buildTracks(): Track[] {
       isFavorite: r() < 0.25,
       downloadStatus: dl === 'queued' ? 'none' : dl,
       addedAt: now - Math.floor(r() * 200) * DAY,
-      genres: [...a.genres], releaseYear: 2018 + i % 8,
+      genres: [...a.genres], releaseYear: 2018 + i % 8, loudnessLufs: dl === 'done' ? -16 + i % 8 : null, thumbnailUrl: null,
     } satisfies Track;
   });
 }
 
-const YT_POOL: Omit<SearchResult, 'inLibrary'>[] = [
+const YT_POOL: Omit<SearchResult, 'inLibrary' | 'trackId' | 'isFavorite'>[] = [
   { sourceId: 'yt-n01', title: 'Vulcão (ao vivo)', artist: 'Aurora Basalto', durationMs: 262000, thumbnailUrl: null },
   { sourceId: 'yt-n02', title: 'Rio de Fogo', artist: 'Marés de Obsidiana', durationMs: 215000, thumbnailUrl: null },
   { sourceId: 'yt-n03', title: 'Lava Lamp', artist: 'Noite de Magma', durationMs: 244000, thumbnailUrl: null },
@@ -115,19 +127,35 @@ export function createMockApi(): MiupyApi {
   let tracks = buildTracks();
   const now = Date.now();
   let playlists: (Playlist & { ids: string[] })[] = [
-    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
-    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
-    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
+    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
+    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
+    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
   ];
+  playlists[2].ids.push(...tracks.filter((t) => t.isFavorite && !playlists[2].ids.includes(t.id)).map((t) => t.id));
+  tracks.forEach((t) => { t.isFavorite = playlists[2].ids.includes(t.id); });
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto' };
+  // @req RF-33
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat', sidebarWidth: 280, favoritesPlaylistId: 'pl-3' };
+  // @req RF-29
+  const presets: EqPreset[] = [
+    ['flat','Plano',[0,0,0,0,0,0,0,0]], ['bass','Graves',[6,5,3,1,0,0,0,0]],
+    ['treble','Agudos',[0,0,0,0,1,3,5,6]], ['vocal','Vocal',[-2,-1,0,2,4,4,2,0]],
+    ['rock','Rock',[4,3,-1,-2,-1,2,4,5]], ['pop','Pop',[-1,1,3,4,3,0,-1,-1]],
+    ['electronic','Eletrônica',[5,4,1,0,-1,2,3,4]], ['acoustic','Acústico',[3,2,1,1,2,2,3,2]],
+  ].map(([id,name,gainsDb]) => ({id:id as string,name:name as string,gainsDb:gainsDb as number[],builtin:true}));
+  let eqSeq = 0;
+  let searchHistory: string[] = ['Daft Punk', 'Björk', 'Sigur Rós']; // @req RF-34
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
+  // @req RF-32
+  let metadataStatus: MetadataRefreshStatus = { running: false, done: 0, total: 0, failed: 0, currentTrackId: null, startedAt: null, finishedAt: null };
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
 
   const listeners = new Map<string, Set<(p: never) => void>>();
   const emit = <E extends EventName>(e: E, p: EventMap[E]) => listeners.get(e)?.forEach((h) => h(p as never));
+  // RNF-13: o medidor (lib/dev/perf.ts) dispara eventos por aqui para simular rajadas.
+  if (typeof window !== 'undefined') (window as unknown as { __miupyMockEmit: unknown }).__miupyMockEmit = emit;
 
   const plays = new Map<string, number>();
   const r0 = rng(21);
@@ -144,6 +172,7 @@ export function createMockApi(): MiupyApi {
   playlists.forEach(refreshPl);
   const plOut = (p: Playlist & { ids: string[] }): Playlist => {
     refreshPl(p);
+    p.isFavorites = settings.favoritesPlaylistId === p.id;
     const { ids: _ids, ...rest } = p;
     return rest;
   };
@@ -253,6 +282,14 @@ export function createMockApi(): MiupyApi {
     return out;
   }
 
+  // @req RF-31
+  function autoEnqueue(p: Playlist & { ids: string[] }, ids: string[], reason: 'enabled' | 'added') {
+    if (!p.autoDownload) return;
+    const pending = [...new Set(ids)].filter((id) => ['none', 'error'].includes(byId(id).downloadStatus));
+    enqueue(pending);
+    emit('download://auto', { playlistId: p.id, count: pending.length, reason });
+  }
+
   const artistTracks = (id: string) => tracks.filter((t) => t.artistId === id);
 
   const api: MiupyApi = {
@@ -284,17 +321,26 @@ export function createMockApi(): MiupyApi {
     },
     async playerSetVolume({ volume }) { player.volume = Math.max(0, Math.min(1, volume)); settings.volume = player.volume; return pushState(); },
     async playerSetMuted({ muted }) { player.muted = muted; return pushState(); },
-    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24
+    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24: aceita off, random e surfle
     async playerGetQueue() { return player.queue.map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t).map((t) => ({ ...t })); },
 
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },
     async libraryGetTrack({ trackId }) { return { ...byId(trackId) }; },
     async libraryListTracksByArtist({ artistId, query }) { return applyQuery(artistTracks(artistId), query).map((t) => ({ ...t })); },
+    // @req RF-04 RF-30
     async librarySetFavorite({ trackId, favorite }) {
       const t = byId(trackId);
-      t.isFavorite = favorite;
+      if (favorite && !settings.favoritesPlaylistId) {
+        const p = { id: uid('pl'), name: 'Favoritas', description: null, coverPath: null, mosaicPaths: [], isFavorites: true, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+        playlists.push(p); settings.favoritesPlaylistId = p.id;
+      }
+      const p = settings.favoritesPlaylistId ? getPl(settings.favoritesPlaylistId) : null;
+      const addedFavorite = !!p && favorite && !p.ids.includes(trackId);
+      if (p) p.ids = favorite ? [...new Set([...p.ids, trackId])] : p.ids.filter((id) => id !== trackId);
+      if (addedFavorite && p) autoEnqueue(p, [trackId], 'added');
+      t.isFavorite = !!p?.ids.includes(trackId);
       if (player.track?.id === trackId) { player.track = { ...t }; pushState(); }
-      changed('favorite');
+      changed('favorites');
       return { ...t };
     },
     async libraryDeleteTrack({ trackId, deleteFile }) {
@@ -306,23 +352,36 @@ export function createMockApi(): MiupyApi {
     },
 
     async playlistList() { await wait(); return playlists.map(plOut); },
+    // @req RF-30
+    async favoritesSetPlaylist({ playlistId }) {
+      const target = getPl(playlistId);
+      if (settings.favoritesPlaylistId === playlistId) return plOut(target);
+      const old = settings.favoritesPlaylistId ? getPl(settings.favoritesPlaylistId) : null;
+      for (const id of old?.ids ?? []) if (!target.ids.includes(id)) target.ids.push(id);
+      settings.favoritesPlaylistId = playlistId;
+      tracks.forEach((t) => { t.isFavorite = target.ids.includes(t.id); });
+      changed('favorites');
+      return plOut(target);
+    },
     async playlistCreate({ name, description }) {
       if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.');
       if (playlists.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) err('conflict', 'Já existe uma playlist com esse nome.');
-      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], isFavorites: false, autoDownload: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
       playlists.push(p);
       changed('playlist');
       return plOut(p);
     },
-    async playlistUpdate({ playlistId, name, description }) {
+    async playlistUpdate({ playlistId, name, description, autoDownload }) {
       const p = getPl(playlistId);
       if (name !== undefined) { if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.'); p.name = name.trim(); }
       if (description !== undefined) p.description = description.trim() || null;
+      // @req RF-31
+      if (autoDownload !== undefined) { const was = p.autoDownload; p.autoDownload = autoDownload; if (autoDownload && !was) autoEnqueue(p, p.ids, 'enabled'); }
       p.updatedAt = Date.now();
       changed('playlist');
       return plOut(p);
     },
-    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); changed('playlist'); },
+    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); if (settings.favoritesPlaylistId === playlistId) { settings.favoritesPlaylistId = null; tracks.forEach((t) => { t.isFavorite = false; }); changed('favorites'); } changed('playlist_deleted'); },
     async playlistGetTracks({ playlistId, query }) {
       await wait();
       const p = getPl(playlistId);
@@ -331,14 +390,18 @@ export function createMockApi(): MiupyApi {
     },
     async playlistAddTracks({ playlistId, trackIds }) {
       const p = getPl(playlistId);
-      for (const id of trackIds) { byId(id); if (!p.ids.includes(id)) p.ids.push(id); }
+      const added: string[] = [];
+      for (const id of trackIds) { byId(id); if (!p.ids.includes(id)) { p.ids.push(id); added.push(id); } }
+      autoEnqueue(p, added, 'added');
       p.updatedAt = Date.now();
+      if (p.id === settings.favoritesPlaylistId) { tracks.forEach((t) => { t.isFavorite = p.ids.includes(t.id); }); changed('favorites'); }
       changed('playlist');
       return plOut(p);
     },
     async playlistRemoveTracks({ playlistId, trackIds }) {
       const p = getPl(playlistId);
       p.ids = p.ids.filter((i) => !trackIds.includes(i));
+      if (p.id === settings.favoritesPlaylistId) { tracks.forEach((t) => { t.isFavorite = p.ids.includes(t.id); }); changed('favorites'); }
       p.updatedAt = Date.now();
       changed('playlist');
       return plOut(p);
@@ -361,10 +424,13 @@ export function createMockApi(): MiupyApi {
       await wait(500);
       const q = query.trim().toLowerCase();
       if (!q) err('invalid_input', 'Digite algo para buscar.');
+      const shown = query.split(/\s+/).filter(Boolean).join(' '); // @req RF-34 (como o Rust: sem espaços extras, caixa nem acento)
+      const key = (v: string) => v.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('pt-BR');
+      searchHistory = [shown, ...searchHistory.filter((h) => key(h) !== key(shown))].slice(0, 50);
       const lib = tracks.filter((t) => [t.title, t.artistName].some((v) => v?.toLowerCase().includes(q)));
-      const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true }));
-      const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId) }));
-      const rest = pool.filter((p) => `${p.title} ${p.artist}`.toLowerCase().includes(q));
+      const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true, trackId: t.id, isFavorite: t.isFavorite }));
+      const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId), trackId: youtubeIds.get(p.sourceId) ?? null, isFavorite: tracks.find((t) => t.id === youtubeIds.get(p.sourceId))?.isFavorite ?? false }));
+      const rest = pool.filter((p) => `${p.title} ${p.artist}`.toLowerCase().includes(q) && !lib.some((t) => t.sourceId === p.sourceId));
       const extra = rest.length ? [] : pool.slice(0, 3); // consulta sem correspondência: sugere algo
       return [...fromLib, ...rest, ...extra].slice(0, limit ?? 20);
     },
@@ -377,6 +443,8 @@ export function createMockApi(): MiupyApi {
         .concat(['', ' ao vivo', ' acústico', ' letra', ' álbum completo'].map((s) => query.trim() + s))
         .filter((x, i, all) => all.indexOf(x) === i).slice(0, 8);
     },
+    async youtubeSearchHistory() { return searchHistory.slice(0, 10); }, // @req RF-34
+    async youtubeSearchHistoryClear() { searchHistory = []; }, // @req RF-34
     async ytdlpStatus() { return { ...ytdlp }; }, // @req RF-26
     async ytdlpUpdate() {
       ytdlp = { ...ytdlp, state: 'downloading', progress: 0, error: null }; emit('ytdlp://status', { ...ytdlp });
@@ -395,12 +463,12 @@ export function createMockApi(): MiupyApi {
         if (ex) { out.push({ ...ex }); continue; }
         const src = YT_POOL.find((p) => p.sourceId === sid) ?? err('not_found', 'Resultado não encontrado.');
         const art = ARTISTS.find((a) => a.name === src.artist);
-        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null };
+        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null, loudnessLufs: null, thumbnailUrl: null };
         tracks.push(t);
         youtubeIds.set(sid, t.id);
         out.push({ ...t });
       }
-      if (playlistId) { const p = getPl(playlistId); out.forEach((t) => !p.ids.includes(t.id) && p.ids.push(t.id)); }
+      if (playlistId) { const p = getPl(playlistId); const added: string[] = []; out.forEach((t) => { if (!p.ids.includes(t.id)) { p.ids.push(t.id); added.push(t.id); } }); autoEnqueue(p, added, 'added'); }
       changed('youtube-add');
       return out;
     },
@@ -408,26 +476,44 @@ export function createMockApi(): MiupyApi {
     async downloadEnqueue({ trackIds }) { await wait(40); return enqueue(trackIds); },
     async downloadEnqueuePlaylist({ playlistId }) { await wait(40); return enqueue(getPl(playlistId).ids); },
     async downloadList() { await wait(30); return jobs.map((j) => ({ ...j })); },
-    async downloadClearFinished() { const n = jobs.filter((j) => j.status === 'done' || j.status === 'error').length; jobs = jobs.filter((j) => j.status !== 'done' && j.status !== 'error'); return n; },
+    async downloadClearFinished() { // @req RF-31
+      for (const j of jobs) if (isWaitingNetwork(j) && !playlists.some((p) => p.autoDownload && p.ids.includes(j.trackId))) j.error = j.error?.slice('auto_offline:'.length) ?? null;
+      const n = jobs.filter((j) => j.status === 'done' || (j.status === 'error' && !isWaitingNetwork(j))).length;
+      jobs = jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || isWaitingNetwork(j)));
+      return n;
+    },
     async downloadCancel({ jobId }) {
       const j = jobs.find((x) => x.id === jobId) ?? err('not_found', 'Download não encontrado.');
-      if (j.status === 'queued' || j.status === 'downloading') {
-        j.status = 'error'; j.error = 'Cancelado pelo usuário.';
+      if (j.status !== 'done') {
+        jobs = jobs.filter((x) => x.id !== jobId);
         const t = tracks.find((x) => x.id === j.trackId);
         if (t) t.downloadStatus = 'none';
-        emit('download://progress', { ...j });
+        emit('download://progress', { ...j, status: 'none', error: null });
         changed('download');
       }
     },
 
     async metadataRefreshTrack({ trackId }) { await wait(400); const t = byId(trackId); if (!t.album) t.album = 'Single'; changed('metadata'); return { ...t }; },
-    async metadataRefreshLibrary({ onlyMissing = true }) { // @req RF-12 RF-20
-      const total = onlyMissing ? tracks.filter((t) => !t.album).length : tracks.length;
-      for (let done = 1; done <= total; done++) {
-        await wait(50); emit('metadata://progress', { done, total });
-      }
-      changed('metadata'); return total;
+    async metadataRefreshLibrary({ onlyMissing = true }) { // @req RF-12 RF-20 RF-32
+      if (metadataStatus.running) err('conflict', 'Um reprocessamento já está em andamento.');
+      const batch = onlyMissing ? tracks.filter((t) => !t.album) : [...tracks];
+      metadataStatus = { running: true, done: 0, total: batch.length, failed: 0, currentTrackId: null, startedAt: Date.now(), finishedAt: null };
+      emit('metadata://progress', { ...metadataStatus });
+      void (async () => {
+        for (const [index, track] of batch.entries()) {
+          metadataStatus.currentTrackId = track.id;
+          await wait(50);
+          if (!track.album) track.album = 'Single';
+          metadataStatus.done = index + 1;
+          emit('metadata://progress', { ...metadataStatus });
+        }
+        changed('metadata');
+        metadataStatus = { ...metadataStatus, running: false, currentTrackId: null, finishedAt: Date.now() };
+        emit('metadata://progress', { ...metadataStatus });
+      })();
+      return batch.length;
     },
+    async metadataRefreshStatus() { return { ...metadataStatus }; }, // @req RF-32
     async metadataGetArtist({ artistId }) {
       await wait();
       const a = ARTISTS.find((x) => x.id === artistId) ?? err('not_found', 'Artista não encontrado.');
@@ -523,9 +609,30 @@ export function createMockApi(): MiupyApi {
       profile.avatarPath = image ? `data:${image.mimeType};base64,${image.dataBase64}` : null;
       return { ...profile };
     },
+    async equalizerListPresets() { return presets.map(p => ({...p,gainsDb:[...p.gainsDb]})); },
+    async equalizerSavePreset({preset}) {
+      const name=preset.name.trim();
+      if (!name || [...name].length>30 || preset.gainsDb.length!==8 || preset.gainsDb.some(v=>!Number.isFinite(v)||v < -12||v > 12) || (preset.id && presets.find(p=>p.id===preset.id)?.builtin)) err('invalid_input','Perfil inválido.');
+      const existing=preset.id ? presets.find(p=>p.id===preset.id) : undefined;
+      if (preset.id && !existing) err('not_found','Perfil não encontrado.');
+      if (presets.some(p=>p.id!==preset.id && p.name.toLocaleLowerCase()===name.toLocaleLowerCase())) err('conflict','Nome já usado.');
+      if (!preset.id && presets.length>=11) err('conflict','Limite de três perfis.');
+      const saved={id:preset.id ?? `eq-${++eqSeq}`,name,gainsDb:[...preset.gainsDb],builtin:false};
+      if (existing) Object.assign(existing,saved); else presets.push(saved);
+      return {...saved};
+    },
+    async equalizerDeletePreset({presetId}) {
+      const i=presets.findIndex(p=>p.id===presetId);
+      if (i<0) err('not_found','Perfil não encontrado.');
+      if (presets[i].builtin) err('invalid_input','Perfil pronto não pode ser apagado.');
+      presets.splice(i,1);
+      if(settings.eqPresetId===presetId) settings.eqPresetId='flat';
+    },
     async settingsGet() { await wait(20); return { ...settings }; },
     async settingsUpdate({ settings: s }) {
+      if (s.eqPresetId && !presets.some(p=>p.id===s.eqPresetId)) err('not_found','Perfil não encontrado.');
       settings = { ...settings, ...s };
+      if (s.sidebarWidth !== undefined) settings.sidebarWidth = Math.max(220, Math.min(400, Math.round(s.sidebarWidth)));
       if (s.volume !== undefined) { player.volume = s.volume; pushState(); }
       return { ...settings };
     },

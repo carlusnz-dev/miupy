@@ -1,22 +1,24 @@
 <script lang="ts">
-  // @req RF-25 RNF-04
+  // @req RF-25 RNF-04 RNF-11
   import { onMount } from 'svelte';
   import { dna } from '../lib/stores/dna.svelte';
   import { fmtDuration } from '../lib/util/format';
   import { fmtScore } from '../lib/stores/scores.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import PageHeader from '../lib/components/PageHeader.svelte';
+  import Dropdown from '../lib/components/Dropdown.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   onMount(() => { void dna.load(); });
+  const windows = [7, 30, 90, 365].map((d) => ({ value: d, label: `${d} dias` }));
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 </script>
 <PageHeader title="DNA" subtitle="O que você mais ouviu e como seu gosto mudou." />
-<label class="mb-5 flex items-center gap-3 text-sm">Período
-  <select class="field !w-auto" value={String(dna.windowDays)} onchange={(e) => dna.load(Number(e.currentTarget.value))}>
-    <option value="7">7 dias</option><option value="30">30 dias</option><option value="90">90 dias</option><option value="365">365 dias</option>
-  </select>
-</label>
-{#if dna.loading && !dna.data}<State kind="loading" />
+<div class="mb-5 flex items-center gap-3 text-sm">
+  <span>Período</span>
+  <Dropdown label="Período" value={dna.windowDays} options={windows} onchange={(days) => dna.load(days)} />
+</div>
+{#if dna.loading && !dna.data}<SkeletonList variant="stats" count={3} label="Calculando seu DNA" />
 {:else if dna.error}<State kind="error" text={dna.error} onretry={() => dna.load()} />
 {:else if !dna.data || (dna.data.listenedMs === 0 && dna.data.topArtists.length === 0 && dna.data.topGenres.length === 0)}<State kind="empty" title="Seu DNA ainda está se formando" text="Ouça algumas faixas para ver seus artistas, gêneros e tendências." />
 {:else}

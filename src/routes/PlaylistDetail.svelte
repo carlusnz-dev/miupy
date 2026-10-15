@@ -1,9 +1,13 @@
 <script lang="ts">
   // @req RF-19
   // Detalhe da playlist: faixas, busca/ordenação, reordenar, remover, baixar tudo.
-  // @req RF-06 RF-07 RF-08 RF-11
-  import { api, errorMessage, type Playlist, type SortDir, type Track, type TrackSort } from '../lib/ipc';
+  // @req RF-06 RF-07 RF-08 RF-11 RNF-11 RNF-13
+  import { untrack } from 'svelte';
+  import { api, type Playlist, type SortDir, type Track, type TrackSort } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
+  import { Resource } from '../lib/stores/resource.svelte';
+  import { mergeList } from '../lib/util/diff';
+  import { Chunked } from '../lib/util/chunked.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { Selection } from '../lib/stores/selection.svelte';
   import { navigate, href, paths } from '../lib/stores/router.svelte';
@@ -17,6 +21,8 @@
   import PlaylistCover from '../lib/components/PlaylistCover.svelte';
   import { readImageUpload } from '../lib/util/imageUpload';
   import State from '../lib/components/State.svelte';
+  import Skeleton from '../lib/components/Skeleton.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Recommendations from '../lib/components/Recommendations.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
@@ -28,28 +34,42 @@
   let sortBy = $state<TrackSort>('position');
   let sortDir = $state<SortDir>('asc');
   let favoritesOnly = $state(false);
-  let tracks = $state<Track[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
   let editing = $state<{ playlist: Playlist | null } | null>(null);
   const sel = new Selection();
 
+  // O cabeçalho vem das playlists em cache na store; só a lista de faixas tem consulta própria, com
+  // cache por consulta (RNF-11). library://changed troca apenas as linhas que mudaram (RNF-13).
+  const res = new Resource<Track[]>(['tracks'], mergeList((t: Track) => t.id));
+  const tracks = $derived(res.data ?? []);
+  const loading = $derived(res.loading);
+  const error = $derived(res.data === undefined ? res.error : null);
+  $effect(() => res.attach());
+
   const pl = $derived(library.playlists.find((p) => p.id === id));
+  let autoDownloadOverride = $state<boolean | null>(null);
+  const autoDownloadChecked = $derived(autoDownloadOverride ?? pl?.autoDownload ?? false);
   const canReorder = $derived(sortBy === 'position' && !search.trim() && !favoritesOnly);
   const queue = $derived(tracks.map((t) => t.id));
+  const chunk = new Chunked();
+  $effect(() => chunk.advance(tracks.length));
+  const rows = $derived(tracks.slice(0, chunk.shown));
 
-  async function load() {
-    try {
-      tracks = await api.playlistGetTracks({ playlistId: id, query: { search: search.trim() || undefined, sortBy, sortDir, favoritesOnly } });
-      error = null;
-      sel.set(sel.ids.filter((x) => tracks.some((t) => t.id === x)));
-    } catch (e) { error = errorMessage(e); } finally { loading = false; }
-  }
   $effect(() => {
-    library.version; sortBy; sortDir; favoritesOnly;
-    const q = search;
-    const t = setTimeout(load, q ? 200 : 0);
+    sortBy; sortDir; favoritesOnly;
+    const q = search.trim();
+    const query = { search: q || undefined, sortBy, sortDir, favoritesOnly };
+    const run = () => { void res.load(`playlist:${id}:${JSON.stringify(query)}`, () => api.playlistGetTracks({ playlistId: id, query })); };
+    if (!q) { run(); return; }
+    const t = setTimeout(run, 200);
     return () => clearTimeout(t);
+  });
+  $effect(() => {
+    const list = tracks;
+    untrack(() => {
+      const present = new Set(list.map((t) => t.id));
+      const kept = sel.ids.filter((x) => present.has(x));
+      if (kept.length !== sel.ids.length) sel.set(kept);
+    });
   });
 
   async function remove(ids: string[]) {
@@ -59,9 +79,28 @@
     if (newPosition < 0 || newPosition >= tracks.length) return;
     try { await api.playlistMoveTrack({ playlistId: id, trackId, newPosition }); } catch (e) { notifyError(e); }
   }
+  // @req RF-30
+  async function markFavorites() {
+    if (!pl || pl.isFavorites) return;
+    try { await api.favoritesSetPlaylist({ playlistId: id }); await library.reloadPlaylists(); notify('Playlist marcada como favoritas.'); }
+    catch (e) { notifyError(e); }
+  }
   async function destroy() {
-    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
+    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.${pl.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: id }); navigate(paths.playlists); } catch (e) { notifyError(e); }
+  }
+  // @req RF-31
+  async function setAutoDownload(enabled: boolean) {
+    const previous = autoDownloadChecked;
+    autoDownloadOverride = enabled;
+    try {
+      await api.playlistUpdate({ playlistId: id, autoDownload: enabled });
+      await library.reloadPlaylists();
+      autoDownloadOverride = null;
+    } catch (e) {
+      autoDownloadOverride = previous;
+      notifyError(e);
+    }
   }
 
   // arrastar e soltar (desktop; no toque, use os botões subir/descer)
@@ -73,15 +112,19 @@
   let dragId = $state<string | null>(null);
 </script>
 
-{#if !pl && !loading && error}
+{#if !pl && error}
   <State kind="error" title="Playlist não encontrada" text={error} />
 {:else}
   <MeshGradient class="mb-5 rounded-2xl border border-line" intensity={0.8}>
     <div class="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-end md:p-6">
-      {#if pl}<PlaylistCover playlist={pl} size={144} shared={`playlist-cover-${pl.id}`} />{/if}
+      {#if pl}<PlaylistCover playlist={pl} size={144} shared={`playlist-cover-${pl.id}`} />{:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
       <div class="min-w-0 flex-1">
-        <p class="eyebrow !text-fg/70">Playlist</p>
-        <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl" use:useShared={pl ? `playlist-title-${pl.id}` : ''}>{pl?.name ?? '…'}</h1>
+        <p class="eyebrow !text-fg/70">{pl?.isFavorites ? "Playlist de favoritas" : "Playlist"}</p>
+        {#if pl}
+          <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl" use:useShared={`playlist-title-${pl.id}`}>{pl.name}</h1>
+        {:else}
+          <Skeleton w="min(18rem, 70%)" h="2.25rem" class="my-1" />
+        {/if}
         {#if pl?.description}<p class="mt-1 text-sm text-fg/80">{pl.description}</p>{/if}
         {#if pl}<p class="mt-1 text-sm text-fg/70">{pl.trackCount} faixas · {fmtDuration(pl.totalDurationMs)}</p>{/if}
       </div>
@@ -91,10 +134,16 @@
   <div class="mb-4 flex flex-wrap items-center gap-2">
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar</button>
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
+    <!-- @req RF-31 -->
+    <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">
+      <input type="checkbox" checked={autoDownloadChecked} disabled={!pl} onchange={(e) => setAutoDownload(e.currentTarget.checked)} />
+      Baixar automaticamente
+    </label>
     <button class="btn" onclick={() => (editing = { playlist: pl ?? null })} disabled={!pl}><Icon name="edit" size={16} />Renomear</button>
     <input bind:this={coverInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher capa" onchange={(e) => { const file = e.currentTarget.files?.[0]; if (file) void setCover(file); e.currentTarget.value = ''; }} />
     <button class="btn" disabled={!pl} onclick={() => coverInput?.click()}>Escolher capa</button>
     {#if pl?.coverPath}<button class="btn" onclick={() => setCover(null)}>Remover capa</button>{/if}
+    {#if pl && !pl.isFavorites}<button class="btn" onclick={markFavorites}><Icon name="heart" size={16} />Marcar como favoritas</button>{/if}
     <button class="btn btn-danger" onclick={destroy} disabled={!pl}><Icon name="trash" size={16} />Apagar</button>
     <a class="btn ml-auto" href={href(paths.playlists)}><Icon name="left" size={16} />Playlists</a>
   </div>
@@ -112,9 +161,9 @@
   {/if}
 
   {#if loading}
-    <State kind="loading" />
+    <SkeletonList variant="tracks" count={8} label="Carregando as faixas da playlist" />
   {:else if error}
-    <State kind="error" text={error} onretry={load} />
+    <State kind="error" text={error} onretry={() => res.reload()} />
   {:else if tracks.length === 0}
     {#if search.trim() || favoritesOnly}
       <State kind="empty" icon="search" title="Nenhuma faixa encontrada" text="Ajuste a busca ou o filtro." />
@@ -125,7 +174,7 @@
     {/if}
   {:else}
     <div role="list">
-      {#each tracks as t, i (t.id)}
+      {#each rows as t, i (t.id)}
         <TrackRow track={t} index={i} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
           current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)}
           draggable={canReorder}
@@ -144,6 +193,7 @@
         </TrackRow>
       {/each}
     </div>
+    {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}
     {#if !canReorder}<p class="mt-3 text-xs text-faint">Para reordenar, ordene por "Ordem da playlist" e limpe a busca e o filtro.</p>{/if}
   {/if}
 {/if}

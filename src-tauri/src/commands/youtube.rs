@@ -18,20 +18,59 @@ pub async fn youtube_search(
     state.youtube.search(&query, limit).await
 }
 
-// @req RF-09
+// @req RF-09 RF-31
 #[tauri::command]
 pub async fn youtube_add_to_library(
     state: State<'_, AppState>,
     source_ids: Vec<String>,
     playlist_id: Option<String>,
 ) -> R<Vec<Track>> {
-    state.youtube.add_to_library(source_ids, playlist_id).await
+    let before = if let Some(id) = &playlist_id {
+        let id = id.clone();
+        state
+            .db
+            .run(move |db| {
+                Ok(db
+                    .playlist_tracks(&id, &miupy_core::TrackQuery::default())?
+                    .into_iter()
+                    .map(|t| t.id)
+                    .collect::<std::collections::HashSet<_>>())
+            })
+            .await?
+    } else {
+        Default::default()
+    };
+    let tracks = state
+        .youtube
+        .add_to_library(source_ids, playlist_id.clone())
+        .await?;
+    if let Some(id) = playlist_id {
+        let added = tracks
+            .iter()
+            .filter(|t| !before.contains(&t.id))
+            .map(|t| t.id.clone())
+            .collect();
+        crate::auto_download::enqueue(&state, id, Some(added), "added").await?;
+    }
+    Ok(tracks)
 }
 
 // @req RF-23
 #[tauri::command]
 pub async fn youtube_suggest(query: String) -> R<Vec<String>> {
     Ok(miupy_media::suggest(&query).await?)
+}
+
+// @req RF-34
+#[tauri::command]
+pub async fn youtube_search_history(state: State<'_, AppState>) -> R<Vec<String>> {
+    state.db.run(|db| Ok(db.recent_searches()?)).await
+}
+
+// @req RF-34
+#[tauri::command]
+pub async fn youtube_search_history_clear(state: State<'_, AppState>) -> R<()> {
+    state.db.run(|db| Ok(db.clear_search_history()?)).await
 }
 
 // @req RF-26

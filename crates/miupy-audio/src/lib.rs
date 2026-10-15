@@ -8,13 +8,21 @@
 //! ponto de extensão é implementar `AudioBackend` por cima da ponte do plugin
 //! e devolvê-lo em [`create_default_backend`].
 
+#[cfg(not(target_os = "android"))]
+mod dsp;
+#[cfg(not(target_os = "android"))]
+mod equalizer;
 mod error;
+#[cfg(not(target_os = "android"))]
+mod loudness;
 mod null;
 #[cfg(not(target_os = "android"))]
 mod rodio_backend;
 mod types;
 
 pub use error::{AudioError, Result};
+#[cfg(not(target_os = "android"))]
+pub use loudness::{LoudnessMeasurement, measure_file};
 pub use null::NullBackend;
 #[cfg(not(target_os = "android"))]
 pub use rodio_backend::RodioBackend;

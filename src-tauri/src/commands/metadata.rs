@@ -1,6 +1,7 @@
 use miupy_core::{ArtistInfo, Lyrics, Track};
 use tauri::State;
 
+use crate::dto::MetadataRefreshStatus;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -33,4 +34,10 @@ pub async fn metadata_refresh_library(
     state
         .metadata
         .enqueue_library_refresh(only_missing.unwrap_or(true))
+}
+
+// @req RF-32
+#[tauri::command]
+pub fn metadata_refresh_status(state: State<'_, AppState>) -> MetadataRefreshStatus {
+    state.metadata.refresh_status()
 }

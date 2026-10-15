@@ -48,6 +48,28 @@ impl Default for YtDlpResolver {
     }
 }
 
+/// `ETXTBSY` ("Text file busy"); o mesmo número no Linux, macOS e BSDs.
+const ETXTBSY: i32 = 26;
+
+// @req RF-10 RF-26
+/// Repete o `spawn` quando o executável acabou de ser gravado e ainda está "ocupado".
+///
+/// Logo depois de gravar o binário (instalação/atualização do yt-dlp, ou o script dos testes),
+/// outra thread que faz `fork` pode herdar o descritor de escrita até o `exec` do filho dela; nesse
+/// intervalo o `exec` do binário falha com `ETXTBSY`. A janela é curta: algumas tentativas resolvem.
+async fn retry_text_busy<T>(mut spawn: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut attempt = 0;
+    loop {
+        match spawn() {
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) && attempt < 5 => {
+                attempt += 1;
+                tokio::time::sleep(Duration::from_millis(20 * attempt)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
 impl YtDlpResolver {
     /// Usa `yt-dlp` do `PATH`.
     pub fn new() -> Self {
@@ -128,7 +150,12 @@ impl YtDlpResolver {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let fut = cmd.output();
+        let fut = async {
+            retry_text_busy(|| cmd.spawn())
+                .await?
+                .wait_with_output()
+                .await
+        };
         let out = match tokio::time::timeout(timeout, fut).await {
             Err(_) => return Err(MediaError::Network("yt-dlp excedeu o tempo limite".into())),
             Ok(Err(e)) => return Err(self.map_spawn_error(e)),
@@ -162,13 +189,14 @@ impl MediaResolver for YtDlpResolver {
         tokio::fs::create_dir_all(&request.dest_dir).await?;
         let args = download_args(&request.video_id, &request.dest_dir, &request.file_stem);
 
-        let mut child = Command::new(&self.binary)
-            .args(&args)
+        let mut cmd = Command::new(&self.binary);
+        cmd.args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
+            .kill_on_drop(true);
+        let mut child = retry_text_busy(|| cmd.spawn())
+            .await
             .map_err(|e| self.map_spawn_error(e))?;
 
         let stdout = child.stdout.take().expect("stdout piped");
@@ -570,6 +598,8 @@ fn parse_video_metadata(v: &Value) -> VideoMetadata {
     }
     genres.truncate(8);
     VideoMetadata {
+        channel: field("channel").or_else(|| field("uploader")),
+        raw_title: field("title"),
         artist: field("artist").or_else(|| field("creator")),
         track: field("track"),
         album: field("album"),
@@ -824,6 +854,7 @@ mod tests {
         assert_eq!(stream.expires_at, Some(1791910000));
         assert!(stream.http_headers.contains_key("User-Agent"));
         let meta = parse_video_metadata(&video);
+        assert_eq!(meta.raw_title.as_deref(), Some("Me at the zoo"));
         assert!(meta.genres.contains(&"film & animation".into()));
         assert!(meta.release_year.is_none());
         let mut unsupported = video;
@@ -889,6 +920,10 @@ mod tests {
             assert_eq!(track.album.as_deref(), Some(expected_album));
         }
         let structured = serde_json::json!({"title":"Racionais - álbum - cru", "channel":"Racionais - Topic", "track":"Estruturada", "artist":"Artista estruturado", "album":"Álbum estruturado", "release_year":2003});
+        assert_eq!(
+            parse_video_metadata(&structured).channel.as_deref(),
+            Some("Racionais - Topic")
+        );
         let track = corrected_track(&structured);
         assert_eq!(track.title, "Estruturada");
         assert_eq!(track.artist, "Artista estruturado");
@@ -1177,6 +1212,40 @@ mod tests {
             assert!(!out.path().join(format!("{stem}.m4a.part")).exists());
         }
 
+        // @test RF-10 RF-26
+        #[tokio::test]
+        async fn spawn_repete_quando_o_executavel_esta_ocupado() {
+            let mut calls = 0;
+            let r = retry_text_busy(|| {
+                calls += 1;
+                if calls < 3 {
+                    Err(std::io::Error::from_raw_os_error(ETXTBSY))
+                } else {
+                    Ok(calls)
+                }
+            })
+            .await;
+            assert_eq!(r.unwrap(), 3);
+
+            let mut calls = 0;
+            let r: std::io::Result<()> = retry_text_busy(|| {
+                calls += 1;
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            })
+            .await;
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+            assert_eq!(calls, 1, "outros erros não são repetidos");
+
+            let mut calls = 0;
+            let r: std::io::Result<()> = retry_text_busy(|| {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(ETXTBSY))
+            })
+            .await;
+            assert_eq!(r.unwrap_err().raw_os_error(), Some(ETXTBSY));
+            assert_eq!(calls, 6, "desiste depois de 5 repetições");
+        }
+
         // @test RF-10
         #[tokio::test]
         async fn falha_do_processo_vira_erro_tipado_e_limpa() {
@@ -1194,7 +1263,7 @@ mod tests {
                 .download_audio(DownloadRequest::new("dQw4w9WgXcQ", out.path(), "f2"))
                 .await
                 .unwrap_err();
-            assert_eq!(e.code(), "not_found");
+            assert_eq!(e.code(), "not_found", "{e:?}");
             assert!(!out.path().join("f2.m4a.part").exists());
         }
 

@@ -1,7 +1,9 @@
 <script lang="ts">
-  // @req RF-19
+  // @req RF-19 RNF-11 RNF-13
   // Início: resumo da discoteca e atalhos. @req RF-14 RF-05
-  import { api, errorMessage, type LibraryStats, type Track } from '../lib/ipc';
+  import { api, type LibraryStats, type Track } from '../lib/ipc';
+  import { mergeDeep, reconcileList } from '../lib/util/diff';
+  import { Resource } from '../lib/stores/resource.svelte';
   import { library } from '../lib/stores/library.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { profile } from '../lib/stores/profile.svelte';
@@ -12,23 +14,34 @@
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import Skeleton from '../lib/components/Skeleton.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Recommendations from '../lib/components/Recommendations.svelte';
 
-  let stats = $state<LibraryStats | null>(null);
-  let recent = $state<Track[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-
+  type HomeData = { stats: LibraryStats; recent: Track[] };
+  // Cache entre telas: ao voltar para o Início, o último resumo aparece na hora e atualiza em
+  // segundo plano; só o que mudou é trocado (RNF-11, RNF-13).
+  const res = new Resource<HomeData>(['tracks', 'stats'], (prev, next) => {
+    const stats = mergeDeep(prev?.stats, next.stats);
+    const recent = reconcileList(prev?.recent, next.recent, (t) => t.id);
+    return prev && prev.stats === stats && prev.recent === recent ? prev : { stats, recent };
+  });
+  res.prime('home');
+  const stats = $derived(res.data?.stats ?? null);
+  const recent = $derived(res.data?.recent ?? []);
+  const loading = $derived(res.loading);
+  const error = $derived(res.data === undefined ? res.error : null);
+  $effect(() => res.attach());
   async function load() {
-    try {
-      [stats, recent] = await Promise.all([
+    await res.load('home', async () => {
+      const [stats, recent] = await Promise.all([
         api.statsLibrary(),
         api.libraryListTracks({ query: { sortBy: 'addedAt', sortDir: 'desc' } }).then((l) => l.slice(0, 6)),
       ]);
-      error = null;
-    } catch (e) { error = errorMessage(e); } finally { loading = false; }
+      return { stats, recent };
+    });
   }
-  $effect(() => { library.version; void load(); });
+  $effect(() => { void load(); });
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
@@ -51,6 +64,11 @@
         {/each}
       </dl>
       <p class="mt-4 text-sm text-fg/80">{fmtDuration(stats.totalDurationMs)} de música, {fmtDuration(stats.totalListenedMs)} ouvidos no total.</p>
+    {:else if loading}
+      <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4" aria-hidden="true">
+        {#each [0, 1, 2, 3] as i (i)}<div><Skeleton w="3.5rem" h="0.65rem" class="mb-2" /><Skeleton w="4.5rem" h="1.5rem" /></div>{/each}
+      </div>
+      <Skeleton w="min(18rem, 80%)" h="0.8rem" class="mt-4" />
     {/if}
     {#if player.active}
       <a class="btn btn-primary mt-5" href={href(paths.nowPlaying)}><Icon name="play" size={16} fill />Voltar ao que está tocando</a>
@@ -70,7 +88,10 @@
 </section>
 
 {#if loading}
-  <State kind="loading" />
+  <div class="grid gap-8 lg:grid-cols-2">
+    <section aria-label="Adicionadas recentemente"><Skeleton w="12rem" h="1.1rem" class="mb-3" /><SkeletonList variant="tracks" count={6} label="Carregando faixas recentes" /></section>
+    <section aria-label="Mais tocadas"><Skeleton w="8rem" h="1.1rem" class="mb-3" /><SkeletonList variant="tracks" count={6} label="Carregando as mais tocadas" /></section>
+  </div>
 {:else if error}
   <State kind="error" text={error} onretry={load} />
 {:else if stats && stats.trackCount === 0}

@@ -41,6 +41,7 @@ export function createTauriApi(): MiupyApi {
     libraryDeleteTrack: (a) => call('library_delete_track', a),
 
     playlistList: () => call('playlist_list'),
+    favoritesSetPlaylist: (a) => call('favorites_set_playlist', a),
     playlistCreate: (a) => call('playlist_create', a),
     playlistUpdate: (a) => call('playlist_update', a),
     playlistDelete: (a) => call('playlist_delete', a),
@@ -52,6 +53,8 @@ export function createTauriApi(): MiupyApi {
 
     youtubeSearch: (a) => call('youtube_search', a),
     youtubeSuggest: (a) => call('youtube_suggest', a), // @req RF-23
+    youtubeSearchHistory: () => call('youtube_search_history'), // @req RF-34
+    youtubeSearchHistoryClear: () => call('youtube_search_history_clear'), // @req RF-34
     ytdlpStatus: () => call('ytdlp_status'), // @req RF-26
     ytdlpUpdate: () => call('ytdlp_update'),
     youtubeAddToLibrary: (a) => call('youtube_add_to_library', a),
@@ -64,6 +67,7 @@ export function createTauriApi(): MiupyApi {
 
     metadataRefreshTrack: (a) => call('metadata_refresh_track', a),
     metadataRefreshLibrary: (a) => call('metadata_refresh_library', a), // @req RF-12 RF-20
+    metadataRefreshStatus: () => call('metadata_refresh_status'), // @req RF-32
     metadataGetArtist: (a) => call('metadata_get_artist', a),
     metadataGetLyrics: (a) => call('metadata_get_lyrics', a),
 
@@ -80,6 +84,9 @@ export function createTauriApi(): MiupyApi {
     profileGet: () => call('profile_get'),
     profileUpdate: (a) => call('profile_update', a),
     profileSetAvatar: (a) => call('profile_set_avatar', a), // @req RF-21
+    equalizerListPresets: () => call('equalizer_list_presets'),
+    equalizerSavePreset: (a) => call('equalizer_save_preset', a),
+    equalizerDeletePreset: (a) => call('equalizer_delete_preset', a),
     settingsGet: () => call('settings_get'),
     settingsUpdate: (a) => call('settings_update', a),
     systemGpuStatus: () => call('system_gpu_status'),

@@ -150,12 +150,16 @@ impl Database {
     // @req RF-17 RF-02
     pub fn get_settings(&self) -> Result<Settings> {
         Ok(self.conn.query_row(
-            "SELECT lava_theme, volume FROM settings WHERE id = 1",
+            "SELECT lava_theme, volume, normalization, eq_preset_id, sidebar_width, favorites_playlist_id FROM settings WHERE id = 1",
             [],
             |r| {
                 Ok(Settings {
                     lava_theme: r.get(0)?,
                     volume: r.get(1)?,
+                    normalization: r.get(2)?,
+                    eq_preset_id: r.get(3)?,
+                    sidebar_width: r.get(4)?,
+                    favorites_playlist_id: r.get(5)?,
                 })
             },
         )?)
@@ -170,12 +174,16 @@ impl Database {
             return Err(Error::invalid("o volume deve estar entre 0.0 e 1.0"));
         }
         self.in_tx(|| {
+            if let Some(id) = &patch.eq_preset_id { self.get_eq_preset(id)?; }
             let cur = self.get_settings()?;
             self.conn.execute(
-                "UPDATE settings SET lava_theme = ?1, volume = ?2, updated_at = ?3 WHERE id = 1",
+                "UPDATE settings SET lava_theme = ?1, volume = ?2, normalization = ?3, eq_preset_id = ?4, sidebar_width = ?5, updated_at = ?6 WHERE id = 1",
                 params![
                     patch.lava_theme.unwrap_or(cur.lava_theme),
                     patch.volume.unwrap_or(cur.volume),
+                    patch.normalization.unwrap_or(cur.normalization),
+                    patch.eq_preset_id.as_deref().unwrap_or(&cur.eq_preset_id),
+                    patch.sidebar_width.unwrap_or(cur.sidebar_width).clamp(220, 400),
                     self.now_ms()
                 ],
             )?;
@@ -271,6 +279,7 @@ mod tests {
             .update_settings(&SettingsPatch {
                 lava_theme: Some(LavaTheme::Blue),
                 volume: None,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!((s.lava_theme, s.volume), (LavaTheme::Blue, 0.8));
@@ -278,6 +287,7 @@ mod tests {
             .update_settings(&SettingsPatch {
                 lava_theme: None,
                 volume: Some(0.25),
+                ..Default::default()
             })
             .unwrap();
         assert_eq!((s.lava_theme, s.volume), (LavaTheme::Blue, 0.25));
@@ -287,6 +297,7 @@ mod tests {
             let r = db.update_settings(&SettingsPatch {
                 lava_theme: Some(LavaTheme::Purple),
                 volume: Some(v),
+                ..Default::default()
             });
             assert_eq!(r.unwrap_err().code(), "invalid_input");
         }
@@ -294,6 +305,29 @@ mod tests {
             db.get_settings().unwrap().lava_theme,
             LavaTheme::Blue,
             "falha não grava nada"
+        );
+    }
+
+    // @test RF-33
+    #[test]
+    fn largura_do_menu_tem_padrao_e_corte_sem_alterar_outras_opcoes() {
+        let db = db();
+        assert_eq!(db.get_settings().unwrap().sidebar_width, 280);
+        for (requested, expected) in [(100, 220), (340, 340), (999, 400)] {
+            let saved = db
+                .update_settings(&SettingsPatch {
+                    sidebar_width: Some(requested),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(saved.sidebar_width, expected);
+            assert_eq!(saved.lava_theme, LavaTheme::Orange);
+        }
+        assert_eq!(db.get_settings().unwrap().sidebar_width, 400);
+        assert!(
+            db.conn
+                .execute("UPDATE settings SET sidebar_width = 401 WHERE id = 1", [])
+                .is_err()
         );
     }
 
@@ -319,10 +353,10 @@ mod tests {
         assert_eq!(db.get_profile().unwrap().avatar_path, None);
         assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Off);
         assert_eq!(
-            db.set_shuffle_mode(ShuffleMode::Smart).unwrap(),
-            ShuffleMode::Smart
+            db.set_shuffle_mode(ShuffleMode::Surfle).unwrap(),
+            ShuffleMode::Surfle
         );
-        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Smart);
+        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Surfle);
         assert_eq!(db.get_settings().unwrap().volume, 0.8);
     }
 
@@ -338,5 +372,42 @@ mod tests {
             .conn
             .execute("UPDATE settings SET gpu_mode = 'turbo' WHERE id = 1", []);
         assert!(invalid.is_err(), "CHECK recusa modo desconhecido");
+    }
+}
+
+#[cfg(test)]
+mod loudness_tests {
+    use crate::{Database, NewTrack, Normalization, SettingsPatch};
+    // @test RF-28
+    #[test]
+    fn defaults_and_measurements_survive_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("miupy.db");
+        let id = {
+            let db = Database::open(&path).unwrap();
+            assert_eq!(
+                db.get_settings().unwrap().normalization,
+                Normalization::Normal
+            );
+            let id = db
+                .upsert_track(&NewTrack::youtube("x", "Teste", None, 1000, None))
+                .unwrap()
+                .track
+                .id;
+            db.set_loudness(&id, -16.0, -2.0).unwrap();
+            db.update_settings(&SettingsPatch {
+                normalization: Some(Normalization::Quiet),
+                ..Default::default()
+            })
+            .unwrap();
+            id
+        };
+        let db = Database::open(&path).unwrap();
+        assert_eq!(
+            db.get_settings().unwrap().normalization,
+            Normalization::Quiet
+        );
+        assert_eq!(db.get_track(&id).unwrap().loudness_lufs, Some(-16.0));
+        assert_eq!(db.get_true_peak_db(&id).unwrap(), Some(-2.0));
     }
 }

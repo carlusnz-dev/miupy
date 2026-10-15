@@ -2,16 +2,14 @@
 //! `MetadataProvider`. Falha de rede nunca derruba a leitura local.
 
 use std::collections::HashMap;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
 use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, tagger};
 
 use crate::db::Db;
+use crate::dto::MetadataRefreshStatus;
 use crate::error::AppResult;
 use crate::events::Events;
 use crate::paths::Dirs;
@@ -23,6 +21,23 @@ const RETRY_AFTER: Duration = Duration::from_secs(300);
 /// Falha temporária pode ser consultada novamente em breve, sem repetir imediatamente.
 const TEMPORARY_RETRY_AFTER: Duration = Duration::from_secs(10);
 
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+// @req RF-32
+/// Fecha o lote ao sair da tarefa, inclusive por pânico; no fim normal não faz nada.
+struct BatchGuard(Arc<MetadataService>);
+
+impl Drop for BatchGuard {
+    fn drop(&mut self) {
+        self.0.abort_batch();
+    }
+}
+
 pub struct MetadataService {
     db: Db,
     provider: Arc<dyn MetadataProvider>,
@@ -30,7 +45,7 @@ pub struct MetadataService {
     dirs: Dirs,
     events: Arc<dyn Events>,
     attempts: Mutex<HashMap<String, Instant>>,
-    batch_running: AtomicBool,
+    batch_status: Mutex<MetadataRefreshStatus>,
 }
 
 impl MetadataService {
@@ -48,41 +63,103 @@ impl MetadataService {
             dirs,
             events,
             attempts: Mutex::new(HashMap::new()),
-            batch_running: AtomicBool::new(false),
+            batch_status: Mutex::new(MetadataRefreshStatus::default()),
         }
     }
 
-    // @req RF-12 RF-20
+    // @req RF-32
+    pub fn refresh_status(&self) -> MetadataRefreshStatus {
+        self.batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn update_batch_status(&self, update: impl FnOnce(&mut MetadataRefreshStatus)) {
+        let status = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            update(&mut status);
+            status.clone()
+        };
+        self.events.metadata_progress(&status);
+    }
+
+    // @req RF-12 RF-20 RF-32
     pub fn enqueue_library_refresh(self: &Arc<Self>, only_missing: bool) -> AppResult<usize> {
-        if self.batch_running.swap(true, Ordering::AcqRel) {
-            return Err(crate::error::AppError::new(
-                "conflict",
-                "Um reprocessamento já está em andamento.",
-            ));
-        }
+        let previous = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            if status.running {
+                return Err(crate::error::AppError::new(
+                    "conflict",
+                    "Um reprocessamento já está em andamento.",
+                ));
+            }
+            let previous = status.clone();
+            status.running = true;
+            previous
+        };
         let tracks = match self
             .db
             .with(|db| db.tracks_for_metadata_refresh(only_missing))
         {
             Ok(t) => t,
             Err(e) => {
-                self.batch_running.store(false, Ordering::Release);
+                *self.batch_status.lock().unwrap_or_else(|e| e.into_inner()) = previous;
                 return Err(e.into());
             }
         };
         let total = tracks.len();
+        self.update_batch_status(|status| {
+            *status = MetadataRefreshStatus {
+                running: true,
+                total,
+                started_at: Some(now_ms()),
+                ..MetadataRefreshStatus::default()
+            };
+        });
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
+            // Se a tarefa morrer no meio (pânico), o lote não fica preso em `running`.
+            let _guard = BatchGuard(this.clone());
             for (i, t) in tracks.into_iter().enumerate() {
-                if let Err(e) = this.refresh_track(&t.id).await {
+                this.batch_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .current_track_id = Some(t.id.clone());
+                let mut failed = false;
+                if let Err(e) = this.refresh_track_inner(&t.id, false).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
+                    failed = true;
                 }
-                this.events.metadata_progress(i + 1, total);
+                this.update_batch_status(|status| {
+                    status.done = i + 1;
+                    status.failed += usize::from(failed);
+                });
             }
             this.events.library_changed("metadata_batch_finished");
-            this.batch_running.store(false, Ordering::Release);
+            this.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
         });
         Ok(total)
+    }
+
+    /// Encerra o lote em andamento (usado quando a tarefa do lote termina sem chegar ao fim).
+    fn abort_batch(&self) {
+        let running = self
+            .batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .running;
+        if running {
+            self.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
+        }
     }
 
     /// `true` se vale tentar a consulta `key` agora; registra a tentativa.
@@ -128,34 +205,13 @@ impl MetadataService {
     /// Aqui a rede é o objetivo: erro de rede volta ao usuário. Sem correspondência, devolve a
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
+        self.refresh_track_inner(track_id, true).await
+    }
+
+    // @req RF-12 RF-32
+    async fn refresh_track_inner(&self, track_id: &str, fetch_lyrics: bool) -> AppResult<Track> {
         let id = track_id.to_owned();
-        let mut track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
-        if let Some(path) = track
-            .cover_path
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .filter(|p| p.is_file())
-            && image::ImageFormat::from_path(&path).ok() == Some(image::ImageFormat::WebP)
-            && let Ok(jpeg) = crate::paths::normalize_jpeg(&path)
-        {
-            let cover = Some(jpeg.to_string_lossy().into_owned());
-            let tid = track.id.clone();
-            if let Ok(updated) = self
-                .db
-                .run(move |db| {
-                    Ok(db.update_track(
-                        &tid,
-                        &TrackPatch {
-                            cover_path: Some(cover),
-                            ..Default::default()
-                        },
-                    )?)
-                })
-                .await
-            {
-                track = updated;
-            }
-        }
+        let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
 
         let rec = self
@@ -175,7 +231,12 @@ impl MetadataService {
             let patch = TrackPatch {
                 title: video.track,
                 artist_name: video.artist.map(Some),
-                album: video.album.map(Some),
+                album: track
+                    .album
+                    .is_none()
+                    .then_some(video.album)
+                    .flatten()
+                    .map(Some),
                 release_year: video.release_year.map(|year| Some(year as i32)),
                 ..Default::default()
             };
@@ -189,22 +250,28 @@ impl MetadataService {
             return Ok(updated);
         };
 
-        // Capa: tenta os releases candidatos em ordem; o primeiro que tiver capa vale.
-        let mut mbids = rec.release_mbids.clone();
-        if mbids.is_empty() {
+        // Busca só por título não confirma o lançamento nem sua capa.
+        let mut mbids = if rec.title_only {
+            Vec::new()
+        } else {
+            rec.release_mbids.clone()
+        };
+        if mbids.is_empty() && !rec.title_only {
             mbids.extend(rec.release_mbid.clone());
         }
+        let key = crate::paths::album_key(&rec);
         let mut cover = None;
         for mbid in mbids {
             let album_dir = self.dirs.covers.join("albuns");
-            let cached = album_dir.join(format!("{mbid}.jpg"));
+            let cached = album_dir.join(format!("{key}.webp"));
             if cached.is_file() {
                 cover = Some(cached);
                 break;
             }
-            match self.provider.download_cover(&mbid, &album_dir, &mbid).await {
+            match self.provider.download_cover(&mbid, &album_dir, &key).await {
                 Ok(path) => {
-                    cover = crate::paths::normalize_jpeg(&path).ok();
+                    // @req RNF-12
+                    cover = crate::paths::normalize_webp(&path).ok();
                     break;
                 }
                 Err(MediaError::NotFound(_)) => continue,
@@ -216,21 +283,25 @@ impl MetadataService {
         }
 
         // Letra (LRCLIB); falhar não desfaz o resto.
-        let lyrics = match self
-            .provider
-            .lyrics(
-                &rec.title,
-                &rec.artist,
-                rec.album.as_deref().or(track.album.as_deref()),
-                duration.or(rec.duration_ms),
-            )
-            .await
-        {
-            Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
-            Err(e) => {
-                log::warn!("letra de {}: {e}", track.id);
-                None
+        let lyrics = if fetch_lyrics && !rec.title_only {
+            match self
+                .provider
+                .lyrics(
+                    &rec.title,
+                    &rec.artist,
+                    rec.album.as_deref().or(track.album.as_deref()),
+                    duration.or(rec.duration_ms),
+                )
+                .await
+            {
+                Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
+                Err(e) => {
+                    log::warn!("letra de {}: {e}", track.id);
+                    None
+                }
             }
+        } else {
+            None
         };
 
         // @req RF-20: MusicBrainz é a fonte principal; o vídeo só complementa campos ausentes.
@@ -239,21 +310,47 @@ impl MetadataService {
         } else {
             None
         };
+        // @req RF-12: só corrige canal salvo como artista com uma candidata e duração conhecida.
+        let correct_artist = rec.title_only
+            && rec.title_only_artist_unambiguous
+            && duration.is_some()
+            && video
+                .as_ref()
+                .and_then(|v| v.channel.as_deref())
+                .is_some_and(|channel| {
+                    track
+                        .artist_name
+                        .as_deref()
+                        .is_some_and(|name| name.trim().eq_ignore_ascii_case(channel.trim()))
+                });
         let patch = TrackPatch {
-            title: Some(rec.title.clone())
+            title: (!rec.title_only)
+                .then(|| rec.title.clone())
                 .filter(|t| !t.trim().is_empty())
-                .or_else(|| video.as_ref().and_then(|v| v.track.clone())),
-            artist_name: Some(rec.artist.clone())
+                .or_else(|| {
+                    (!rec.title_only)
+                        .then(|| video.as_ref().and_then(|v| v.track.clone()))
+                        .flatten()
+                }),
+            artist_name: (correct_artist || !rec.title_only)
+                .then(|| rec.artist.clone())
                 .filter(|a| !a.trim().is_empty())
-                .or_else(|| video.as_ref().and_then(|v| v.artist.clone()))
+                .or_else(|| {
+                    (!rec.title_only)
+                        .then(|| video.as_ref().and_then(|v| v.artist.clone()))
+                        .flatten()
+                })
                 .filter(|a| !a.trim().is_empty())
                 .map(Some),
-            album: rec
-                .album
-                .clone()
-                .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+            album: (track.album.is_none() && !rec.title_only)
+                .then(|| {
+                    rec.album
+                        .clone()
+                        .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+                })
+                .flatten()
                 .map(Some),
-            duration_ms: if track.duration_ms <= 0 {
+            duration_ms: if track.duration_ms <= 0 && !rec.title_only {
                 rec.duration_ms.and_then(|d| i64::try_from(d).ok())
             } else {
                 None
@@ -261,7 +358,7 @@ impl MetadataService {
             cover_path: cover
                 .as_ref()
                 .map(|p| Some(p.to_string_lossy().into_owned())),
-            genres: Some(rec.genres.clone()),
+            genres: (!rec.genres.is_empty()).then(|| rec.genres.clone()),
             release_year: rec
                 .release_year
                 .map(|y| y as i32)
@@ -289,7 +386,9 @@ impl MetadataService {
                     })?;
                 }
                 let mut updated = updated;
-                if let Some(aid) = &updated.artist_id {
+                if !rec.title_only
+                    && let Some(aid) = &updated.artist_id
+                {
                     // O núcleo reaproveita o artista de mesmo nome (sem diferenciar caixa), então
                     // "daft punk" continuaria assim; aqui ele ganha a grafia do MusicBrainz.
                     let rename = (updated.artist_name.as_deref() != Some(artist_name.as_str()))
@@ -330,7 +429,8 @@ impl MetadataService {
             album: track.album.clone(),
             genres: Some(track.genres.clone()),
             release_year: track.release_year.and_then(|year| u32::try_from(year).ok()),
-            cover: cover.and_then(|p| std::fs::read(p).ok()),
+            // @req RF-12: tags de M4A continuam em JPEG.
+            cover: cover.and_then(crate::paths::jpeg_for_tags),
         };
         match tokio::task::spawn_blocking(move || tagger::write_tags(&file, &update)).await {
             Ok(Ok(())) => {}
@@ -391,11 +491,10 @@ impl MetadataService {
                 .inspect_err(|e| log::warn!("foto de {} ilegível: {e}", info.name))
         {
             let dir = self.dirs.covers.join("artistas");
-            let path = dir.join(format!("{}.jpg", info.id));
+            // @req RF-27 RNF-12
+            let path = dir.join(format!("{}.webp", info.id));
             if std::fs::create_dir_all(&dir).is_ok()
-                && img
-                    .save_with_format(&path, image::ImageFormat::Jpeg)
-                    .is_ok()
+                && crate::paths::write_webp(&crate::paths::compact_image(img, false), &path).is_ok()
             {
                 let id = info.id.clone();
                 let p = path.to_string_lossy().into_owned();
@@ -428,7 +527,9 @@ impl MetadataService {
             (Some(url), None) => {
                 let dir = self.dirs.covers.join("artistas");
                 match self.provider.download_image(url, &dir, &info.id).await {
-                    Ok(p) => Some(p.to_string_lossy().into_owned()),
+                    Ok(p) => crate::paths::normalize_webp(&p)
+                        .ok()
+                        .map(|p| p.to_string_lossy().into_owned()),
                     Err(e) => {
                         log::warn!("foto do artista {}: {e}", info.name);
                         None
@@ -567,12 +668,15 @@ mod tests {
 
     fn rec() -> RecordingMatch {
         RecordingMatch {
+            title_only: false,
+            title_only_artist_unambiguous: false,
             mbid: "rec-1".into(),
             title: "Get Lucky".into(),
             artist: "Daft Punk".into(),
             artist_mbid: Some("art-1".into()),
             album: Some("Random Access Memories".into()),
             release_mbid: Some("rel-1".into()),
+            release_group_mbid: None,
             release_mbids: vec!["rel-1".into(), "rel-2".into(), "rel-3".into()],
             duration_ms: Some(369_000),
             score: 100,
@@ -580,6 +684,101 @@ mod tests {
             release_year: None,
             isrc: None,
         }
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn lote_publica_inicio_contagem_falhas_e_fim() {
+        let f = fx();
+        track(&f);
+        f.db.with(|db| db.upsert_track(&NewTrack::youtube("vid2", "Outra", None, 1000, None)))
+            .unwrap();
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("sem rede".into()));
+        let svc = Arc::new(f.svc);
+        assert_eq!(svc.refresh_status(), MetadataRefreshStatus::default());
+        assert_eq!(svc.enqueue_library_refresh(false).unwrap(), 2);
+        let start = svc.refresh_status();
+        assert!(start.running);
+        assert_eq!((start.done, start.total, start.failed), (0, 2, 0));
+        assert!(start.started_at.is_some());
+        assert!(start.finished_at.is_none());
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while f.events.metadata.lock().unwrap().len() < 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let end = svc.refresh_status();
+        assert_eq!((end.done, end.total, end.failed), (2, 2, 1));
+        assert_eq!(end.current_track_id, None);
+        assert!(end.finished_at.unwrap() >= end.started_at.unwrap());
+        let events = f.events.metadata.lock().unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!((events[0].running, events[0].done), (true, 0));
+        assert_eq!((events[1].done, events[1].failed), (1, 1));
+        assert_eq!((events[2].done, events[2].failed), (2, 1));
+        assert!(!events[3].running);
+    }
+
+    // @test RF-32 RF-12
+    #[tokio::test]
+    async fn lote_avanca_sem_consultar_letras() {
+        let f = fx();
+        track(&f);
+        let mut recording = rec();
+        recording.release_mbids.clear();
+        recording.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(recording);
+        *f.fake.lyrics.lock().unwrap() = Some(LyricsData {
+            plain: Some("letra".into()),
+            synced: None,
+            instrumental: false,
+        });
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while svc.refresh_status().running {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(svc.refresh_status().done, 1);
+        assert_eq!(*f.fake.network_calls.lock().unwrap(), 1);
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn segundo_pedido_devolve_conflict_sem_apagar_estado() {
+        let f = fx();
+        track(&f);
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        let status = svc.refresh_status();
+        assert_eq!(
+            svc.enqueue_library_refresh(false).unwrap_err().code(),
+            "conflict"
+        );
+        assert_eq!(svc.refresh_status(), status);
+    }
+
+    // @test RF-32
+    #[test]
+    fn guarda_do_lote_encerra_lote_interrompido_e_libera_novo_pedido() {
+        let f = fx();
+        let svc = Arc::new(f.svc);
+        svc.batch_status.lock().unwrap().running = true;
+        svc.batch_status.lock().unwrap().current_track_id = Some("t".into());
+        // A tarefa do lote "morre" (pânico) sem chegar ao fim: só a guarda é solta.
+        drop(BatchGuard(svc.clone()));
+        let status = svc.refresh_status();
+        assert!(!status.running);
+        assert_eq!(status.current_track_id, None);
+        assert!(status.finished_at.is_some());
+        // Lote já encerrado: a guarda não mexe em nada.
+        drop(BatchGuard(svc.clone()));
+        assert_eq!(svc.refresh_status(), status);
     }
 
     // @test RF-20
@@ -593,6 +792,8 @@ mod tests {
         mb.isrc = Some("USABC1300001".into());
         *f.fake.recording.lock().unwrap() = Some(mb);
         *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: None,
+            raw_title: None,
             artist: Some("Outro".into()),
             track: Some("Vídeo".into()),
             album: Some("Outro álbum".into()),
@@ -615,6 +816,8 @@ mod tests {
         let f = fx();
         let t = track(&f);
         *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: None,
+            raw_title: None,
             artist: Some("Artista".into()),
             track: Some("Título".into()),
             album: Some("Álbum".into()),
@@ -625,6 +828,111 @@ mod tests {
         assert_eq!(saved.release_year, Some(2022));
         assert_eq!(saved.album.as_deref(), Some("Álbum"));
         assert!(saved.genres.is_empty());
+    }
+
+    // @test RF-12 RF-20
+    #[tokio::test]
+    async fn busca_so_por_titulo_preserva_campos_e_corrige_canal_com_seguranca() {
+        for (channel, raw, unique, duration_ms, expected_artist) in [
+            ("Canal Errado", "Get Lucky", true, 369_000, "Daft Punk"),
+            ("Canal Errado", "Get Lucky", true, 0, "Canal Errado"),
+            ("Canal Errado", "Get Lucky", false, 369_000, "Canal Errado"),
+            ("Outro canal", "Get Lucky", true, 369_000, "Canal Errado"),
+            (
+                "Outro canal",
+                "Canal Errado - Get Lucky",
+                true,
+                369_000,
+                "Canal Errado",
+            ),
+        ] {
+            let f = fx();
+            let t =
+                f.db.with(|db| {
+                    db.upsert_track(&NewTrack::youtube(
+                        "vid1",
+                        "get lucky",
+                        Some("Canal Errado".into()),
+                        duration_ms,
+                        None,
+                    ))
+                })
+                .unwrap()
+                .track;
+            let original_artist_id = t.artist_id.clone();
+            let mut mb = rec();
+            mb.title_only = true;
+            mb.title_only_artist_unambiguous = unique;
+            mb.genres = vec!["disco".into()];
+            mb.release_year = Some(2013);
+            mb.isrc = Some("USABC1300001".into());
+            *f.fake.recording.lock().unwrap() = Some(mb);
+            *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+                channel: Some(channel.into()),
+                raw_title: Some(raw.into()),
+                ..Default::default()
+            });
+            let saved = f.svc.refresh_track(&t.id).await.unwrap();
+            assert_eq!(saved.title, "get lucky");
+            assert_eq!(saved.artist_name.as_deref(), Some(expected_artist));
+            assert_eq!(saved.album, None);
+            assert_eq!(saved.cover_path, None);
+            assert_eq!(saved.genres, ["disco"]);
+            assert_eq!(saved.release_year, Some(2013));
+            assert_eq!(
+                f.db.with(|db| db.get_artist_info(original_artist_id.as_ref().unwrap()))
+                    .unwrap()
+                    .name,
+                "Canal Errado"
+            );
+            if unique && duration_ms > 0 && channel == "Canal Errado" {
+                assert_ne!(saved.artist_id, original_artist_id);
+            }
+        }
+    }
+
+    // @test RF-12 RF-20
+    #[tokio::test]
+    async fn album_existente_e_preservado_nos_dois_caminhos() {
+        for title_only in [false, true] {
+            let f = fx();
+            let t = track(&f);
+            f.db.with(|db| {
+                db.update_track(
+                    &t.id,
+                    &TrackPatch {
+                        album: Some(Some("Álbum escolhido".into())),
+                        ..Default::default()
+                    },
+                )
+            })
+            .unwrap();
+            let mut mb = rec();
+            mb.title_only = title_only;
+            *f.fake.recording.lock().unwrap() = Some(mb);
+            let saved = f.svc.refresh_track(&t.id).await.unwrap();
+            assert_eq!(saved.album.as_deref(), Some("Álbum escolhido"));
+        }
+        let f = fx();
+        let t = track(&f);
+        f.db.with(|db| {
+            db.update_track(
+                &t.id,
+                &TrackPatch {
+                    album: Some(Some("Álbum escolhido".into())),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            album: Some("Álbum do vídeo".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            f.svc.refresh_track(&t.id).await.unwrap().album.as_deref(),
+            Some("Álbum escolhido")
+        );
     }
 
     // @test RF-12

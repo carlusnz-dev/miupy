@@ -13,6 +13,8 @@ struct Inner {
     state: PlaybackState,
     next_duration_ms: u64,
     fail_loads: bool,
+    normalization_gain_db: f32,
+    equalizer: [f32; 8],
 }
 
 /// Backend de teste. O relógio é manual: nada avança até [`NullBackend::advance`].
@@ -37,6 +39,8 @@ impl NullBackend {
                 state: PlaybackState::default(),
                 next_duration_ms: 180_000,
                 fail_loads: false,
+                normalization_gain_db: 0.0,
+                equalizer: [0.; 8],
             }),
             tx,
             rx,
@@ -77,6 +81,14 @@ impl NullBackend {
                 duration_ms: g.state.duration_ms,
             });
         }
+    }
+
+    pub fn normalization_gain_db(&self) -> f32 {
+        self.lock().normalization_gain_db
+    }
+
+    pub fn equalizer(&self) -> [f32; 8] {
+        self.lock().equalizer
     }
 
     /// Passo de progresso usado pelo motor real, exposto para os testes.
@@ -212,6 +224,20 @@ impl AudioBackend for NullBackend {
             volume.clamp(0.0, 1.0)
         };
         self.emit_state(&g);
+        Ok(())
+    }
+
+    // @req RF-28
+    fn set_normalization_gain_db(&self, gain_db: f32) -> Result<()> {
+        if gain_db.is_finite() {
+            self.lock().normalization_gain_db = gain_db.clamp(-20.0, 12.0);
+        }
+        Ok(())
+    }
+
+    // @req RF-29
+    fn set_equalizer(&self, gains_db: [f32; 8]) -> Result<()> {
+        self.lock().equalizer = gains_db;
         Ok(())
     }
 

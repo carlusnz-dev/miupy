@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Lista de playlists: criar, renomear, apagar. @req RF-06
-  import { api, errorMessage, type Playlist } from '../lib/ipc';
+  // Lista de playlists: criar, renomear, apagar. @req RF-06 RNF-11
+  import { api, type Playlist } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { ui } from '../lib/stores/ui.svelte';
@@ -10,34 +10,32 @@
   import PlaylistCover from '../lib/components/PlaylistCover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import PlaylistForm from '../lib/components/PlaylistForm.svelte';
   import { useShared } from '../lib/layoutPresence';
 
-  let loading = $state(true);
-  let error = $state<string | null>(null);
+  // As playlists ficam em cache na própria store (carregadas na abertura do app e atualizadas por
+  // library://changed): a tela mostra o que há e só usa o esqueleto se ainda não chegou nada.
+  const loading = $derived(!library.playlistsReady && !library.playlistsError);
+  const error = $derived(library.playlistsError);
   let form = $state<{ playlist: Playlist | null } | null>(null);
 
-  async function load() {
-    try { await library.reloadPlaylists(); error = null; } catch (e) { error = errorMessage(e); } finally { loading = false; }
-  }
-  $effect(() => { void load(); });
-
   async function remove(p: Playlist) {
-    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
+    if (!(await ui.confirm('Apagar playlist', `"${p.name}" será apagada. As faixas continuam na discoteca.${p.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: p.id }); notify('Playlist apagada.'); } catch (e) { notifyError(e); }
   }
 </script>
 
-<PageHeader title="Playlists" subtitle={`${library.playlists.length} playlists`}>
+<PageHeader title="Playlists" subtitle={loading ? undefined : `${library.playlists.length} playlists`}>
   {#snippet actions()}
     <button class="btn btn-primary" onclick={() => (form = { playlist: null })}><Icon name="plus" size={16} />Nova playlist</button>
   {/snippet}
 </PageHeader>
 
 {#if loading}
-  <State kind="loading" />
+  <SkeletonList variant="cards" count={6} label="Carregando as playlists" />
 {:else if error}
-  <State kind="error" text={error} onretry={load} />
+  <State kind="error" text={error} onretry={() => library.reloadPlaylists()} />
 {:else if library.playlists.length === 0}
   <State kind="empty" icon="playlist" title="Nenhuma playlist ainda" text="Crie uma para organizar suas faixas.">
     <button class="btn btn-primary" onclick={() => (form = { playlist: null })}>Criar playlist</button>
@@ -49,6 +47,7 @@
         <a href={href(paths.playlist(p.id))} class="block" aria-label="Abrir playlist {p.name}">
           <PlaylistCover playlist={p} class="mb-3 w-full" shared={`playlist-cover-${p.id}`} />
           <span class="block truncate font-semibold" use:useShared={`playlist-title-${p.id}`}>{p.name}</span>
+          {#if p.isFavorites}<span class="chip text-primary"><Icon name="heart" size={12} fill />Favoritas</span>{/if}
           <span class="block text-xs text-muted">{p.trackCount} faixas · {fmtDuration(p.totalDurationMs)}</span>
           {#if p.description}<span class="mt-1 line-clamp-2 block text-xs text-faint">{p.description}</span>{/if}
         </a>

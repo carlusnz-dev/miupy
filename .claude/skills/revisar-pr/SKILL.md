@@ -21,6 +21,9 @@ Confira o fluxo de `docs/contribuicao/git.md`: o nome do branch tem um tipo vál
 `hotfix/*` e para o PR de versão vindo de `develop`), e o título do PR e os commits estão em
 Conventional Commits. Corrija o título com `gh pr edit <pr> --title` se precisar.
 
+Confira o CI do PR: `gh pr checks <pr>` deve mostrar `rust`, `frontend`, `docs` e `regras-do-fluxo`
+verdes. Nenhum bot commita no branch do PR (a matriz só é gerada no branch de versão). CI vermelho bloqueia o merge; CI verde não substitui os passos 2 e 3.
+
 Se o branch estiver atrás da base, atualize antes de verificar (`git merge upstream/develop` no
 worktree do branch) e resolva os conflitos você. Verificar um branch desatualizado não prova nada
 sobre o resultado do merge.
@@ -64,14 +67,16 @@ cargo test --workspace
 Se o PR tocou em `src/`, `package.json` ou configuração do frontend:
 
 ```sh
-npm ci            # só se node_modules não existir no worktree
+# Nunca rode npm ci/npm install num worktree cujo node_modules é link (ls -la node_modules):
+# isso esvazia o node_modules do checkout principal. Só no checkout principal, se faltar.
 npm run check
 npm run build
 npm test          # se o script existir
 ```
 
-Se tocou em anotações `@req` / `@test`: `npm run docs:matriz` e confira se a matriz gerada está no
-PR.
+Se tocou em anotações `@req` / `@test`: confira que `node scripts/rastreabilidade.mjs --check` passa.
+Não peça a matriz regenerada em PR para `develop`; ela só é cobrada no PR para a `main` (o branch de
+versão, ou o `hotfix/*`, roda `npm run docs:matriz`).
 
 Anote o resultado real de cada comando (contagem de testes, falhas, ignorados). Teste de rede
 ignorado é "não rodado", não "passou".

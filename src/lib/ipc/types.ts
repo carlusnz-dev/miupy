@@ -6,7 +6,7 @@ export type SortDir = 'asc' | 'desc';
 export type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
 export type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
 // @req RF-24
-export type ShuffleMode = 'off' | 'random' | 'smart';
+export type ShuffleMode = 'off' | 'random' | 'surfle';
 export type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
 
 export interface Track {
@@ -27,6 +27,8 @@ export interface Track {
   addedAt: number;
   genres: string[]; // @req RF-20
   releaseYear: number | null;
+  loudnessLufs: number | null; // @req RF-28
+  thumbnailUrl: string | null;
 }
 
 export interface Playlist {
@@ -35,6 +37,8 @@ export interface Playlist {
   description: string | null;
   coverPath: string | null;
   mosaicPaths: string[]; // @req RF-22
+  isFavorites: boolean; // @req RF-30
+  autoDownload: boolean; // @req RF-31
   trackCount: number;
   totalDurationMs: number;
   createdAt: number;
@@ -81,6 +85,8 @@ export interface SearchResult {
   durationMs: number;
   thumbnailUrl: string | null;
   inLibrary: boolean;
+  trackId: string | null; // @req RF-04
+  isFavorite: boolean;
 }
 
 export interface DownloadJob {
@@ -117,10 +123,17 @@ export interface Profile {
   avatarPath: string | null;
 }
 
+// @req RF-28
+export type Normalization = 'off' | 'quiet' | 'normal' | 'loud';
 export interface Settings {
   lavaTheme: LavaTheme;
   volume: number;
   gpuMode: GpuMode;
+  normalization: Normalization;
+  eqPresetId: string;
+  // @req RF-33
+  sidebarWidth: number;
+  favoritesPlaylistId: string | null; // @req RF-30
 }
 export type GpuMode = 'auto' | 'on' | 'off';
 export interface GpuStatus { mode: GpuMode; envOverride: GpuMode | null; hardware: boolean; reason: string; restartRequired: boolean; }
@@ -196,14 +209,32 @@ export interface ProgressPayload {
   durationMs: number;
 }
 
+// @req RF-32
+export interface MetadataRefreshStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  failed: number;
+  currentTrackId: string | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
+
 export interface EventMap {
   'player://state': PlayerState;
   'player://progress': ProgressPayload;
   'download://progress': DownloadJob;
+  // @req RF-31
+  'download://auto': { playlistId: string; count: number; reason: 'enabled' | 'added' | 'retry' | 'offline' };
   'library://changed': { reason: string };
   'recommendations://changed': { count: number };
   'player://error': { trackId: string; code: string; message: string };
-  'metadata://progress': { done: number; total: number };
+  'metadata://progress': MetadataRefreshStatus;
   'ytdlp://status': YtDlpStatus;
 }
 export type EventName = keyof EventMap;
+
+// @req RF-29
+export const EQ_BANDS_HZ = [60,170,310,600,1000,3000,6000,12000] as const;
+export interface EqPreset { id: string; name: string; builtin: boolean; gainsDb: number[]; }
+export interface EqPresetInput { id?: string; name: string; gainsDb: number[]; }

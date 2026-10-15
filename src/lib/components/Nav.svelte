@@ -5,6 +5,9 @@
   import { profile } from '../stores/profile.svelte';
   import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
+  import { settings } from '../stores/settings.svelte';
+  import { notifyError } from '../stores/toast.svelte';
+  import { beginSidebarDrag, clampSidebarWidth, createDeferredSave, keyboardSidebarWidth, SIDEBAR_DEFAULT } from '../util/sidebar';
 
   let { variant }: { variant: 'side' | 'bottom' } = $props();
 
@@ -37,6 +40,62 @@
   let moreOpen = $state(false);
   const isOn = (i: Item) => i.names.includes(router.current.name);
   $effect(() => { router.current; moreOpen = false; });
+
+  // @req RF-33
+  let resizeHandle = $state<HTMLElement>();
+  let drag: { pointerId: number; session: ReturnType<typeof beginSidebarDrag> } | null = null;
+  const currentWidth = () => clampSidebarWidth(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w')));
+  function previewWidth(width: number) {
+    document.documentElement.style.setProperty('--sidebar-w', `${width}px`);
+    resizeHandle?.setAttribute('aria-valuenow', String(width));
+  }
+  function persistWidth(width: number) {
+    void settings.saveSidebarWidth(width).catch((error) => {
+      previewWidth(settings.sidebarWidth);
+      notifyError(error);
+    });
+  }
+  // teclas só pré-visualizam; a largura é gravada uma vez, quando o ajuste termina
+  const keySave = createDeferredSave((width) => { if (width !== settings.sidebarWidth) persistWidth(width); });
+  $effect(() => () => keySave.flush());
+  function startResize(event: PointerEvent) {
+    if (event.button !== 0) return;
+    keySave.cancel();
+    const width = currentWidth();
+    drag = { pointerId: event.pointerId, session: beginSidebarDrag(width, event.clientX, previewWidth, persistWidth) };
+    resizeHandle?.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  function moveResize(event: PointerEvent) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag.session.move(event.clientX);
+  }
+  function endResize(event: PointerEvent) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const session = drag.session;
+    drag = null;
+    if (resizeHandle?.hasPointerCapture(event.pointerId)) resizeHandle.releasePointerCapture(event.pointerId);
+    session.finish();
+  }
+  function cancelResize(event: PointerEvent) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const session = drag.session;
+    drag = null;
+    session.cancel();
+  }
+  function resizeKey(event: KeyboardEvent) {
+    const width = keyboardSidebarWidth(currentWidth(), event.key);
+    if (width === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    previewWidth(width);
+    keySave.schedule(width);
+  }
+  function resetWidth() {
+    keySave.cancel();
+    previewWidth(SIDEBAR_DEFAULT);
+    if (settings.sidebarWidth !== SIDEBAR_DEFAULT) persistWidth(SIDEBAR_DEFAULT);
+  }
 </script>
 
 {#snippet link(i: Item)}
@@ -51,7 +110,8 @@
 {/snippet}
 
 {#if variant === 'side'}
-<nav class="hidden h-full w-[var(--sidebar-w)] shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-s1 p-3 md:flex" aria-label="Principal">
+<div class="relative hidden h-full w-[var(--sidebar-w)] shrink-0 md:block">
+<nav class="flex h-full flex-col gap-1 overflow-y-auto border-r border-line bg-s1 p-3" aria-label="Principal">
   <a href={href(paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início">
     <span class="grid h-8 w-8 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name="flame" size={18} fill /></span>
     <span class="text-lg font-bold tracking-tight">miupy</span>
@@ -66,6 +126,15 @@
     {/if}
   </div>
 </nav>
+<!-- Separador ajustável segundo ARIA; Svelte classifica todo separator como não interativo. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div bind:this={resizeHandle} class="sidebar-resize" role="separator" aria-label="Redimensionar menu lateral" aria-orientation="vertical"
+     aria-valuemin="220" aria-valuemax="400" aria-valuenow={settings.sidebarWidth} tabindex="0"
+     onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize}
+     onpointercancel={cancelResize} onlostpointercapture={cancelResize}
+     onkeydown={resizeKey} onblur={() => keySave.flush()} ondblclick={resetWidth}></div>
+</div>
 {:else}
 <nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Principal">
   {#if moreOpen}

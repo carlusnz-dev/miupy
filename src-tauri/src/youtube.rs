@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use miupy_core::{NewTrack, Source, Track, TrackQuery};
+use miupy_core::{NewTrack, Track, TrackQuery};
 use miupy_media::{MediaResolver, clean_title};
 
 use crate::db::Db;
@@ -85,7 +85,7 @@ impl Youtube {
         let ids: Vec<String> = raw.iter().map(|r| r.video_id.clone()).collect();
         let known = self
             .db
-            .run(move |db| Ok(db.known_source_ids(Source::Youtube, &ids)?))
+            .run(move |db| Ok(db.source_favorite_matches(&ids)?))
             .await?;
         {
             let mut cache = self.cache();
@@ -106,7 +106,11 @@ impl Youtube {
                     artist,
                     duration_ms: r.duration_ms.unwrap_or(0),
                     thumbnail_url: r.thumbnail_url.clone(),
-                    in_library: known.contains(&r.video_id),
+                    in_library: known.contains_key(&r.video_id),
+                    track_id: known.get(&r.video_id).map(|(id, _)| id.clone()),
+                    is_favorite: known
+                        .get(&r.video_id)
+                        .is_some_and(|(_, favorite)| *favorite),
                 }
             })
             .collect();
@@ -117,6 +121,11 @@ impl Youtube {
                 None,
                 Some(&serde_json::json!({ "query": query })),
             );
+        });
+        // @req RF-34
+        // Falha ao gravar o histórico não derruba a busca.
+        self.db.with(|db| {
+            let _ = db.record_search(query);
         });
         Ok(out)
     }
@@ -226,6 +235,8 @@ mod tests {
         assert_eq!(r[0].artist, "Daft Punk");
         assert_eq!(r[0].duration_ms, 200_000);
         assert!(!r[0].in_library);
+        assert_eq!(r[0].track_id, None);
+        assert!(!r[0].is_favorite);
         // sem artista no título, vale o canal
         assert_eq!(r[1].artist, "Outro Canal");
         assert_eq!(r[2].artist, "Daft Punk");
@@ -246,7 +257,33 @@ mod tests {
         assert!(err.to_string().contains("instale o yt-dlp"));
     }
 
-    // @test RF-09
+    // @test RF-34
+    #[tokio::test]
+    async fn busca_grava_no_historico_sem_duplicar_e_vazia_nao_grava() {
+        let (y, _, db, _) = svc();
+        y.search("get lucky", None).await.unwrap();
+        y.search("Daft Punk", None).await.unwrap();
+        y.search("  GET LUCKY ", None).await.unwrap();
+        assert_eq!(
+            y.search("   ", None).await.unwrap_err().code(),
+            "invalid_input"
+        );
+        assert_eq!(
+            db.with(|db| db.recent_searches()).unwrap(),
+            ["GET LUCKY", "Daft Punk"]
+        );
+    }
+
+    // @test RF-34
+    #[tokio::test]
+    async fn busca_que_falha_nao_entra_no_historico() {
+        let (y, resolver, db, _) = svc();
+        *resolver.fail_with.lock().unwrap() = Some(MediaError::Unavailable("sem rede".into()));
+        assert!(y.search("x", None).await.is_err());
+        assert!(db.with(|db| db.recent_searches()).unwrap().is_empty());
+    }
+
+    // @test RF-04 RF-09
     #[tokio::test]
     async fn adicionar_cria_faixas_marca_in_library_e_nao_duplica() {
         let (y, _, db, events) = svc();
@@ -279,6 +316,10 @@ mod tests {
 
         let r = y.search("get lucky", None).await.unwrap();
         assert!(r[0].in_library && r[1].in_library && !r[2].in_library);
+        assert_eq!(r[0].track_id.as_deref(), Some(t[0].id.as_str()));
+        assert!(!r[0].is_favorite);
+        db.with(|db| db.set_favorite(&t[0].id, true)).unwrap();
+        assert!(y.search("get lucky", None).await.unwrap()[0].is_favorite);
     }
 
     // @test RF-09 RF-06

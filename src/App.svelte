@@ -3,7 +3,7 @@
   // Casca da aplicação: layout responsivo, inicialização das stores, atalhos de teclado.
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
-  import { springTransition } from './lib/motion';
+  import { springTransition, springCollapse } from './lib/motion';
   import { captureSharedLayout } from './lib/layoutPresence';
   import { api, isMock } from './lib/ipc';
   import { router } from './lib/stores/router.svelte';
@@ -114,7 +114,10 @@
     </main>
   </div>
 
-  <div class="hidden md:block"><PlayerBar /></div>
+  <!-- @req RF-17: em Tocando os controles ficam na própria tela -->
+  {#if name !== 'now-playing'}
+    <div class="hidden md:block" transition:springCollapse><PlayerBar /></div>
+  {/if}
   <div class="md:hidden">
     <MiniPlayer />
     <Nav variant="bottom" />

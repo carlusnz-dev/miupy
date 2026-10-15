@@ -57,7 +57,7 @@ text_enum!(
 // @req RF-24
 text_enum!(
     /// Ordem de reprodução salva separadamente de `Settings` do IPC.
-    ShuffleMode { Off => "off", Random => "random", Smart => "smart" }
+    ShuffleMode { Off => "off", Random => "random", Surfle => "surfle" }
 );
 
 // @req RNF-09
@@ -116,6 +116,8 @@ pub struct Track {
     /// `None` enquanto a faixa não foi baixada.
     pub file_path: Option<String>,
     pub cover_path: Option<String>,
+    /// Miniatura remota; a capa das faixas ainda sem arquivo ou sem capa baixada.
+    pub thumbnail_url: Option<String>,
     pub source: Source,
     pub source_id: Option<String>,
     pub codec: Option<String>,
@@ -126,6 +128,8 @@ pub struct Track {
     // @req RF-20
     pub genres: Vec<String>,
     pub release_year: Option<i32>,
+    // @req RF-28
+    pub loudness_lufs: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -369,7 +373,7 @@ pub struct Dna {
 // @req RF-24
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SmartTrack {
+pub struct SurfleTrack {
     pub track_id: String,
     pub score: f64,
     pub artist_id: Option<String>,
@@ -453,6 +457,10 @@ pub struct Playlist {
     pub cover_path: Option<String>,
     // @req RF-22
     pub mosaic_paths: Vec<String>,
+    // @req RF-30
+    pub is_favorites: bool,
+    // @req RF-31
+    pub auto_download: bool,
     pub track_count: i64,
     pub total_duration_ms: i64,
     pub created_at: i64,
@@ -465,6 +473,8 @@ pub struct Playlist {
 #[serde(rename_all = "camelCase", default)]
 pub struct PlaylistPatch {
     pub name: Option<String>,
+    // @req RF-31
+    pub auto_download: Option<bool>,
     #[serde(deserialize_with = "double_option")]
     pub description: Option<Option<String>>,
     #[serde(deserialize_with = "double_option")]
@@ -609,12 +619,51 @@ pub struct Profile {
     pub avatar_path: Option<String>,
 }
 
+// @req RF-28
+text_enum!(Normalization { Off => "off", Quiet => "quiet", Normal => "normal", Loud => "loud" });
+#[allow(clippy::derivable_impls)] // o macro text_enum não suporta #[default]
+impl Default for Normalization {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+impl Normalization {
+    pub fn gain_db(self, loudness: Option<f64>, peak: Option<f64>) -> f32 {
+        let (Some(loudness), Some(peak)) = (loudness, peak) else {
+            return 0.0;
+        };
+        if !loudness.is_finite() || !peak.is_finite() {
+            return 0.0;
+        }
+        let target = match self {
+            Self::Off => return 0.0,
+            Self::Quiet => -19.0,
+            Self::Normal => -14.0,
+            Self::Loud => -11.0,
+        };
+        let mut gain = (target - loudness).clamp(-20.0, 12.0);
+        if self != Self::Loud && gain > 0.0 {
+            gain = gain.min((-1.0 - peak).max(0.0));
+        }
+        gain as f32
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub lava_theme: LavaTheme,
     /// 0.0 a 1.0
     pub volume: f64,
+    // @req RF-28
+    pub normalization: Normalization,
+    // @req RF-29
+    pub eq_preset_id: String,
+    // @req RF-33
+    pub sidebar_width: i64,
+    // @req RF-30
+    pub favorites_playlist_id: Option<String>,
 }
 
 /// `Partial<Settings>` do ipc.
@@ -623,6 +672,11 @@ pub struct Settings {
 pub struct SettingsPatch {
     pub lava_theme: Option<LavaTheme>,
     pub volume: Option<f64>,
+    pub normalization: Option<Normalization>,
+    // @req RF-29
+    pub eq_preset_id: Option<String>,
+    // @req RF-33
+    pub sidebar_width: Option<i64>,
 }
 
 #[cfg(test)]
@@ -635,11 +689,15 @@ mod tests {
         let s = Settings {
             lava_theme: LavaTheme::Purple,
             volume: 0.5,
+            normalization: Normalization::Normal,
+            eq_preset_id: "flat".into(),
+            sidebar_width: 280,
+            favorites_playlist_id: None,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5 })
+            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "eqPresetId": "flat", "sidebarWidth": 280, "favoritesPlaylistId": null })
         );
         assert_eq!(LavaTheme::default(), LavaTheme::Orange);
     }
@@ -667,5 +725,21 @@ mod tests {
         assert_eq!(p.description, Some(None));
         let p: PlaylistPatch = serde_json::from_str(r#"{"description":"x"}"#).unwrap();
         assert_eq!(p.description, Some(Some("x".into())));
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::Normalization;
+    // @test RF-28
+    #[test]
+    fn gain_modes_peak_and_limits() {
+        assert_eq!(Normalization::Off.gain_db(Some(-30.0), Some(-20.0)), 0.0);
+        assert_eq!(Normalization::Quiet.gain_db(Some(-20.0), Some(-10.0)), 1.0);
+        assert_eq!(Normalization::Normal.gain_db(Some(-20.0), Some(-2.0)), 1.0);
+        assert_eq!(Normalization::Loud.gain_db(Some(-20.0), Some(-2.0)), 9.0);
+        assert_eq!(Normalization::Loud.gain_db(Some(-40.0), Some(-20.0)), 12.0);
+        assert_eq!(Normalization::Normal.gain_db(Some(10.0), Some(0.0)), -20.0);
+        assert_eq!(Normalization::Normal.gain_db(None, Some(-2.0)), 0.0);
     }
 }

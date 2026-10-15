@@ -65,35 +65,50 @@ pub async fn playlist_create(
     Ok(pl)
 }
 
-// @req RF-06
+// @req RF-06 RF-31
 #[tauri::command]
 pub async fn playlist_update(
     state: State<'_, AppState>,
     playlist_id: String,
     name: Option<String>,
     description: Option<String>,
+    auto_download: Option<bool>,
 ) -> R<Playlist> {
     let patch = PlaylistPatch {
         name,
         description: description.map(Some),
+        auto_download,
         ..Default::default()
     };
-    let pl = state
+    let (pl, was_auto) = state
         .db
-        .run(move |db| Ok(db.update_playlist(&playlist_id, &patch)?))
+        .run(move |db| {
+            let was_auto = db.get_playlist(&playlist_id)?.auto_download;
+            Ok((db.update_playlist(&playlist_id, &patch)?, was_auto))
+        })
         .await?;
     state.events.library_changed("playlist_updated");
+    if pl.auto_download && !was_auto {
+        crate::auto_download::enqueue(&state, pl.id.clone(), None, "enabled").await?;
+    }
     Ok(pl)
 }
 
 // @req RF-06
 #[tauri::command]
 pub async fn playlist_delete(state: State<'_, AppState>, playlist_id: String) -> R<()> {
-    state
+    let was_favorites = state
         .db
-        .run(move |db| Ok(db.delete_playlist(&playlist_id)?))
+        .run(move |db| {
+            let was_favorites = db.get_playlist(&playlist_id)?.is_favorites;
+            db.delete_playlist(&playlist_id)?;
+            Ok(was_favorites)
+        })
         .await?;
     state.events.library_changed("playlist_deleted");
+    if was_favorites {
+        state.events.library_changed("favorites");
+    }
     Ok(())
 }
 
@@ -111,19 +126,65 @@ pub async fn playlist_get_tracks(
         .await
 }
 
-// @req RF-06
+// @req RF-06 RF-31
 #[tauri::command]
 pub async fn playlist_add_tracks(
     state: State<'_, AppState>,
     playlist_id: String,
     track_ids: Vec<String>,
 ) -> R<Playlist> {
+    let id = playlist_id.clone();
+    let existing = state
+        .db
+        .run(move |db| {
+            Ok(db
+                .playlist_tracks(&id, &TrackQuery::default())?
+                .into_iter()
+                .map(|t| t.id)
+                .collect::<std::collections::HashSet<_>>())
+        })
+        .await?;
+    let added = newly_added_track_ids(&existing, &track_ids);
     let pl = state
         .db
         .run(move |db| Ok(db.add_tracks_to_playlist(&playlist_id, &track_ids)?))
         .await?;
     state.events.library_changed("playlist_tracks_added");
+    if pl.is_favorites {
+        state.events.library_changed("favorites");
+    }
+    if pl.auto_download {
+        crate::auto_download::enqueue(&state, pl.id.clone(), Some(added), "added").await?;
+    }
     Ok(pl)
+}
+
+// @req RF-31
+fn newly_added_track_ids(
+    existing: &std::collections::HashSet<String>,
+    requested: &[String],
+) -> Vec<String> {
+    requested
+        .iter()
+        .filter(|id| !existing.contains(*id))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod auto_download_tests {
+    use super::newly_added_track_ids;
+    use std::collections::HashSet;
+
+    // @test RF-31
+    #[test]
+    fn playlist_add_tracks_so_considera_faixas_novas() {
+        let existing = HashSet::from(["antiga".to_owned()]);
+        assert_eq!(
+            newly_added_track_ids(&existing, &["antiga".into(), "nova".into()]),
+            vec!["nova"]
+        );
+    }
 }
 
 // @req RF-06
@@ -138,6 +199,9 @@ pub async fn playlist_remove_tracks(
         .run(move |db| Ok(db.remove_tracks_from_playlist(&playlist_id, &track_ids)?))
         .await?;
     state.events.library_changed("playlist_tracks_removed");
+    if pl.is_favorites {
+        state.events.library_changed("favorites");
+    }
     Ok(pl)
 }
 
@@ -155,4 +219,23 @@ pub async fn playlist_move_track(
         .await?;
     state.events.library_changed("playlist_reordered");
     Ok(())
+}
+
+// @req RF-30
+#[tauri::command]
+pub async fn favorites_set_playlist(
+    state: State<'_, AppState>,
+    playlist_id: String,
+) -> R<Playlist> {
+    let (playlist, changed) = state
+        .db
+        .run(move |db| {
+            let changed = db.get_settings()?.favorites_playlist_id.as_deref() != Some(&playlist_id);
+            Ok((db.favorites_set_playlist(&playlist_id)?, changed))
+        })
+        .await?;
+    if changed {
+        state.events.library_changed("favorites");
+    }
+    Ok(playlist)
 }
