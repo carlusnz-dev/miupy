@@ -253,12 +253,6 @@ impl Player {
         } else {
             None
         };
-        self.close_event(inner, end_prev);
-        // @req RF-18
-        // Daqui em diante o motor muda (ou fica parado, se o carregamento falhar): nenhuma
-        // resolução de streaming pedida antes pode mais ser aceita para a faixa antiga.
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        inner.resolving = false;
         // @req RF-28
         let gain = if stream.is_none() {
             let mode = self.db.with(|db| db.get_settings())?.normalization;
@@ -267,6 +261,12 @@ impl Player {
         } else {
             0.0
         };
+        self.close_event(inner, end_prev);
+        // @req RF-18
+        // Daqui em diante o motor muda (ou fica parado, se o carregamento falhar): nenhuma
+        // resolução de streaming pedida antes pode mais ser aceita para a faixa antiga.
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        inner.resolving = false;
         self.backend.set_normalization_gain_db(gain)?;
         let loaded = if let Some(stream) = &stream {
             self.load_stream(stream, &track, true)

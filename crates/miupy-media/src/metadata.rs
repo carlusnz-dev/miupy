@@ -213,7 +213,9 @@ pub struct MetadataConfig {
     pub musicbrainz_interval: Duration,
     /// Intervalo mínimo entre requisições ao LRCLIB.
     pub lrclib_interval: Duration,
+    /// Endpoint da API do Wikidata (os testes apontam para um servidor local).
     pub wikidata_url: String,
+    /// Endpoint da API do Wikimedia Commons (os testes apontam para um servidor local).
     pub commons_url: String,
     /// Intervalo mínimo entre requisições a cada API de imagem (Wikidata, Commons e Cover Art
     /// Archive; cada uma tem a própria fila).
