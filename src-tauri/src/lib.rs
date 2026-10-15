@@ -139,6 +139,8 @@ pub fn run() {
             playlist::playlist_set_cover,
             yt::youtube_search,
             yt::youtube_suggest,
+            yt::youtube_search_history,
+            yt::youtube_search_history_clear,
             yt::ytdlp_status,
             yt::ytdlp_update,
             yt::youtube_add_to_library,

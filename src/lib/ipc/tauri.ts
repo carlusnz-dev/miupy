@@ -53,6 +53,8 @@ export function createTauriApi(): MiupyApi {
 
     youtubeSearch: (a) => call('youtube_search', a),
     youtubeSuggest: (a) => call('youtube_suggest', a), // @req RF-23
+    youtubeSearchHistory: () => call('youtube_search_history'), // @req RF-34
+    youtubeSearchHistoryClear: () => call('youtube_search_history_clear'), // @req RF-34
     ytdlpStatus: () => call('ytdlp_status'), // @req RF-26
     ytdlpUpdate: () => call('ytdlp_update'),
     youtubeAddToLibrary: (a) => call('youtube_add_to_library', a),

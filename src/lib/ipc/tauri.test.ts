@@ -1,5 +1,6 @@
 // @test RF-05
 import { describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { createTauriApi } from './tauri';
 
 const convertFileSrc = vi.hoisted(() => vi.fn((path: string) =>
@@ -23,5 +24,17 @@ describe('resolveAsset', () => {
     expect(api.resolveAsset('https://example.org/capa.jpg')).toBe('https://example.org/capa.jpg');
     expect(api.resolveAsset(null)).toBeNull();
     expect(convertFileSrc).not.toHaveBeenCalled();
+  });
+});
+
+// @test RF-34
+describe('histórico de buscas', () => {
+  it('chama os comandos do contrato', async () => {
+    vi.mocked(invoke).mockResolvedValue(['a']);
+    const api = createTauriApi();
+    expect(await api.youtubeSearchHistory()).toEqual(['a']);
+    await api.youtubeSearchHistoryClear();
+    expect(invoke).toHaveBeenCalledWith('youtube_search_history', undefined);
+    expect(invoke).toHaveBeenCalledWith('youtube_search_history_clear', undefined);
   });
 });

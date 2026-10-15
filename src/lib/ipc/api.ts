@@ -41,6 +41,8 @@ export interface MiupyApi {
 
   youtubeSearch(a: { query: string; limit?: number }): Promise<SearchResult[]>;
   youtubeSuggest(a: { query: string }): Promise<string[]>; // @req RF-23
+  youtubeSearchHistory(): Promise<string[]>; // @req RF-34
+  youtubeSearchHistoryClear(): Promise<void>; // @req RF-34
   ytdlpStatus(): Promise<YtDlpStatus>; // @req RF-26
   ytdlpUpdate(): Promise<YtDlpStatus>;
   youtubeAddToLibrary(a: { sourceIds: string[]; playlistId?: string }): Promise<Track[]>;

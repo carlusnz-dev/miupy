@@ -3,7 +3,7 @@
 SQLite local (RNF-01), via `rusqlite` (`bundled`, que já traz FTS5) e `rusqlite_migration`.
 Código em [`crates/miupy-core`](../../crates/miupy-core/README.md); o esquema vive em
 `crates/miupy-core/migrations/0001_init.sql`, `0002_recommendations.sql` e
-`0003_dna_shuffle_images.sql` e migrações seguintes até `0007_favorites_playlist.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
+`0003_dna_shuffle_images.sql` e migrações seguintes até `0009_auto_download.sql`. A versão do esquema fica em `PRAGMA user_version`. As migrações
 antigas não foram alteradas; 0003 acrescenta colunas à versão 2 sem reescrever as tabelas.
 
 ## Convenções
@@ -23,6 +23,7 @@ artists 1─* tracks 1─* playlist_tracks *─1 playlists
                  │ 1─1 download_jobs
                  └ 1─* play_events *─0..1 playlists (contexto)
 user_actions (log solto, sem FK)        profile, settings (linha única)
+search_history (sem FK)
 tracks_fts (FTS5)  ←  triggers em tracks e artists
 recommendation_candidates (source_id único; sem FK para a faixa candidata)
 ```
@@ -116,6 +117,12 @@ Validação em código: e-mail e telefone podem ser vazios; preenchidos, passam 
 tolerante (e-mail: uma `@`, domínio com ponto, sem espaços; telefone: 8 a 15 dígitos, aceitando
 `+ - . ( )` e espaços; usuário: até 32 letras/dígitos/`_.-`).
 
+### `search_history`
+Desde 0008. `query_key` (PK; consulta sem espaços extras, caixa e acento, como `name_key`), `query`
+(texto da última digitação) e `searched_at` (ms). `youtube_search` grava; repetir uma consulta
+apaga a linha e a insere de novo, subindo-a ao topo sem duplicar. Depois de gravar, ficam só as 50
+mais recentes; a listagem devolve as 10 mais recentes. Sem FK.
+
 ### `tracks_fts` (busca)
 Tabela FTS5 própria (`title`, `artist`, `album`), `rowid = tracks.rowid`, tokenizer
 `unicode61 remove_diacritics 2` (ignora caixa **e** acento sem pré-processar nada) e índice de
@@ -160,7 +167,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | `0005_equalizer.sql` | `feat/equalizador` | **Implementada:** `eq_presets` (personalizados); `settings.eq_preset_id` |
 | `0006_sidebar_width.sql` | `feat/visual-flat` | **Implementada:** `settings.sidebar_width` |
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
-| `0008_search_history.sql` | `feat/busca-vazia` | `search_history` |
+| `0008_search_history.sql` | `feat/busca-vazia` | **Implementada:** `search_history` |
 | `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | **Implementada:** `playlists.auto_download` (0/1, padrão 0) |
 | `0010_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
 | `0011_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
