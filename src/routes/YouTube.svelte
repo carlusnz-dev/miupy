@@ -1,5 +1,6 @@
 <script lang="ts">
-  // Busca no YouTube: resultados, adicionar à discoteca/playlist, baixar. @req RF-09 RF-10
+  // Busca no YouTube: resultados, adicionar à discoteca/playlist, baixar. Com a caixa vazia, buscas
+  // recentes e recomendações. @req RF-09 RF-10 RF-34
   import { api, errorMessage, type SearchResult } from '../lib/ipc';
   import { ui } from '../lib/stores/ui.svelte';
   import { notify, notifyError } from '../lib/stores/toast.svelte';
@@ -10,6 +11,8 @@
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
+  import Recommendations from '../lib/components/Recommendations.svelte';
+  import { SearchHistoryStore } from '../lib/stores/searchHistory.svelte';
   import { SuggestionsStore } from '../lib/stores/suggestions.svelte';
 
   let query = $state('');
@@ -21,6 +24,14 @@
     else if (e.key === 'ArrowUp') { e.preventDefault(); suggestions.move(-1); }
     else if (e.key === 'Escape') suggestions.close();
     else if (e.key === 'Enter' && suggestions.open && suggestions.active >= 0) { e.preventDefault(); pick(suggestions.items[suggestions.active]); }
+  }
+  // @req RF-34
+  const history = new SearchHistoryStore();
+  const emptyBox = $derived(!query.trim());
+  $effect(() => { if (emptyBox) void history.load(); });
+  function repeat(text: string) { query = text; void search(); }
+  async function clearHistory() {
+    try { await history.clear(); } catch (e) { notifyError(e); }
   }
   let results = $state<SearchResult[] | null>(null);
   let searching = $state(false);
@@ -79,6 +90,24 @@
   <SkeletonList variant="tracks" count={6} label="Buscando no YouTube" />
 {:else if error}
   <State kind="error" title="A busca falhou" text={error} onretry={search} />
+{:else if emptyBox}
+  <section aria-labelledby="recent-searches-heading">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h2 id="recent-searches-heading" class="text-lg font-semibold">Buscas recentes</h2>
+      {#if history.items.length}<button class="btn btn-sm" onclick={clearHistory}><Icon name="trash" size={15} />Limpar histórico</button>{/if}
+    </div>
+    {#if !history.ready}<SkeletonList variant="tracks" count={3} label="Carregando buscas recentes" />
+    {:else if history.error}<p class="text-sm text-danger" role="alert">{history.error}</p>
+    {:else if !history.items.length}<State kind="empty" icon="search" title="Nenhuma busca ainda" text="As músicas que você buscar aparecem aqui para repetir com um toque. A busca precisa de internet." />
+    {:else}
+      <ul class="flex flex-wrap gap-2">
+        {#each history.items as item (item)}
+          <li><button class="chip hover:bg-s3" onclick={() => repeat(item)}><Icon name="search" size={12} />{item}</button></li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+  <Recommendations />
 {:else if results === null}
   <State kind="empty" icon="globe" title="Busque uma música" text="A busca precisa de internet. O que você baixar toca sem rede." />
 {:else if results.length === 0}

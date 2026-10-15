@@ -99,3 +99,39 @@ describe('tooltip da pontuação', () => {
     vi.useRealTimers();
   });
 });
+
+describe('histórico de buscas', () => {
+  // @test RF-34
+  it('carrega as buscas recentes, mostra erro e limpa', async () => {
+    const history = vi.fn(); const clear = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../ipc', () => ({ api: { youtubeSearchHistory: history, youtubeSearchHistoryClear: clear } }));
+    const { SearchHistoryStore } = await import('./searchHistory.svelte');
+    const store = new SearchHistoryStore();
+    expect(store.ready).toBe(false);
+    history.mockResolvedValueOnce(['Daft Punk', 'Björk']);
+    await store.load();
+    expect(store.ready).toBe(true);
+    expect(store.items).toEqual(['Daft Punk', 'Björk']);
+    history.mockRejectedValueOnce({ message: 'falhou' });
+    await store.load();
+    expect(store.error).toBe('falhou');
+    expect(store.items).toEqual(['Daft Punk', 'Björk']);
+    await store.clear();
+    expect(clear).toHaveBeenCalledOnce();
+    expect(store.items).toEqual([]);
+    expect(store.error).toBeNull();
+  });
+  // @test RF-34
+  it('descarta resposta atrasada depois de limpar', async () => {
+    let resolveOld!: (v: string[]) => void;
+    const history = vi.fn(() => new Promise<string[]>((r) => { resolveOld = r; }));
+    vi.doMock('../ipc', () => ({ api: { youtubeSearchHistory: history, youtubeSearchHistoryClear: vi.fn().mockResolvedValue(undefined) } }));
+    const { SearchHistoryStore } = await import('./searchHistory.svelte');
+    const store = new SearchHistoryStore();
+    const loading = store.load();
+    await store.clear();
+    resolveOld(['velha']);
+    await loading;
+    expect(store.items).toEqual([]);
+  });
+});
