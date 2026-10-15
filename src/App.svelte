@@ -3,7 +3,7 @@
   // Casca da aplicação: layout responsivo, inicialização das stores, atalhos de teclado.
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
-  import { springTransition, springCollapse } from './lib/motion';
+  import { springTransition } from './lib/motion';
   import { api, isMock, type MetadataRefreshStatus } from './lib/ipc';
   import { notifyError, toasts } from './lib/stores/toast.svelte';
   import { router } from './lib/stores/router.svelte';
@@ -98,9 +98,11 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)">
-  <div class="flex min-h-0 flex-1">
+  <!-- @req RF-38: grade menu | conteúdo | painel (a terceira coluna, --aside-w, ainda não tem painel) -->
+  <div class="grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_var(--aside-w)]">
     <Nav variant="side" />
-    <main bind:this={main} class="relative min-w-0 flex-1 overflow-y-auto" id="conteudo" tabindex="-1">
+    <div class="relative col-start-2 flex min-h-0 min-w-0 flex-col">
+    <main bind:this={main} class="relative min-h-0 flex-1 overflow-y-auto {name !== 'now-playing' ? 'md:pb-[calc(var(--player-h)+2.5rem)]' : ''}" id="conteudo" tabindex="-1">
       {#if isMock}
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
@@ -127,12 +129,13 @@
       {/if}
       {/key}
     </main>
+    <!-- @req RF-17: em Tocando os controles ficam na própria tela -->
+    {#if name !== 'now-playing'}
+      <div class="pointer-events-none absolute inset-x-5 bottom-4 hidden md:block" transition:springTransition><PlayerBar /></div>
+    {/if}
+    </div>
   </div>
 
-  <!-- @req RF-17: em Tocando os controles ficam na própria tela -->
-  {#if name !== 'now-playing'}
-    <div class="hidden md:block" transition:springCollapse><PlayerBar /></div>
-  {/if}
   <div class="md:hidden">
     <MiniPlayer />
     <Nav variant="bottom" />
