@@ -104,8 +104,8 @@ ler queue[i].id.
 1. Branch a partir de `develop` (ou de `main`, se for `hotfix/*`).
 2. Antes de abrir: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
    `cargo test --workspace`; se tocou no frontend, `npm run check`, `npm test` e `npm run build`.
-   A matriz de rastreabilidade não precisa ser gerada à mão: o CI faz isso (ver "Integração
-   contínua").
+   Não gere a matriz de rastreabilidade no PR de trabalho: ela é gerada no branch de versão (ver
+   "Matriz de rastreabilidade").
 3. O **título do PR segue o mesmo formato de commit**, porque vira a mensagem do commit de
    integração: `feat(audio): toca M4A por streaming`.
 4. Revisão antes do merge: quem revisa lê o diff inteiro e roda a verificação. Para agentes, é a
@@ -124,8 +124,7 @@ instaladores na release do GitHub.
 
 | Workflow | Quando roda | O que faz |
 |---|---|---|
-| `ci.yml` | PR para `develop` ou `main`; push em `develop` e `main`; `workflow_dispatch` | Os portões abaixo. |
-| `matriz.yml` | PR para `develop` vindo de branch do próprio repositório | Roda `npm run docs:matriz` e, se a matriz mudou, commita no branch do PR. |
+| `ci.yml` | PR para `develop` ou `main`; push em `develop` e `main` | Os portões abaixo. |
 | `release.yml` | push de tag `vX.Y.Z`; `workflow_dispatch` com a tag | Constrói os instaladores e publica a release. |
 
 ### Portões (`ci.yml`)
@@ -136,34 +135,33 @@ Os nomes dos jobs são os *checks* obrigatórios do ruleset (ver "Proteção de 
 |---|---|---|
 | `rust` | sempre | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` ou `cargo test --workspace` falham. Testes `#[ignore]` (rede real, áudio) não rodam. Linux com as dependências do Tauri 2. |
 | `frontend` | sempre | `npm run check`, `npm test` ou `npm run build` falham. |
-| `docs` | sempre | há ID `@req`/`@test` que não existe nos requisitos; os testes de `scripts/ci/` falham; ou a matriz está desatualizada (exceção abaixo). |
+| `docs` | sempre | há ID `@req`/`@test` que não existe nos requisitos; os testes de `scripts/ci/` falham; ou, no PR e no push para a `main`, a matriz está desatualizada (ver abaixo). |
 | `regras-do-fluxo` | só em PR | o título não é Conventional Commits com os tipos e escopos acima; o branch de origem não é `<tipo>/<nome>`; o par origem/destino viola o fluxo (PR para `main` só de `develop` ou `hotfix/*`; PR para `develop` não vem de `main`, salvo o retorno de hotfix `chore: traz hotfix vX.Y.Z para develop`); no PR para `main`, as versões de `Cargo.toml`, `package.json` e `tauri.conf.json` não são iguais ou não são maiores que a última tag `v*`. O PR `develop` -> `main` precisa se chamar `chore(release): vX.Y.Z`. |
 
 As regras ficam em `scripts/ci/regras.mjs` (testadas com `node --test scripts/ci/`). Para checar um
 título antes de abrir o PR: `node scripts/ci/verificar-pr.mjs --head <branch> --base develop --titulo "<título>"`.
 
-### Matriz automática (`matriz.yml`)
+### Matriz de rastreabilidade
 
-Em PR para `develop` cujo branch é do próprio repositório, o workflow gera a matriz e, se
-`docs/rastreabilidade/` mudou, faz o commit `docs: regenera a matriz de rastreabilidade` (autor
-`github-actions[bot]`) no branch do PR. Quem implementa só precisa anotar `@req`/`@test`.
+A matriz (`docs/rastreabilidade/`) é gerada uma vez por versão, no branch de versão
+(`chore/release-vX.Y.Z`, passo 1 abaixo), com `npm run docs:matriz`. Nos PRs de trabalho para
+`develop` ela pode ficar atrasada e ninguém a regenera; quem implementa só anota `@req`/`@test`.
+O job `docs` cobra a matriz em dia só no PR e no push para a `main`.
 
-- Push feito com o `GITHUB_TOKEN` não dispara outros workflows. Por isso o `matriz.yml` não entra
-  em laço, mas também por isso o commit do bot não receberia checks: o `matriz.yml` dispara o
-  `ci.yml` por `workflow_dispatch` (exceção à regra) no branch, e os checks obrigatórios aparecem
-  no commit novo. `regras-do-fluxo` fica "skipped", o que conta como aprovado. O GitHub ainda
-  cria execuções de `pull_request` em "action_required" para o commit do bot (ele não é
-  colaborador); o `matriz.yml` as apaga logo depois, porque elas não geram checks.
-- No PR de branch do repositório para `develop`, o job `docs` não cobra a matriz em dia (o bot
-  cuida); em todo o resto (PR de fork, PR para `main`, push) cobra.
-- Se o PR fica atrás da `develop` e a matriz conflita, atualize o branch (`git merge
-  upstream/develop`), resolva a matriz com `npm run docs:matriz` e suba.
-- `node scripts/rastreabilidade.mjs --check` continua útil localmente para achar ID inexistente.
+- Até a sessão 06 havia um `matriz.yml` que commitava a matriz no branch de cada PR. O CI do
+  commit do bot rodava por `workflow_dispatch`, que o ruleset nem sempre ligava ao PR, e os PRs
+  ficavam bloqueados com tudo verde. Por isso nenhum bot commita mais em branch de PR.
+- PR `hotfix/*` → `main` é cobrado como qualquer PR para a `main`: se o hotfix mexe em
+  `@req`/`@test`, rode `npm run docs:matriz` no próprio branch. O retorno do hotfix para
+  `develop` não é cobrado.
+- `node scripts/rastreabilidade.mjs --check` continua útil localmente para achar ID inexistente
+  (o job `docs` roda esse check em todo PR).
 
 ### Como lançar uma versão
 
 1. Em um branch `chore/` a partir de `develop`, suba a versão nos três arquivos (`Cargo.toml`,
-   `package.json`, `src-tauri/tauri.conf.json`) e o `Cargo.lock`; PR para `develop`.
+   `package.json`, `src-tauri/tauri.conf.json`) e o `Cargo.lock`, rode `npm run docs:matriz` e
+   inclua a matriz; PR para `develop`.
 2. PR `develop` -> `main` com o título `chore(release): vX.Y.Z`. O `regras-do-fluxo` confere as
    versões. Merge **commit** (sem squash).
 3. Tag anotada na `main`, com as notas em pt-BR (seções Novidades, Correções, Conhecido; a
