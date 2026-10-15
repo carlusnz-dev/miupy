@@ -2,6 +2,7 @@
 import { untrack } from 'svelte';
 import { mergeDeep } from '../util/diff';
 import type { CacheTag } from '../util/libraryEvents';
+import { toasts } from './toast.svelte';
 
 /**
  * Cache de respostas em memória durante a sessão, por chave de consulta (RNF-11). Uma tela que volta
@@ -36,6 +37,8 @@ export class Resource<T> {
   error = $state<string | null>(null);
   /** Chave da consulta a que `data` pertence (telas com várias chaves, como o ano da retrospectiva, a comparam com a atual). */
   dataKey = $state('');
+  /** A última atualização falhou, mas há dados (do cache) na tela: o app avisa e os mantém. */
+  stale = $state(false);
   /** Há uma consulta em andamento (inclusive em segundo plano, com `data` já na tela). */
   refreshing = $state(false);
 
@@ -65,6 +68,7 @@ export class Resource<T> {
           this.data = undefined;
           this.dataKey = '';
           this.error = null;
+          this.stale = false;
         }
         return;
       }
@@ -118,8 +122,16 @@ export class Resource<T> {
       if (merged !== this.data) this.data = merged;
       if (this.key === key) this.dataKey = key;
       if (this.error !== null) this.error = null;
+      this.stale = false;
     } catch (e) {
-      if (token === this.gen) this.error = text(e);
+      if (token === this.gen) {
+        this.error = text(e);
+        // com dados na tela o erro não vira tela de erro; um aviso discreto por sequência de falhas
+        if (this.data !== undefined && this.dataKey === this.key) {
+          if (!this.stale) toasts.push('Não deu para atualizar agora. Mostrando o que já estava salvo.', 'info');
+          this.stale = true;
+        }
+      }
     } finally {
       if (token === this.gen) {
         this.refreshing = false;

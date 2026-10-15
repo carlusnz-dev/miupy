@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mergeList } from '../util/diff';
+import { toasts } from './toast.svelte';
 import { clearCache, invalidate, MIN_INTERVAL_MS, Resource } from './resource.svelte';
 
 type Row = { id: string; n: number };
 const rows = (...ns: number[]): Row[] => ns.map((n, i) => ({ id: `r${i}`, n }));
 
-beforeEach(() => { clearCache(); vi.useFakeTimers(); });
+beforeEach(() => { clearCache(); toasts.items = []; vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe('cache entre telas', () => {
@@ -116,6 +117,38 @@ describe('troca de consulta', () => {
     void r.load('b', () => new Promise<Row[]>(() => {}));
     expect(r.error).toBeNull();
     expect(r.loading).toBe(true);
+  });
+});
+
+describe('falha ao atualizar com cache', () => {
+  // @test RNF-11
+  it('avisa uma vez, mantém os dados e some o aviso quando volta a funcionar', async () => {
+    const r = new Resource<Row[]>(['tracks']);
+    await r.load('k', async () => rows(1));
+    expect(toasts.items).toHaveLength(0);
+
+    await r.load('k', async () => { throw { message: 'sem rede' }; });
+    expect(r.data).toEqual(rows(1));
+    expect(r.stale).toBe(true);
+    expect(toasts.items).toHaveLength(1);
+    expect(toasts.items[0].text).toMatch(/atualizar/);
+
+    await r.load('k', async () => { throw { message: 'sem rede' }; });
+    expect(toasts.items).toHaveLength(1); // não repete a cada tentativa
+
+    await r.load('k', async () => rows(2));
+    expect(r.stale).toBe(false);
+    await r.load('k', async () => { throw { message: 'sem rede' }; });
+    expect(toasts.items).toHaveLength(2);
+  });
+
+  // @test RNF-11
+  it('sem dados em cache o erro continua sendo a tela de erro, sem aviso', async () => {
+    const r = new Resource<Row[]>(['tracks']);
+    await r.load('k', async () => { throw { message: 'falhou' }; });
+    expect(r.error).toBe('falhou');
+    expect(r.stale).toBe(false);
+    expect(toasts.items).toHaveLength(0);
   });
 });
 
