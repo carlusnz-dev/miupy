@@ -64,7 +64,7 @@
     const src = api.resolveAsset(t?.coverPath ?? null) ?? t?.thumbnailUrl;
     if (!src) { meshColors = undefined; return; }
     let cancelled = false;
-    void coverPalette(src, assetCrossOrigin(src)).then((colors) => { if (!cancelled) meshColors = colors?.length ? colors : undefined; });
+    void coverPalette(src, assetCrossOrigin(src)).then((colors) => { if (!cancelled) meshColors = colors?.length ? [colors[0], colors[1] ?? colors[0], colors[2] ?? colors[1] ?? colors[0]] : undefined; });
     return () => { cancelled = true; };
   });
 
@@ -187,7 +187,7 @@
           {:else if lines.length}
             <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
               {#each lines as l, i}
-                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint opacity-70 hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
+                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
               {/each}
             </div>
           {:else if lyrics?.plain}

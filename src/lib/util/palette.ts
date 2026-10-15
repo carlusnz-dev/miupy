@@ -3,6 +3,7 @@
 // `coverPalette` desenha a imagem num canvas pequeno e devolve `null` se o canvas ficar "tainted".
 
 const SIZE = 32;
+const MAX_LUMA = 140;
 
 /** Quantiza os pixels RGBA em 16 níveis por canal, descarta quase preto, quase branco e cinza, e devolve até `count` cores distintas (hex), as mais frequentes e saturadas primeiro. */
 export function dominantColors(rgba: ArrayLike<number>, count = 3): string[] {
@@ -25,7 +26,11 @@ export function dominantColors(rgba: ArrayLike<number>, count = 3): string[] {
     if (picked.every((p) => Math.hypot(p[0] - rgb[0], p[1] - rgb[1], p[2] - rgb[2]) > 60)) picked.push(rgb);
     if (picked.length === count) break;
   }
-  return picked.map(([r, g, b]) => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`);
+  // Teto de brilho: capa clara demais apagaria o texto sem cartão (título e artista) sobre o mesh.
+  return picked.map((rgb) => {
+    const k = Math.min(1, MAX_LUMA / (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]));
+    return `#${rgb.map((v) => Math.round(v * k).toString(16).padStart(2, '0')).join('')}`;
+  });
 }
 
 /** Carrega a capa e extrai as cores; `null` se a imagem não carregar ou o canvas não puder ser lido. */

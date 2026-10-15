@@ -27,4 +27,11 @@ describe('dominantColors', () => {
     const data = [...px(200, 30, 30, 9), ...px(30, 30, 200, 8), ...px(30, 200, 30, 7)];
     expect(dominantColors(data, 2)).toHaveLength(2);
   });
+
+  // @test RF-40
+  it('limita o brilho de capas claras', () => {
+    const [hex] = dominantColors(px(255, 255, 40, 20));
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    expect(0.299 * r + 0.587 * g + 0.114 * b).toBeLessThanOrEqual(141);
+  });
 });

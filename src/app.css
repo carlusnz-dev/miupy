@@ -171,7 +171,7 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 }
 .eyebrow { font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); font-weight: 600; }
 .text-grad {
-  background: linear-gradient(135deg, var(--lava-core), var(--lava-text) 55%, var(--lava)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  background: var(--grad-lava); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
 /* trilha de range (progresso/volume) */
@@ -202,6 +202,7 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 .mesh-layer { position: absolute; width: 90%; height: 90%; }
 
 @media (prefers-reduced-motion: reduce) {
+  .mesh { transition-duration: 0s; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
@@ -267,6 +268,6 @@ dialog.modal[open] { opacity: 1; transform: none; }
 .lyric-line { transition: color var(--dur-fast), opacity var(--dur-fast); }
 .lyric-on span { position: relative; display: inline-block; text-shadow: 0 0 14px color-mix(in oklab, var(--lava) 55%, transparent); }
 .lyric-on span::after {
-  content: attr(data-text); position: absolute; inset: 0; color: transparent; text-shadow: none;
+  content: attr(data-text) / ''; position: absolute; inset: 0; color: transparent; text-shadow: none;
   background: linear-gradient(135deg, var(--lava-core), var(--lava-text) 55%, var(--lava)); -webkit-background-clip: text; background-clip: text;
 }
