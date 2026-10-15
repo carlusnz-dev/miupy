@@ -21,7 +21,9 @@
   $effect(() => { void names.load('downloads:titles', () => api.libraryListTracks()); });
 
   const active = $derived(downloads.jobs.filter((j) => j.status === 'queued' || j.status === 'downloading'));
-  const finished = $derived(downloads.jobs.filter((j) => j.status === 'done' || j.status === 'error').reverse());
+  // @req RF-31
+  const waiting = $derived(downloads.jobs.filter((j) => j.status === 'error' && j.error?.startsWith('auto_offline:')));
+  const finished = $derived(downloads.jobs.filter((j) => j.status === 'done' || (j.status === 'error' && !j.error?.startsWith('auto_offline:'))).reverse());
 
   async function cancel(j: DownloadJob) {
     try { await api.downloadCancel({ jobId: j.id }); } catch (e) { notifyError(e); }
@@ -42,8 +44,8 @@
       {:else}
         <Skeleton w="45%" h="0.8rem" class="my-0.5" />
       {/if}
-      <p class="truncate text-xs {j.status === 'error' ? 'text-danger' : 'text-muted'}">
-        {t?.artistName ? `${t.artistName} · ` : ''}{j.status === 'error' && j.error ? j.error : label[j.status]}
+      <p class="truncate text-xs {j.status === 'error' && !j.error?.startsWith('auto_offline:') ? 'text-danger' : 'text-muted'}">
+        {t?.artistName ? `${t.artistName} · ` : ''}{j.error?.startsWith('auto_offline:') ? 'Aguardando rede' : j.status === 'error' && j.error ? j.error : label[j.status]}
       </p>
       {#if j.status === 'downloading' || j.status === 'queued'}
         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-s3" role="progressbar" aria-label="Progresso do download de {t?.title ?? 'faixa'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(j.progress * 100)}>
@@ -57,7 +59,7 @@
     {:else if j.status === 'done'}
       <span class="text-ok" role="img" aria-label="Concluído"><Icon name="check" size={20} /></span>
     {:else}
-      <span class="text-danger" role="img" aria-label="Falhou"><Icon name="alert" size={20} /></span>
+      <span class="{j.error?.startsWith('auto_offline:') ? 'text-muted' : 'text-danger'}" role="img" aria-label={j.error?.startsWith('auto_offline:') ? 'Aguardando rede' : 'Falhou'}><Icon name="alert" size={20} /></span>
     {/if}
   </li>
 {/snippet}
@@ -74,6 +76,10 @@
   {#if active.length}
     <h2 class="eyebrow mb-2">Em andamento</h2>
     <ul class="mb-6 flex flex-col gap-2">{#each active as j (j.id)}{@render item(j)}{/each}</ul>
+  {/if}
+  {#if waiting.length}
+    <h2 class="eyebrow mb-2">Aguardando rede</h2>
+    <ul class="mb-6 flex flex-col gap-2">{#each waiting as j (j.id)}{@render item(j)}{/each}</ul>
   {/if}
   {#if finished.length}
     <div class="mb-2 flex items-center justify-between"><h2 class="eyebrow">Finalizados</h2><button class="btn btn-sm" onclick={clearFinished}>Limpar concluídos</button></div>

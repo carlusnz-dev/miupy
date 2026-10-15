@@ -1,6 +1,7 @@
 // @req RF-10 RF-11 RNF-13
 import { SvelteMap } from 'svelte/reactivity';
 import { api, type DownloadJob } from '../ipc';
+import { notify } from './toast.svelte';
 
 class DownloadsStore {
   jobs = $state<DownloadJob[]>([]);
@@ -21,6 +22,12 @@ class DownloadsStore {
       if (i >= 0) this.jobs[i] = job; else this.jobs.push(job);
       this.syncLatest(job.trackId);
     });
+    // @req RF-31
+    await api.on('download://auto', ({ count, reason }) => {
+      if (!count) return;
+      if (reason === 'offline') notify(`Sem rede: ${count} ${count === 1 ? 'download esperando' : 'downloads esperando'}`);
+      else notify(`${count} ${count === 1 ? 'faixa na fila de download' : 'faixas na fila de download'}`);
+    });
     await this.reload();
   }
 
@@ -32,7 +39,7 @@ class DownloadsStore {
 
   async clearFinished() { // @req RF-10
     const count = await api.downloadClearFinished();
-    this.jobs = this.jobs.filter((j) => j.status !== 'done' && j.status !== 'error');
+    this.jobs = this.jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || j.error?.startsWith('auto_offline:')));
     this.rebuildLatest();
     return count;
   }
