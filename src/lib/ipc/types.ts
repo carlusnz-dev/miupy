@@ -37,6 +37,7 @@ export interface Playlist {
   coverPath: string | null;
   mosaicPaths: string[]; // @req RF-22
   isFavorites: boolean; // @req RF-30
+  autoDownload: boolean; // @req RF-31
   trackCount: number;
   totalDurationMs: number;
   createdAt: number;
@@ -222,6 +223,8 @@ export interface EventMap {
   'player://state': PlayerState;
   'player://progress': ProgressPayload;
   'download://progress': DownloadJob;
+  // @req RF-31
+  'download://auto': { playlistId: string; count: number; reason: 'enabled' | 'added' | 'retry' | 'offline' };
   'library://changed': { reason: string };
   'recommendations://changed': { count: number };
   'player://error': { trackId: string; code: string; message: string };
