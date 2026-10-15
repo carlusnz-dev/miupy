@@ -4,6 +4,7 @@
   import { player } from '../stores/player.svelte';
   import { href, paths } from '../stores/router.svelte';
   import { toggleFavorite } from '../actions';
+  import { favorites } from '../stores/favorites.svelte';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import Transport from './Transport.svelte';
@@ -25,8 +26,8 @@
         {:else}<p class="truncate text-xs text-muted" use:useShared={`track-artist-${t.id}`}>{t.artistName ?? 'Artista desconhecido'}</p>{/if}
         {#if player.state.streaming}<p class="text-xs text-lava-text">{player.isLoading ? 'Conectando…' : 'Streaming'}</p>{/if}
       </div>
-      <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''}" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
-        <Icon name="heart" size={18} fill={t.isFavorite} />
+      <button class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+        <Icon name="heart" size={18} fill={favorites.is(t)} />
       </button>
     {:else}
       <p class="text-sm text-faint">Nada tocando</p>

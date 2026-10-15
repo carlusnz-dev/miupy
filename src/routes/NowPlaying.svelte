@@ -8,6 +8,7 @@
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { toggleFavorite } from '../lib/actions';
+  import { favorites } from '../lib/stores/favorites.svelte';
   import { fmtTime, parseLrc } from '../lib/util/format';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
   import Cover from '../lib/components/Cover.svelte';
@@ -119,12 +120,12 @@
             </p>
           </div>
           <button
-            class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11"
-            aria-pressed={t.isFavorite}
-            aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'}
+            class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''} !h-11 !w-11"
+            aria-pressed={favorites.is(t)}
+            aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'}
             onclick={() => toggleFavorite(t)}
           >
-            <Icon name="heart" size={24} fill={t.isFavorite} />
+            <Icon name="heart" size={24} fill={favorites.is(t)} />
           </button>
         </div>
         <div class="relative self-start" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
