@@ -9,7 +9,7 @@ use crate::db::Database;
 use crate::error::{Error, Result};
 use crate::model::{
     Dna, DnaTrend, DnaTrendKind, Recommendation, RecommendationCandidate, RecommendationReason,
-    RecommendationReasonKind, RecommendationSeed, SmartTrack, TasteArtist, TasteGenre,
+    RecommendationReasonKind, RecommendationSeed, SurfleTrack, TasteArtist, TasteGenre,
     TasteProfile, TrackScore,
 };
 use crate::stats::PLAY_THRESHOLD_MS;
@@ -70,7 +70,9 @@ impl Database {
         }
         let mut data = TasteData::default();
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.title, t.source_id, t.artist_id, a.name, t.genres,
+            // @req RF-24: faixa sem gênero herda os do artista, como no Surfle.
+            "SELECT t.id, t.title, t.source_id, t.artist_id, a.name,
+                    CASE WHEN t.genres = '[]' THEN COALESCE(a.genres, '[]') ELSE t.genres END,
                     f.track_id IS NOT NULL, t.duration_ms,
                     e.started_at, e.listened_ms, e.completed, e.skipped
              FROM tracks t
@@ -187,24 +189,36 @@ impl Database {
     }
 
     // @req RF-24
-    /// Prepara as faixas para `smart_order` na mesma ordem dos IDs pedidos. IDs ausentes
+    /// Prepara as faixas para `surfle_order` na mesma ordem dos IDs pedidos. IDs ausentes
     /// são ignorados; a casca pode conferir a fila antes de sortear.
-    pub fn smart_tracks(&self, track_ids: &[String]) -> Result<Vec<SmartTrack>> {
+    pub fn surfle_tracks(&self, track_ids: &[String]) -> Result<Vec<SurfleTrack>> {
         let scores: HashMap<_, _> = self
             .track_scores(Some(track_ids))?
             .into_iter()
             .map(|s| (s.track_id, s.score))
             .collect();
-        Ok(self
-            .get_tracks_by_ids(track_ids)?
-            .into_iter()
-            .map(|t| SmartTrack {
+        let mut artist_genres: HashMap<String, Vec<String>> = HashMap::new();
+        let mut out = Vec::with_capacity(track_ids.len());
+        for t in self.get_tracks_by_ids(track_ids)? {
+            let genres = match (&t.artist_id, t.genres.is_empty()) {
+                (Some(id), true) => match artist_genres.get(id) {
+                    Some(g) => g.clone(),
+                    None => {
+                        let g = self.get_artist_info(id)?.genres;
+                        artist_genres.insert(id.clone(), g.clone());
+                        g
+                    }
+                },
+                _ => t.genres,
+            };
+            out.push(SurfleTrack {
                 score: scores.get(&t.id).copied().unwrap_or(0.0),
                 track_id: t.id,
                 artist_id: t.artist_id,
-                genres: t.genres,
-            })
-            .collect())
+                genres,
+            });
+        }
+        Ok(out)
     }
 
     // @req RF-25
@@ -766,12 +780,39 @@ mod tests {
                 .len(),
             1
         );
-        let ready = db.smart_tracks(&[a.id.clone(), b.id.clone()]).unwrap();
+        let ready = db.surfle_tracks(&[a.id.clone(), b.id.clone()]).unwrap();
         assert_eq!(
             ready.iter().map(|t| &t.track_id).collect::<Vec<_>>(),
             [&a.id, &b.id]
         );
         assert_eq!(ready[0].score, s.score);
+    }
+
+    // @test RF-24
+    #[test]
+    fn surfle_usa_generos_do_artista_quando_faixa_nao_tem_genero() {
+        let db = db();
+        let track = add_track(&db, "Sem gênero", "Artista", 60000);
+        assert!(track.genres.is_empty());
+        db.conn
+            .execute(
+                "UPDATE artists SET genres='[\"rock\",\"samba\"]' WHERE id=?1",
+                [track.artist_id.as_deref().unwrap()],
+            )
+            .unwrap();
+        let prepared = db.surfle_tracks(std::slice::from_ref(&track.id)).unwrap();
+        assert_eq!(prepared[0].genres, ["rock", "samba"]);
+
+        // o gosto também herda: sem isso a afinidade de gênero do Surfle zera
+        db.set_favorite(&track.id, true).unwrap();
+        let genres: Vec<_> = db
+            .taste_profile(None)
+            .unwrap()
+            .top_genres
+            .into_iter()
+            .map(|g| g.genre)
+            .collect();
+        assert!(genres.contains(&"rock".to_string()), "{genres:?}");
     }
 
     // @test RF-25

@@ -24,6 +24,8 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0008_search_history.sql")),
         // @req RF-31
         M::up(include_str!("../migrations/0009_auto_download.sql")),
+        // @req RF-24
+        M::up(include_str!("../migrations/0010_surfle.sql")),
     ])
 }
 
@@ -135,6 +137,84 @@ pub(crate) fn new_id() -> String {
 mod tests {
     use super::*;
 
+    // @test RF-24
+    #[test]
+    fn migra_settings_preenchido_da_versao_nove() {
+        let path = std::env::temp_dir().join(format!("miupy-surfle-{}.db", new_id()));
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            conn.pragma_update(None, "foreign_keys", true).unwrap();
+            register_collation(&conn).unwrap();
+            Migrations::new(vec![
+                M::up(include_str!("../migrations/0001_init.sql")),
+                M::up(include_str!("../migrations/0002_recommendations.sql")),
+                M::up(include_str!("../migrations/0003_dna_shuffle_images.sql")),
+                M::up(include_str!("../migrations/0004_loudness.sql")),
+                M::up(include_str!("../migrations/0005_equalizer.sql")),
+                M::up(include_str!("../migrations/0006_sidebar_width.sql")),
+                M::up(include_str!("../migrations/0007_favorites_playlist.sql")),
+                M::up(include_str!("../migrations/0008_search_history.sql")),
+                M::up(include_str!("../migrations/0009_auto_download.sql")),
+            ])
+            .to_latest(&mut conn)
+            .unwrap();
+            assert_eq!(
+                conn.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                9
+            );
+            conn.execute_batch("INSERT INTO playlists(id,name,created_at,updated_at) VALUES('selected','Escolhida',1,1); UPDATE settings SET lava_theme='purple', volume=0.3, updated_at=42, shuffle_mode='smart', gpu_mode='on', normalization='quiet', eq_preset_id='custom', sidebar_width=350, favorites_playlist_id='selected'").unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert_eq!(db.schema_version().unwrap(), 10);
+        let values: (String, f64, i64, String, String, String, String, i64, String) = db.conn.query_row("SELECT lava_theme,volume,updated_at,shuffle_mode,gpu_mode,normalization,eq_preset_id,sidebar_width,favorites_playlist_id FROM settings", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?))).unwrap();
+        assert_eq!(
+            values,
+            (
+                "purple".into(),
+                0.3,
+                42,
+                "surfle".into(),
+                "on".into(),
+                "quiet".into(),
+                "custom".into(),
+                350,
+                "selected".into()
+            )
+        );
+        assert!(
+            db.conn
+                .prepare("PRAGMA foreign_key_check")
+                .unwrap()
+                .query([])
+                .unwrap()
+                .next()
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            db.conn
+                .execute("UPDATE settings SET shuffle_mode='smart'", [])
+                .is_err()
+        );
+        db.conn
+            .execute("DELETE FROM playlists WHERE id='selected'", [])
+            .unwrap();
+        assert_eq!(
+            db.conn
+                .query_row("SELECT favorites_playlist_id FROM settings", [], |r| r
+                    .get::<_, Option<
+                    String,
+                >>(
+                    0
+                ))
+                .unwrap(),
+            None
+        );
+        drop(db);
+        std::fs::remove_file(path).unwrap();
+    }
+
     // @test RF-31
     #[test]
     fn migra_playlists_existentes_e_rejeita_valor_invalido() {
@@ -161,7 +241,7 @@ mod tests {
         }
         let db = Database::open(&path).unwrap();
         assert!(!db.get_playlist("old").unwrap().auto_download);
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         db.conn
             .execute(
                 "UPDATE playlists SET auto_download = 1 WHERE id = 'old'",
@@ -241,7 +321,7 @@ mod tests {
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -282,7 +362,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -336,7 +416,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
@@ -369,7 +449,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         let settings = db.get_settings().unwrap();
         assert_eq!(settings.sidebar_width, 280);
         assert_eq!(settings.lava_theme, crate::LavaTheme::Blue);
@@ -410,7 +490,7 @@ mod tests {
                 }
             }
             let db = Database::open(&path).unwrap();
-            assert_eq!(db.schema_version().unwrap(), 9);
+            assert_eq!(db.schema_version().unwrap(), 10);
             let id = db.get_settings().unwrap().favorites_playlist_id.unwrap();
             if existing {
                 assert_eq!(id, "p");
@@ -477,7 +557,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 9);
+        assert_eq!(db.schema_version().unwrap(), 10);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (

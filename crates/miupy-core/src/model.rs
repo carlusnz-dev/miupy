@@ -57,7 +57,7 @@ text_enum!(
 // @req RF-24
 text_enum!(
     /// Ordem de reprodução salva separadamente de `Settings` do IPC.
-    ShuffleMode { Off => "off", Random => "random", Smart => "smart" }
+    ShuffleMode { Off => "off", Random => "random", Surfle => "surfle" }
 );
 
 // @req RNF-09
@@ -371,7 +371,7 @@ pub struct Dna {
 // @req RF-24
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SmartTrack {
+pub struct SurfleTrack {
     pub track_id: String,
     pub score: f64,
     pub artist_id: Option<String>,

@@ -21,7 +21,8 @@ evita tratar uma desistência quase no fim como rejeição forte. A faixa soma o
 é logarítmico para não deixar uma única faixa dominar só porque foi repetida em loop. Os pesos
 são constantes nomeadas em `recommendations.rs`.
 
-O perfil soma as pontuações das faixas por artista e gênero. Artistas com saldo negativo não
+O perfil soma as pontuações das faixas por artista e gênero (faixa sem gênero usa os gêneros do
+artista, como o Surfle). Artistas com saldo negativo não
 entram nos `topArtists`, mas o saldo negativo reduz candidatas desse artista. `skipRate` é
 `eventos encerrados e pulados / eventos encerrados`; `totalListenedMs` soma todo o tempo ouvido
 desses eventos. Sem eventos encerrados e sem favoritas, perfil e recomendações vazios. Só
@@ -56,22 +57,29 @@ Uma faixa favoritada entra no gosto mesmo sem nenhum evento: soma o bônus de fa
 faixa e, por ela, ao artista e aos gêneros. Isso vale para `stats_taste`, `stats_dna`, sementes e
 ranking. Um perfil só com favoritas não é vazio.
 
-## *Smart random* (RF-24)
+## Surfle (RF-24)
 
-O núcleo recebe as faixas restantes da fila e devolve uma ordem. É uma função pura sobre as
-pontuações, artistas e gêneros, com semente de sorteio explícita para os testes. A cada passo,
-sorteia uma faixa entre as que faltam com peso:
+O núcleo recebe as ocorrências restantes, a faixa atual, os gêneros pontuados de
+`TasteProfile.topGenres` e uma semente explícita. Sorteia sem reposição. Para cada candidata:
 
 ```text
-peso = 0,10 + 0,60 × pontuação_normalizada + 0,30 × proximidade
+base = 0,05 + 0,45 × pontuação_normalizada + 0,20 × gênero_em_comum
+             + 0,30 × afinidade_de_gênero
+peso = base × penalidade_artista
 ```
 
-- `pontuação_normalizada = max(pontuação, 0) / max(maior pontuação positiva da fila, 1)`.
-- `proximidade` com a faixa escolhida no passo anterior (no primeiro passo, a faixa atual):
-  `1` se é do mesmo artista, `0,5` se divide pelo menos um gênero, `0` caso contrário. Se as duas
-  últimas escolhidas já são do mesmo artista, a proximidade por artista vale `0` para evitar uma
-  sequência longa de um só artista.
-- A base `0,10` garante que toda faixa sai em algum momento.
+`pontuação_normalizada = clamp(max(score, 0) / max(maior_score_positivo, 1), 0, 1)`.
+`gênero_em_comum` vale 1 quando a candidata compartilha gênero com a última faixa, ou 0.
+`afinidade_de_gênero` é o maior saldo positivo dos gêneros da candidata no perfil, dividido
+pelo maior saldo positivo de gênero do perfil (piso 1); vale 0 sem gênero pontuado.
+Quando a faixa não tem gênero, usa `artists.genres`, se disponível.
+
+Se existe candidata de outro artista, a faixa do último artista recebe peso zero **nesta
+escolha**. Sem alternativa, todas voltam a concorrer. Se o artista aparece na penúltima
+posição, seu peso é multiplicado por 0,25; se aparece na antepenúltima, por 0,5.
+Os fatores acumulam. O peso base mínimo de 0,05 mantém cada ocorrência elegível em alguma
+etapa. Pontuação negativa por pulos não elimina a faixa; reduz sua chance frente a faixas
+bem pontuadas.
 
 ## DNA (RF-25)
 
