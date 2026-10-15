@@ -628,7 +628,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 ### Baixar playlist automaticamente (RF-31)
 
 - `playlist_update { autoDownload: true }` enfileira na hora todas as faixas da playlist ainda sem
-  arquivo (`downloadStatus` `none` ou `error`) e emite `download://auto` com `reason: 'enabled'`.
+  arquivo (`downloadStatus` `none` ou `error`) e, se houver alguma, emite `download://auto` com `reason: 'enabled'`.
   Desligar não cancela o que já está na fila.
 - Com a opção ligada, toda faixa nova que entra na playlist (`playlist_add_tracks`,
   `youtube_add_to_library` com `playlistId`, favoritar na playlist de favoritas) é enfileirada, com
