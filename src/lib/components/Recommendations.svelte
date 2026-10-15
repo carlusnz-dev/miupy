@@ -4,6 +4,7 @@
   import { RecommendationsStore } from '../stores/recommendations.svelte';
   import { notify, notifyError } from '../stores/toast.svelte';
   import { fmtTime } from '../util/format';
+  import { enterStyle } from '../motion';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import State from './State.svelte';
@@ -37,8 +38,8 @@
   {:else if !store.items.length}<State kind="empty" title="Ainda sem sugestões" text="As sugestões aparecem depois de ouvir música. Use Atualizar quando estiver conectado para buscar novas faixas." />
   {:else}
     <ul class="grid gap-2 sm:grid-cols-2">
-      {#each store.items as r (r.sourceId)}
-        <li class="card flex min-w-0 items-center gap-3 p-3 motion-item">
+      {#each store.items as r, i (r.sourceId)}
+        <li class="card flex min-w-0 items-center gap-3 p-3 enter" style={enterStyle(i, 40)}>
           <Cover url={r.thumbnailUrl} seed={r.sourceId} size={56} />
           <div class="min-w-0 flex-1"><p class="truncate font-medium">{r.title}</p><p class="truncate text-sm text-muted">{r.artist} · {fmtTime(r.durationMs)}</p><p class="truncate text-xs text-lava-text">{r.reasons.map((x) => reason(x.kind, x.label)).join(' · ')}</p></div>
           <div class="flex shrink-0 gap-1">
