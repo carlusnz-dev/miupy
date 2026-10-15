@@ -15,6 +15,20 @@ export function springTransition(_node: Element, { y = 10, delay = 0, duration =
   };
 }
 
+/** Recolhe e libera a altura do elemento com a mesma mola, sem salto de layout. */
+export function springCollapse(node: Element, { duration = 250 }: { duration?: number } = {}): TransitionConfig {
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const height = node.getBoundingClientRect().height;
+  return {
+    duration: reduced ? 90 : duration,
+    css: (t) => {
+      if (reduced) return `opacity:${t}`;
+      const spring = Math.max(0, 1 - Math.exp(-7 * t) * Math.cos(11 * t));
+      return `height:${height * Math.min(1, spring)}px;overflow:hidden;opacity:${Math.min(1, t * 1.6)}`;
+    },
+  };
+}
+
 export type SharedRect = { left: number; top: number; width: number; height: number };
 
 // @req RNF-10
