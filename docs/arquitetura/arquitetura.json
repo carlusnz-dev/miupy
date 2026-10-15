@@ -199,7 +199,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento, a parada e o resultado do reprocessamento de metadados; um aviso fixo acompanha o lote em qualquer tela. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas. Com a caixa de busca vazia, mostra buscas recentes e recomendações; a Discoteca leva à busca. Playlists podem baixar automaticamente e o toast resume a fila.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento, a parada e o resultado do reprocessamento de metadados; um aviso fixo acompanha o lote em qualquer tela. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas. Com a caixa de busca vazia, mostra buscas recentes e recomendações; a Discoteca leva à busca. Playlists podem baixar automaticamente e o toast resume a fila. O Início usa cartões de mesh estático com destaque temporário antes da navegação, estatísticas, listas e contexto da reprodução; a playlist atual oferece Pausar e Continuar.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -228,7 +228,9 @@
         "RF-30",
         "RF-32",
         "RF-33",
-        "RF-31"
+        "RF-31",
+        "RF-41",
+        "RF-42"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",
