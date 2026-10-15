@@ -4,6 +4,7 @@ export const SIDEBAR_MAX = 400;
 export const SIDEBAR_DEFAULT = 280;
 export const SIDEBAR_STEP = 8;
 export const SIDEBAR_KEY = 'miupy.sidebarWidth';
+export const SIDEBAR_COLLAPSED_KEY = 'miupy.sidebarCollapsed';
 
 export function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT;
@@ -61,4 +62,9 @@ export function createDeferredSave(save: (width: number) => void, delayMs = SIDE
     /** Descarta o que estava esperando (outro caminho, como o arraste, vai salvar). */
     cancel() { clear(); pending = null; },
   };
+}
+
+// @req RF-38: o estado recolhido fica só no cache local; qualquer valor diferente de "1" é expandido.
+export function parseCollapsed(raw: string | null | undefined): boolean {
+  return raw === '1';
 }

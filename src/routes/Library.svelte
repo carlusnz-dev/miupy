@@ -107,8 +107,8 @@
     </label>
     <button class="flex items-center gap-2" role="switch" aria-checked={info} onclick={toggleInfo}>
       Mais informações
-      <span class="relative h-5 w-9 rounded-full border border-line-strong transition-colors {info ? 'bg-[var(--lava)]' : 'bg-s3'}" aria-hidden="true">
-        <span class="absolute top-0.5 h-3.5 w-3.5 rounded-full bg-fg transition-transform {info ? 'translate-x-[1.1rem]' : 'translate-x-0.5'}"></span>
+      <span class="flex h-5 w-9 shrink-0 items-center rounded-full border border-line-strong p-0.5 transition-colors {info ? 'bg-[var(--lava)]' : 'bg-s3'}" aria-hidden="true">
+        <span class="h-3.5 w-3.5 rounded-full bg-fg transition-transform {info ? 'translate-x-4' : ''}"></span>
       </span>
     </button>
   </div>

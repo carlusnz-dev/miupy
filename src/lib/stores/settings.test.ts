@@ -6,7 +6,7 @@ vi.mock('../ipc', () => ({ api: { settingsUpdate: update } }));
 beforeEach(() => {
   update.mockClear();
   vi.stubGlobal('document', { documentElement: { style: { setProperty: vi.fn() } } });
-  vi.stubGlobal('localStorage', { setItem: vi.fn() });
+  vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) });
 });
 
 describe('configurações do menu', () => {
@@ -19,5 +19,14 @@ describe('configurações do menu', () => {
     expect(update).toHaveBeenCalledOnce();
     expect(update).toHaveBeenCalledWith({ settings: { sidebarWidth: 340 } });
     expect(settings.sidebarWidth).toBe(340);
+  });
+
+  // @test RF-38
+  it('guarda o menu recolhido no cache local', async () => {
+    const { settings } = await import('./settings.svelte');
+    settings.setSidebarCollapsed(true);
+    expect(settings.sidebarCollapsed).toBe(true);
+    expect(localStorage.setItem).toHaveBeenCalledWith('miupy.sidebarCollapsed', '1');
+    expect(update).not.toHaveBeenCalled();
   });
 });
