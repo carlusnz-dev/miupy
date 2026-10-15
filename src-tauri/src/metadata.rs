@@ -314,17 +314,15 @@ impl MetadataService {
         let correct_artist = rec.title_only
             && rec.title_only_artist_unambiguous
             && duration.is_some()
-            && video.as_ref().is_some_and(|v| {
-                v.channel.as_deref().is_some_and(|channel| {
+            && video
+                .as_ref()
+                .and_then(|v| v.channel.as_deref())
+                .is_some_and(|channel| {
                     track
                         .artist_name
                         .as_deref()
                         .is_some_and(|name| name.trim().eq_ignore_ascii_case(channel.trim()))
-                }) || v
-                    .raw_title
-                    .as_deref()
-                    .is_some_and(|raw| miupy_media::clean_title(raw, "").artist.is_none())
-            });
+                });
         let patch = TrackPatch {
             title: (!rec.title_only)
                 .then(|| rec.title.clone())
@@ -839,6 +837,7 @@ mod tests {
             ("Canal Errado", "Get Lucky", true, 369_000, "Daft Punk"),
             ("Canal Errado", "Get Lucky", true, 0, "Canal Errado"),
             ("Canal Errado", "Get Lucky", false, 369_000, "Canal Errado"),
+            ("Outro canal", "Get Lucky", true, 369_000, "Canal Errado"),
             (
                 "Outro canal",
                 "Canal Errado - Get Lucky",
