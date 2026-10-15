@@ -353,10 +353,10 @@ mod tests {
         assert_eq!(db.get_profile().unwrap().avatar_path, None);
         assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Off);
         assert_eq!(
-            db.set_shuffle_mode(ShuffleMode::Smart).unwrap(),
-            ShuffleMode::Smart
+            db.set_shuffle_mode(ShuffleMode::Surfle).unwrap(),
+            ShuffleMode::Surfle
         );
-        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Smart);
+        assert_eq!(db.get_shuffle_mode().unwrap(), ShuffleMode::Surfle);
         assert_eq!(db.get_settings().unwrap().volume, 0.8);
     }
 
