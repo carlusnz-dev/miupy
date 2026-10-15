@@ -59,7 +59,15 @@ export class Resource<T> {
   prime(key: string) {
     untrack(() => {
       this.key = key;
-      if (!memory.has(key)) return;
+      if (!memory.has(key)) {
+        // sem cache para esta consulta: os dados da anterior não valem aqui, a tela volta ao esqueleto
+        if (this.dataKey !== key) {
+          this.data = undefined;
+          this.dataKey = '';
+          this.error = null;
+        }
+        return;
+      }
       const merged = this.merge(this.data, memory.get(key) as T);
       if (merged !== this.data) this.data = merged;
       this.dataKey = key;

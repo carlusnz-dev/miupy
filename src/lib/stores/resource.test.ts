@@ -77,6 +77,48 @@ describe('cache entre telas', () => {
   });
 });
 
+describe('troca de consulta', () => {
+  // @test RNF-11
+  it('sem cache para a nova chave volta ao esqueleto em vez de mostrar a lista antiga', async () => {
+    const r = new Resource<Row[]>(['tracks']);
+    await r.load('a', async () => rows(1, 2));
+    expect(r.dataKey).toBe('a');
+
+    let release!: (v: Row[]) => void;
+    const pending = r.load('b', () => new Promise<Row[]>((res) => { release = res; }));
+    expect(r.loading).toBe(true);
+    expect(r.data).toBeUndefined();
+    expect(r.dataKey).toBe('');
+    release(rows(5));
+    await pending;
+    expect(r.loading).toBe(false);
+    expect(r.dataKey).toBe('b');
+    expect(r.data).toEqual(rows(5));
+  });
+
+  // @test RNF-11
+  it('com cache para a nova chave mostra o cache na hora', async () => {
+    const r = new Resource<Row[]>(['tracks']);
+    await r.load('a', async () => rows(1));
+    await r.load('b', async () => rows(2));
+    const pending = r.load('a', () => new Promise<Row[]>(() => {}));
+    expect(r.loading).toBe(false);
+    expect(r.dataKey).toBe('a');
+    expect(r.data).toEqual(rows(1));
+    void pending;
+  });
+
+  // @test RNF-11
+  it('o erro da consulta anterior não vaza para a nova', async () => {
+    const r = new Resource<Row[]>(['tracks']);
+    await r.load('a', async () => { throw { message: 'falhou' }; });
+    expect(r.error).toBe('falhou');
+    void r.load('b', () => new Promise<Row[]>(() => {}));
+    expect(r.error).toBeNull();
+    expect(r.loading).toBe(true);
+  });
+});
+
 describe('invalidação por evento', () => {
   // @test RNF-11 RNF-13
   it('atualiza só os recursos abertos que dependem do grupo do evento', async () => {
