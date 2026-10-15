@@ -212,40 +212,37 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
 
 /* Primitivas de movimento curtas; apenas transform e opacity. @req RNF-08 RNF-09 */
 @keyframes spring-in {
-  from { opacity: 0; transform: scale(.92); }
-  65% { opacity: 1; transform: scale(1.025); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); }
+  to { opacity: 1; transform: none; }
 }
-@keyframes spring-out { to { opacity: 0; transform: translate3d(0, 7px, 0) scale(.98); } }
+@keyframes spring-out { to { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @keyframes spring-bounce {
-  40% { transform: scale(.88); }
-  75% { transform: scale(1.09); }
+  40% { transform: scale(.94); }
   to { transform: scale(1); }
 }
-.motion-page { animation: spring-in 280ms both; }
-.motion-item { animation: spring-in 280ms both; }
-.motion-item:nth-child(10n + 2) { animation-delay: 25ms; }
-.motion-item:nth-child(10n + 3) { animation-delay: 50ms; }
-.motion-item:nth-child(10n + 4) { animation-delay: 75ms; }
-.motion-player { animation: spring-in 240ms both; }
-.motion-toast { animation: spring-in 260ms both; }
-.motion-bounce:active { animation: spring-bounce 220ms; will-change: transform; }
+@keyframes enter {
+  from { opacity: 0; transform: translate3d(0, var(--enter-y), 0); }
+  to { opacity: 1; transform: none; }
+}
+/* Entrada padrão (fade + Y). Em listas: style={enterStyle(i)} escalona via --enter-delay. */
+.enter { animation: enter var(--dur-base) var(--ease-spring) var(--enter-delay, 0ms) both; }
+.motion-bounce:active { animation: spring-bounce var(--dur-fast) var(--ease-spring); will-change: transform; }
 .btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover {
-  transition: transform 180ms linear(0, .43 30%, 1.1 70%, 1), opacity 160ms;
+  transition: transform var(--dur-fast) var(--ease-spring), opacity var(--dur-fast);
 }
 .btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover { transform: translate3d(0, -2px, 0); }
 .btn:active:not(:disabled), .icon-btn:active:not(:disabled), .group[role='listitem']:active { transform: scale(.96); }
 .group[role='listitem']:hover, .motion-cover:hover { transform: translate3d(0, -1px, 0); }
 .motion-cover img { animation: fade-image 180ms both; }
 @keyframes fade-image { from { opacity: 0; } to { opacity: 1; } }
-dialog.modal[open] { animation: spring-in 260ms both; transform-origin: center; }
+dialog.modal[open] { animation: spring-in var(--dur-base) var(--ease-spring) both; transform-origin: center; }
 dialog.modal[open]::backdrop { animation: backdrop-in 220ms both; }
 @keyframes backdrop-in { from { background: rgb(0 0 0 / 0); } to { background: rgb(0 0 0 / 0.6); } }
 dialog.modal.closing { animation: spring-out 190ms both; }
 dialog.modal.closing::backdrop { animation: backdrop-out 190ms both; }
 @keyframes backdrop-out { from { background: rgb(0 0 0 / 0.6); } to { background: rgb(0 0 0 / 0); } }
 @media (prefers-reduced-motion: reduce) {
-  .motion-page, .motion-item, .motion-player, .motion-toast, dialog.modal[open] { animation: fade-image 100ms both; will-change: auto; }
+  .enter, dialog.modal[open] { animation: fade-image 100ms both; }
   .motion-bounce:active { animation: none; will-change: auto; }
   .btn, .icon-btn, .group[role='listitem'], .card:has(> a), .motion-cover { transition: none; }
   .btn:hover:not(:disabled), .icon-btn:hover:not(:disabled), .card:has(> a):hover,
@@ -253,7 +250,7 @@ dialog.modal.closing::backdrop { animation: backdrop-out 190ms both; }
   .group[role='listitem']:hover, .motion-cover:hover { transform: none; }
 }
 /* Fechamento do dialog nativo com transição discreta de display. @req RNF-08 */
-dialog.modal { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); transition: opacity 180ms, transform 180ms, display 180ms allow-discrete, overlay 180ms allow-discrete; }
+dialog.modal { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); transition: opacity var(--dur-fast), transform var(--dur-fast), display var(--dur-fast) allow-discrete, overlay var(--dur-fast) allow-discrete; }
 dialog.modal[open] { opacity: 1; transform: none; }
-@starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 8px, 0) scale(.98); } }
+@starting-style { dialog.modal[open] { opacity: 0; transform: translate3d(0, 6px, 0) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { dialog.modal { transform: none; transition: opacity 90ms, display 90ms allow-discrete, overlay 90ms allow-discrete; } }
