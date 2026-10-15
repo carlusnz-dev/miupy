@@ -7,6 +7,7 @@
   import { fmtDuration, fmtMinutes, fmtNumber, MONTHS } from '../lib/util/format';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
   import Cover from '../lib/components/Cover.svelte';
+  import Dropdown from '../lib/components/Dropdown.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
@@ -46,7 +47,7 @@
   <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Retrospectiva</h1>
   <div class="flex items-center gap-2">
     <label class="sr-only" for="year">Ano</label>
-    <select id="year" class="field !w-auto" bind:value={year}>{#each years as y}<option value={y}>{y}</option>{/each}</select>
+    <Dropdown id="year" bind:value={year} options={years.map((y) => ({ value: y, label: String(y) }))} />
   </div>
 </div>
 
