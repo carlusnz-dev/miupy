@@ -32,7 +32,7 @@
 
 <svelte:window bind:innerWidth={width} onkeydown={onShortcut} />
 
-<div class="right-shell absolute inset-y-0 right-0 z-20 hidden xl:static md:block" class:open>
+<div class="right-shell absolute inset-y-0 right-0 z-20 hidden xl:relative md:block" class:open>
   <button type="button" class="right-toggle" onclick={toggle} aria-expanded={open} aria-controls="painel-direito"
           aria-label={open ? 'Recolher painel da direita' : 'Expandir painel da direita'} title={open ? 'Recolher painel (Ctrl+J)' : 'Expandir painel (Ctrl+J)'}>
     <Icon name={open ? 'chevron-right' : 'chevron-left'} size={14} />
