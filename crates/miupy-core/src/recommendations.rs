@@ -9,7 +9,7 @@ use crate::db::Database;
 use crate::error::{Error, Result};
 use crate::model::{
     Dna, DnaTrend, DnaTrendKind, Recommendation, RecommendationCandidate, RecommendationReason,
-    RecommendationReasonKind, RecommendationSeed, SmartTrack, TasteArtist, TasteGenre,
+    RecommendationReasonKind, RecommendationSeed, SurfleTrack, TasteArtist, TasteGenre,
     TasteProfile, TrackScore,
 };
 use crate::stats::PLAY_THRESHOLD_MS;
@@ -187,9 +187,9 @@ impl Database {
     }
 
     // @req RF-24
-    /// Prepara as faixas para `smart_order` na mesma ordem dos IDs pedidos. IDs ausentes
+    /// Prepara as faixas para `surfle_order` na mesma ordem dos IDs pedidos. IDs ausentes
     /// são ignorados; a casca pode conferir a fila antes de sortear.
-    pub fn smart_tracks(&self, track_ids: &[String]) -> Result<Vec<SmartTrack>> {
+    pub fn surfle_tracks(&self, track_ids: &[String]) -> Result<Vec<SurfleTrack>> {
         let scores: HashMap<_, _> = self
             .track_scores(Some(track_ids))?
             .into_iter()
@@ -198,11 +198,22 @@ impl Database {
         Ok(self
             .get_tracks_by_ids(track_ids)?
             .into_iter()
-            .map(|t| SmartTrack {
-                score: scores.get(&t.id).copied().unwrap_or(0.0),
-                track_id: t.id,
-                artist_id: t.artist_id,
-                genres: t.genres,
+            .map(|t| {
+                let genres = if t.genres.is_empty() {
+                    t.artist_id
+                        .as_deref()
+                        .and_then(|id| self.get_artist_info(id).ok())
+                        .map(|artist| artist.genres)
+                        .unwrap_or_default()
+                } else {
+                    t.genres
+                };
+                SurfleTrack {
+                    score: scores.get(&t.id).copied().unwrap_or(0.0),
+                    track_id: t.id,
+                    artist_id: t.artist_id,
+                    genres,
+                }
             })
             .collect())
     }
@@ -766,12 +777,28 @@ mod tests {
                 .len(),
             1
         );
-        let ready = db.smart_tracks(&[a.id.clone(), b.id.clone()]).unwrap();
+        let ready = db.surfle_tracks(&[a.id.clone(), b.id.clone()]).unwrap();
         assert_eq!(
             ready.iter().map(|t| &t.track_id).collect::<Vec<_>>(),
             [&a.id, &b.id]
         );
         assert_eq!(ready[0].score, s.score);
+    }
+
+    // @test RF-24
+    #[test]
+    fn surfle_usa_generos_do_artista_quando_faixa_nao_tem_genero() {
+        let db = db();
+        let track = add_track(&db, "Sem gênero", "Artista", 60000);
+        assert!(track.genres.is_empty());
+        db.conn
+            .execute(
+                "UPDATE artists SET genres='[\"rock\",\"samba\"]' WHERE id=?1",
+                [track.artist_id.as_deref().unwrap()],
+            )
+            .unwrap();
+        let prepared = db.surfle_tracks(&[track.id]).unwrap();
+        assert_eq!(prepared[0].genres, ["rock", "samba"]);
     }
 
     // @test RF-25
