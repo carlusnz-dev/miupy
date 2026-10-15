@@ -44,7 +44,7 @@
 
   <button class="motion-bounce flex min-w-0 flex-1 items-center gap-3 rounded-md text-left" onclick={onplay} aria-label="Tocar {track.title}{track.artistName ? `, de ${track.artistName}` : ''}">
     <span class="relative shrink-0">
-      <Cover path={track.coverPath} seed={track.id} size={44} rounded="0.375rem" />
+      <Cover path={track.coverPath} thumb={track.thumbnailUrl} seed={track.id} size={44} rounded="0.375rem" />
       <span class="absolute inset-0 grid place-items-center rounded-md bg-black/50 text-fg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <Icon name="play" size={18} />
       </span>

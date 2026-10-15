@@ -97,7 +97,7 @@
   <MeshGradient class="min-h-full">
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <Cover path={t.coverPath} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
+        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" shared={`track-cover-${t.id}`} />
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h1 class="text-2xl font-bold leading-tight" use:useShared={`track-title-${t.id}`}>{t.title}</h1>
