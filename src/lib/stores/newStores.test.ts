@@ -135,3 +135,38 @@ describe('histórico de buscas', () => {
     expect(store.items).toEqual([]);
   });
 });
+
+describe('busca no YouTube', () => {
+  // @test RF-34
+  it('esvaziar a caixa cancela a busca, limpa erro e resultados e descarta a resposta atrasada', async () => {
+    let resolveOld!: (v: unknown[]) => void;
+    const search = vi.fn(() => new Promise<unknown[]>((r) => { resolveOld = r; }));
+    vi.doMock('../ipc', () => ({ api: { youtubeSearch: search }, errorMessage: (e: { message: string }) => e.message }));
+    const { YoutubeSearchStore } = await import('./youtubeSearch.svelte');
+    const store = new YoutubeSearchStore();
+    const pending = store.run('daft');
+    expect(store.searching).toBe(true);
+    store.reset();
+    expect(store.searching).toBe(false);
+    resolveOld([{ sourceId: 'x' }]);
+    await pending;
+    expect(store.results).toBeNull();
+    expect(store.searching).toBe(false);
+  });
+  // @test RF-34
+  it('erro some ao esvaziar a caixa e só a última busca vale', async () => {
+    const search = vi.fn().mockRejectedValueOnce({ message: 'sem rede' }).mockResolvedValueOnce([{ sourceId: 'y' }]);
+    vi.doMock('../ipc', () => ({ api: { youtubeSearch: search }, errorMessage: (e: { message: string }) => e.message }));
+    const { YoutubeSearchStore } = await import('./youtubeSearch.svelte');
+    const store = new YoutubeSearchStore();
+    await store.run('a');
+    expect(store.error).toBe('sem rede');
+    store.reset();
+    expect(store.error).toBeNull();
+    await store.run('   ');
+    expect(search).toHaveBeenCalledOnce();
+    await store.run('b');
+    expect(store.error).toBeNull();
+    expect(store.results).toEqual([{ sourceId: 'y' }]);
+  });
+});

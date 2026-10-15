@@ -35,6 +35,16 @@
 - `npm run check`: 0 erros, 0 avisos. `npm test`: 14 arquivos, 58 testes passando.
 - `npm run build`: concluído. `node scripts/rastreabilidade.mjs --check`: ok, nenhum ID desconhecido.
 
+## Correções da revisão
+
+- Estado da busca extraído para `YoutubeSearchStore` (`youtubeSearch.svelte.ts`) com contador de
+  sequência: esvaziar a caixa cancela a busca em andamento e zera `searching`, `error` e `results`;
+  resposta atrasada é descartada. A tela checa `emptyBox` antes de busca/erro.
+- Mock do histórico agora dobra acento e colapsa espaços, como o Rust; teste cobre "bjork"/"Björk".
+- Teste Rust da busca em branco afirma `invalid_input`.
+- Reverificação: `npm run check` 0 erros; `npm test` 60 passando; `npm run build` ok; `cargo fmt`,
+  `clippy -D warnings` e `cargo test --workspace` sem falhas.
+
 ## Pendências e problemas conhecidos
 
 - Nenhum teste de componente Svelte (o projeto não tem); a tela é coberta só por `npm run check` e
