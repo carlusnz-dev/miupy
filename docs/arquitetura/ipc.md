@@ -18,7 +18,7 @@ type SortDir = 'asc' | 'desc';
 type TrackSort = 'title' | 'artist' | 'album' | 'duration' | 'addedAt' | 'position';
 type DownloadStatus = 'none' | 'queued' | 'downloading' | 'done' | 'error';
 type PlayerStatus = 'stopped' | 'loading' | 'playing' | 'paused';
-type ShuffleMode = 'off' | 'random' | 'smart';   // RF-24
+type ShuffleMode = 'off' | 'random' | 'surfle';   // RF-24
 
 interface Track {
   id: string;
@@ -402,7 +402,9 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   arquivo nem faixa.
 - `library_list_tracks_by_artist` aceita o mesmo `TrackQuery` de `library_list_tracks`.
 
-### Aleatório e *smart random* (RF-24)
+### Aleatório e Surfle (RF-24)
+
+A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com clientes antigos.
 
 - `player_set_shuffle` preserva as faixas antes da posição atual na fila em vigor, na mesma ordem,
   e mantém a ocorrência atual tocando na mesma posição. Só reordena as ocorrências depois dela:
@@ -410,10 +412,11 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   repetidos. A regra vale também após várias trocas seguidas de modo. `PlayerState.queue` sempre
   traz a ordem em que as faixas vão tocar.
 - `random`: embaralhamento uniforme do restante da fila.
-- `smart`: sorteio ponderado, uma faixa por vez. O peso de cada faixa restante combina a pontuação
-  dela (`TrackScore.score`, normalizada) com a proximidade da faixa escolhida antes (mesmo artista
-  pesa mais que gênero em comum). Toda faixa tem peso mínimo positivo, então todas tocam; faixas
-  puladas muitas vezes só ficam mais para o fim. Fórmula em [`recomendacao.md`](recomendacao.md).
+- `surfle`: sorteio ponderado, uma faixa por vez. Evita repetir imediatamente o artista quando
+  existe alternativa, considera artistas das últimas três posições, proximidade de gênero com a
+  faixa anterior, afinidade com os gêneros mais pontuados no perfil de gosto e pontuação da faixa.
+  Toda faixa mantém peso positivo e entra na fila; faixas muito puladas tendem ao fim.
+  Fórmula em [`recomendacao.md`](recomendacao.md).
 - Voltar para `off` põe somente as ocorrências restantes na ordem original de `player_play`;
   o prefixo já tocado e a ocorrência atual continuam onde estão.
 - Um `player_play { trackId, queue }` novo com `shuffle` ligado embaralha a fila nova da mesma
