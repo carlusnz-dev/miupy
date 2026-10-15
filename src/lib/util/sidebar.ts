@@ -36,3 +36,29 @@ export function beginSidebarDrag(startWidth: number, startX: number, preview: (w
     },
   };
 }
+
+export const SIDEBAR_KEY_SAVE_MS = 400;
+
+// @req RF-33: no teclado cada tecla só pré-visualiza; salva o valor final depois de uma pausa ou ao sair do foco.
+export function createDeferredSave(save: (width: number) => void, delayMs = SIDEBAR_KEY_SAVE_MS) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: number | null = null;
+  const clear = () => { if (timer) clearTimeout(timer); timer = null; };
+  const flush = () => {
+    clear();
+    if (pending === null) return;
+    const width = pending;
+    pending = null;
+    save(width);
+  };
+  return {
+    schedule(width: number) {
+      pending = width;
+      clear();
+      timer = setTimeout(flush, delayMs);
+    },
+    flush,
+    /** Descarta o que estava esperando (outro caminho, como o arraste, vai salvar). */
+    cancel() { clear(); pending = null; },
+  };
+}
