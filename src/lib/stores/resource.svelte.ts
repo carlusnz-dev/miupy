@@ -74,6 +74,8 @@ export class Resource<T> {
       }
       const merged = this.merge(this.data, memory.get(key) as T);
       if (merged !== this.data) this.data = merged;
+      // a falha da consulta anterior não silencia o aviso desta
+      if (this.dataKey !== key) this.stale = false;
       this.dataKey = key;
     });
   }
