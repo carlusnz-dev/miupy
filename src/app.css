@@ -194,8 +194,9 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 @keyframes mesh-a { 0% { transform: translate3d(-8%, -6%, 0) scale(1); } 50% { transform: translate3d(10%, 8%, 0) scale(1.18); } 100% { transform: translate3d(-8%, -6%, 0) scale(1); } }
 @keyframes mesh-b { 0% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } }
 @keyframes mesh-c { 0% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } 100% { transform: translate3d(0, 10%, 0) scale(1); } }
-.mesh-layer { position: absolute; width: 90%; height: 90%; will-change: transform; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.mesh.paused .mesh-layer { animation-play-state: paused; will-change: auto; }
+.mesh-layer { position: absolute; width: 90%; height: 90%; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.mesh:not(.paused) .mesh-layer { will-change: transform; }
+.mesh.paused .mesh-layer { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .mesh-layer { animation: none !important; } }
 
 @media (prefers-reduced-motion: reduce) {
