@@ -75,10 +75,8 @@ Reduzido: só fade curto.
 
 ## Movimento entre telas
 
-`lib/layoutPresence.ts` registra apenas nós marcados com `use:useShared` ou a propriedade `shared` de
-`Cover`. Chaves iguais produzem FLIP por `transform` entre telas; ao trocar de rota no meio do
-movimento, a captura mais nova substitui a anterior. A animação reduzida usa apenas fade. O modal
-nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
+Sem animação de elementos compartilhados entre telas (retirada a pedido do autor, sessão 09): cada tela
+entra com `.enter`. O modal nativo centraliza com `margin: auto` e mantém o diálogo aberto durante a saída animada.
 
 ## Layout
 
