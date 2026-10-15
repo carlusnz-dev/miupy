@@ -363,7 +363,10 @@ fn asset_name() -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    };
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
@@ -409,6 +412,98 @@ mod tests {
         ]})
         .to_string()
         .into_bytes()
+    }
+
+    fn controlled_manager(dir: &Path, url: String, time: Arc<AtomicU64>) -> YtDlpManager {
+        let mut manager = YtDlpManager::with_release_url(dir, url).unwrap();
+        manager.env_override = Arc::new(|| None);
+        manager.clock = Arc::new(move || time.load(Ordering::SeqCst));
+        manager
+    }
+
+    // @test RF-26
+    #[tokio::test]
+    async fn caminho_definido_existente_ignora_rede_e_inexistente_falha() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("custom-ytdlp");
+        tokio::fs::write(&binary, b"custom").await.unwrap();
+        let mut manager =
+            YtDlpManager::with_release_url(dir.path(), "http://127.0.0.1:1/release").unwrap();
+        let selected = binary.clone().into_os_string();
+        manager.env_override = Arc::new(move || Some(selected.clone()));
+        let status = manager.update(true, None).await.unwrap();
+        assert_eq!(status.path.as_deref(), Some(binary.as_path()));
+        assert_eq!(status.state, YtDlpState::Ready);
+        assert!(!dir.path().join("yt-dlp-status.json").exists());
+
+        let missing = dir.path().join("missing-ytdlp");
+        let selected = missing.clone().into_os_string();
+        manager.env_override = Arc::new(move || Some(selected.clone()));
+        let error = manager.ensure_current(None).await.unwrap_err();
+        assert_eq!(error.code(), "unavailable");
+        assert!(error.to_string().contains("MIUPY_YTDLP"));
+        assert!(!dir.path().join("yt-dlp-status.json").exists());
+    }
+
+    // @test RF-26
+    #[tokio::test]
+    async fn caminho_vazio_e_ignorado() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, task) = server(vec![(500, b"temporary failure".to_vec(), None)]).await;
+        let mut manager =
+            YtDlpManager::with_release_url(dir.path(), format!("{base}/release")).unwrap();
+        manager.env_override = Arc::new(|| Some(OsString::new()));
+        assert_eq!(
+            manager.binary_path(),
+            dir.path().join(asset_name().unwrap())
+        );
+        assert_eq!(
+            manager.ensure_current(None).await.unwrap_err().code(),
+            "network"
+        );
+        assert_eq!(task.await.unwrap(), 1);
+    }
+
+    // @test RF-26
+    #[tokio::test]
+    async fn consulta_no_maximo_uma_vez_em_24h_e_falha_nao_grava_carimbo() {
+        let name = asset_name().unwrap();
+        let bin = b"binary";
+        let hash = Sha256::digest(bin)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let (base, task) = server(vec![
+            (200, release("", name), None),
+            (200, format!("{hash}  {name}\n").into_bytes(), None),
+            (200, bin.to_vec(), None),
+            (500, b"temporary failure".to_vec(), None),
+            (200, release("", name), None),
+            (200, format!("{hash}  {name}\n").into_bytes(), None),
+        ])
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let time = Arc::new(AtomicU64::new(1_000_000_000));
+        let manager = controlled_manager(dir.path(), format!("{base}/release"), time.clone());
+        let first = manager.ensure_current(None).await.unwrap();
+        assert_eq!(first.checked_at, Some(1_000_000_000));
+        time.store(1_086_399_999, Ordering::SeqCst);
+        assert_eq!(
+            manager.ensure_current(None).await.unwrap().checked_at,
+            first.checked_at
+        );
+        time.store(1_086_400_000, Ordering::SeqCst);
+        assert_eq!(
+            manager.ensure_current(None).await.unwrap_err().code(),
+            "network"
+        );
+        assert_eq!(manager.status().await.checked_at, first.checked_at);
+        time.store(1_086_400_001, Ordering::SeqCst);
+        assert_eq!(
+            manager.ensure_current(None).await.unwrap().checked_at,
+            Some(1_086_400_001)
+        );
+        assert_eq!(task.await.unwrap(), 6);
     }
 
     // @test RF-26
