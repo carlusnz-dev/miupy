@@ -1,6 +1,6 @@
 // @req RF-17
 import { api, type LavaTheme, type Normalization, type Settings } from '../ipc';
-import { clampSidebarWidth, SIDEBAR_KEY } from '../util/sidebar';
+import { clampSidebarWidth, parseCollapsed, SIDEBAR_COLLAPSED_KEY, SIDEBAR_KEY } from '../util/sidebar';
 
 const KEY = 'miupy.lava';
 
@@ -13,11 +13,16 @@ export function applyLava(t: LavaTheme) {
   if (meta && bg) meta.setAttribute('content', bg);
 }
 
+function readCollapsed(): boolean {
+  try { return parseCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)); } catch { return false; }
+}
+
 class SettingsStore {
   lava = $state<LavaTheme>('orange');
   normalization = $state<Normalization>('normal');
   eqPresetId = $state('flat');
   sidebarWidth = $state(280);
+  sidebarCollapsed = $state(readCollapsed());
   loaded = $state(false);
   private sidebarSave: Promise<void> = Promise.resolve();
   private sidebarSaveGeneration = 0;
@@ -67,6 +72,12 @@ class SettingsStore {
     });
     this.sidebarSave = save.catch(() => {});
     return save;
+  }
+
+  // @req RF-38
+  setSidebarCollapsed(value: boolean) {
+    this.sidebarCollapsed = value;
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? '1' : '0'); } catch { /* sem storage: ok */ }
   }
 
   /** Aplica na hora (pré-visualização imediata) e persiste em seguida. */
