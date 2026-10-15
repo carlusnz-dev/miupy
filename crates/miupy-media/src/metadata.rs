@@ -213,6 +213,11 @@ pub struct MetadataConfig {
     pub musicbrainz_interval: Duration,
     /// Intervalo mínimo entre requisições ao LRCLIB.
     pub lrclib_interval: Duration,
+    pub wikidata_url: String,
+    pub commons_url: String,
+    /// Intervalo mínimo entre requisições a cada API de imagem (Wikidata, Commons e Cover Art
+    /// Archive; cada uma tem a própria fila).
+    pub images_interval: Duration,
 }
 
 impl MetadataConfig {
@@ -225,6 +230,9 @@ impl MetadataConfig {
             timeout: Duration::from_secs(20),
             musicbrainz_interval: Duration::from_secs(1),
             lrclib_interval: Duration::from_secs(2),
+            wikidata_url: WIKIDATA_ENDPOINT.into(),
+            commons_url: COMMONS_ENDPOINT.into(),
+            images_interval: Duration::from_secs(1),
         }
     }
 }
@@ -235,6 +243,9 @@ pub struct OnlineMetadata {
     cfg: MetadataConfig,
     mb_limiter: RateLimiter,
     lrclib_limiter: RateLimiter,
+    wikidata_limiter: RateLimiter,
+    commons_limiter: RateLimiter,
+    coverart_limiter: RateLimiter,
     user_agent: String,
 }
 
@@ -256,7 +267,7 @@ impl OnlineMetadata {
         let Some(item) = wikidata_id(&mb) else {
             return Ok(None);
         };
-        let mut wd_url = reqwest::Url::parse(WIKIDATA_ENDPOINT)
+        let mut wd_url = reqwest::Url::parse(&self.cfg.wikidata_url)
             .map_err(|e| MediaError::Internal(format!("URL do Wikidata inválida: {e}")))?;
         wd_url.query_pairs_mut().extend_pairs([
             ("action", "wbgetentities"),
@@ -264,12 +275,14 @@ impl OnlineMetadata {
             ("props", "claims"),
             ("format", "json"),
         ]);
-        let wd = self.http.get(wd_url).send().await?;
+        let wd = self
+            .request_limited(wd_url, &self.wikidata_limiter, "Wikidata")
+            .await?;
         let wd: Value = Self::check(wd, "Wikidata").await?.json().await?;
         let Some(file) = wikidata_image(&wd, &item) else {
             return Ok(None);
         };
-        let mut commons_url = reqwest::Url::parse(COMMONS_ENDPOINT)
+        let mut commons_url = reqwest::Url::parse(&self.cfg.commons_url)
             .map_err(|e| MediaError::Internal(format!("URL do Commons inválida: {e}")))?;
         commons_url.query_pairs_mut().extend_pairs([
             ("action", "query"),
@@ -279,7 +292,9 @@ impl OnlineMetadata {
             ("iiurlwidth", "500"),
             ("format", "json"),
         ]);
-        let commons = self.http.get(commons_url).send().await?;
+        let commons = self
+            .request_limited(commons_url, &self.commons_limiter, "Commons")
+            .await?;
         let commons: Value = Self::check(commons, "Commons").await?.json().await?;
         let Some((url, credit)) = commons_image(&commons) else {
             return Ok(None);
@@ -288,7 +303,10 @@ impl OnlineMetadata {
         if !matches!(parsed.scheme(), "http" | "https") {
             return Err(MediaError::Internal("URL da foto inválida".into()));
         }
-        let response = Self::check(self.http.get(parsed).send().await?, "foto do artista").await?;
+        let response = self
+            .request_limited(parsed, &self.commons_limiter, "foto do artista")
+            .await?;
+        let response = Self::check(response, "foto do artista").await?;
         if response
             .content_length()
             .is_some_and(|n| n > MAX_IMAGE_BYTES as u64)
@@ -327,6 +345,9 @@ impl OnlineMetadata {
             http,
             mb_limiter: RateLimiter::new(cfg.musicbrainz_interval),
             lrclib_limiter: RateLimiter::new(cfg.lrclib_interval),
+            wikidata_limiter: RateLimiter::new(cfg.images_interval),
+            commons_limiter: RateLimiter::new(cfg.images_interval),
+            coverart_limiter: RateLimiter::new(cfg.images_interval),
             cfg,
             user_agent,
         })
@@ -546,7 +567,8 @@ impl MetadataProvider for OnlineMetadata {
             "{}/release/{release_mbid}/front-500",
             self.cfg.coverart_url.trim_end_matches('/')
         );
-        self.download_image(&url, dest_dir, file_stem).await
+        self.download_image_inner(&url, dest_dir, file_stem, Some(&self.coverart_limiter))
+            .await
     }
 
     // @req RF-12
@@ -596,6 +618,21 @@ impl MetadataProvider for OnlineMetadata {
 
     // @req RF-09 RF-12
     async fn download_image(&self, url: &str, dest_dir: &Path, file_stem: &str) -> Result<PathBuf> {
+        self.download_image_inner(url, dest_dir, file_stem, None)
+            .await
+    }
+}
+
+impl OnlineMetadata {
+    // @req RF-09 RF-12
+    /// Com `limiter`, a requisição entra na fila do provedor e repete 503/429 como as demais.
+    async fn download_image_inner(
+        &self,
+        url: &str,
+        dest_dir: &Path,
+        file_stem: &str,
+        limiter: Option<&RateLimiter>,
+    ) -> Result<PathBuf> {
         let parsed = reqwest::Url::parse(url)
             .map_err(|_| MediaError::InvalidInput("URL de imagem inválida".into()))?;
         if !matches!(parsed.scheme(), "http" | "https") {
@@ -604,7 +641,13 @@ impl MetadataProvider for OnlineMetadata {
             ));
         }
         crate::ytdlp::validate_file_stem(file_stem)?;
-        let resp = self.http.get(parsed).send().await?;
+        let resp = match limiter {
+            Some(limiter) => {
+                self.request_limited(parsed, limiter, "Cover Art Archive")
+                    .await?
+            }
+            None => self.http.get(parsed).send().await?,
+        };
         let resp = Self::check(resp, "imagem").await?;
         let content_type = resp
             .headers()
