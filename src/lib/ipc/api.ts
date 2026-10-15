@@ -1,7 +1,7 @@
 // @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
   ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, PlayerState, Playlist,
-  GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
+  EqPreset, EqPresetInput, GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
 } from './types';
 
 /** Interface única implementada pelo cliente real (Tauri) e pelo mock em memória. */
@@ -67,6 +67,10 @@ export interface MiupyApi {
   profileGet(): Promise<Profile>;
   profileSetAvatar(a: { image: ImageUpload | null }): Promise<Profile>; // @req RF-21
   profileUpdate(a: { profile: Profile }): Promise<Profile>;
+  // @req RF-29
+  equalizerListPresets(): Promise<EqPreset[]>;
+  equalizerSavePreset(a: { preset: EqPresetInput }): Promise<EqPreset>;
+  equalizerDeletePreset(a: { presetId: string }): Promise<void>;
   settingsGet(): Promise<Settings>;
   settingsUpdate(a: { settings: Partial<Settings> }): Promise<Settings>;
   systemGpuStatus(): Promise<GpuStatus>;

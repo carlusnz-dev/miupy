@@ -650,6 +650,8 @@ pub struct Settings {
     pub volume: f64,
     // @req RF-28
     pub normalization: Normalization,
+    // @req RF-29
+    pub eq_preset_id: String,
     // @req RF-33
     pub sidebar_width: i64,
 }
@@ -661,6 +663,8 @@ pub struct SettingsPatch {
     pub lava_theme: Option<LavaTheme>,
     pub volume: Option<f64>,
     pub normalization: Option<Normalization>,
+    // @req RF-29
+    pub eq_preset_id: Option<String>,
     // @req RF-33
     pub sidebar_width: Option<i64>,
 }
@@ -676,12 +680,13 @@ mod tests {
             lava_theme: LavaTheme::Purple,
             volume: 0.5,
             normalization: Normalization::Normal,
+            eq_preset_id: "flat".into(),
             sidebar_width: 280,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "sidebarWidth": 280 })
+            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "eqPresetId": "flat", "sidebarWidth": 280 })
         );
         assert_eq!(LavaTheme::default(), LavaTheme::Orange);
     }

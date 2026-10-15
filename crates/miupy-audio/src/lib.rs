@@ -10,6 +10,8 @@
 
 #[cfg(not(target_os = "android"))]
 mod dsp;
+#[cfg(not(target_os = "android"))]
+mod equalizer;
 mod error;
 #[cfg(not(target_os = "android"))]
 mod loudness;

@@ -16,6 +16,7 @@ pub struct SettingsDto {
     volume: f64,
     gpu_mode: GpuMode,
     normalization: Normalization,
+    eq_preset_id: String,
     // @req RF-33
     sidebar_width: i64,
 }
@@ -26,6 +27,7 @@ pub struct SettingsPatchDto {
     volume: Option<f64>,
     gpu_mode: Option<GpuMode>,
     normalization: Option<Normalization>,
+    eq_preset_id: Option<String>,
     // @req RF-33
     sidebar_width: Option<i64>,
 }
@@ -94,6 +96,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
+                eq_preset_id: s.eq_preset_id,
                 sidebar_width: s.sidebar_width,
             })
         })
@@ -112,6 +115,7 @@ pub async fn settings_update(
         lava_theme: settings.lava_theme,
         volume,
         normalization: settings.normalization,
+        eq_preset_id: settings.eq_preset_id.clone(),
         sidebar_width: settings.sidebar_width.map(|width| width.clamp(220, 400)),
     };
     let saved = state
@@ -126,6 +130,7 @@ pub async fn settings_update(
                 volume: s.volume,
                 gpu_mode: db.get_gpu_mode()?,
                 normalization: s.normalization,
+                eq_preset_id: s.eq_preset_id,
                 sidebar_width: s.sidebar_width,
             })
         })
@@ -140,6 +145,10 @@ pub async fn settings_update(
     if let Some(v) = volume {
         let player = state.player.clone();
         blocking(move || player.set_volume(v).map(|_| ())).await?;
+    }
+    if settings.eq_preset_id.is_some() {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
     }
     if settings.normalization.is_some() {
         let player = state.player.clone();
@@ -174,5 +183,49 @@ pub async fn system_gpu_status(state: State<'_, AppState>) -> R<GpuStatusDto> {
 #[tauri::command]
 pub async fn system_gpu_startup_confirmed() -> R<()> {
     crate::gpu::confirm_startup()?;
+    Ok(())
+}
+
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_list_presets(state: State<'_, AppState>) -> R<Vec<miupy_core::EqPreset>> {
+    state.db.run(|db| Ok(db.list_eq_presets()?)).await
+}
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_save_preset(
+    state: State<'_, AppState>,
+    preset: miupy_core::EqPresetInput,
+) -> R<miupy_core::EqPreset> {
+    let saved = state
+        .db
+        .run(move |db| Ok(db.save_eq_preset(&preset)?))
+        .await?;
+    let active = state
+        .db
+        .run(|db| Ok(db.get_settings()?.eq_preset_id))
+        .await?;
+    if active == saved.id {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
+    }
+    Ok(saved)
+}
+// @req RF-29
+#[tauri::command]
+pub async fn equalizer_delete_preset(state: State<'_, AppState>, preset_id: String) -> R<()> {
+    let active = state
+        .db
+        .run(|db| Ok(db.get_settings()?.eq_preset_id))
+        .await?;
+    let changed = active == preset_id;
+    state
+        .db
+        .run(move |db| Ok(db.delete_eq_preset(&preset_id)?))
+        .await?;
+    if changed {
+        let player = state.player.clone();
+        blocking(move || player.refresh_equalizer()).await?;
+    }
     Ok(())
 }

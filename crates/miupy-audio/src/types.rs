@@ -98,6 +98,8 @@ pub trait AudioBackend: Send + Sync {
     fn set_volume(&self, volume: f32) -> Result<()>;
     // @req RF-28
     fn set_normalization_gain_db(&self, gain_db: f32) -> Result<()>;
+    // @req RF-29
+    fn set_equalizer(&self, gains_db: [f32; 8]) -> Result<()>;
     fn set_muted(&self, muted: bool) -> Result<()>;
     /// Estado atual (não bloqueia).
     fn state(&self) -> PlaybackState;

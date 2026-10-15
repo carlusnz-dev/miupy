@@ -1,4 +1,6 @@
 //! Cadeia: normalização, estágio de EQ, volume, limitador de pico verdadeiro.
+use crate::equalizer::Equalizer;
+#[cfg(test)]
 use ebur128::{EbuR128, Mode};
 use rodio::source::SeekError;
 use rodio::{SampleRate, Source};
@@ -7,36 +9,56 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+fn oversample_coefficients() -> [[f32; 8]; 3] {
+    std::array::from_fn(|phase| {
+        let t = (phase + 1) as f32 / 4.;
+        let mut weights = std::array::from_fn(|tap| {
+            let x = (tap as f32 - 3.) - t;
+            if x.abs() < 0.0001 {
+                1.
+            } else {
+                let pix = std::f32::consts::PI * x;
+                (pix.sin() / pix) * (pix / 4.).sin() / (pix / 4.)
+            }
+        });
+        let sum: f32 = weights.iter().sum();
+        for v in &mut weights {
+            *v /= sum;
+        }
+        weights
+    })
+}
+
 pub(crate) struct DspControls {
     pub normalization: AtomicU32,
     pub volume: AtomicU32,
+    pub equalizer: [AtomicU32; 8],
 }
 impl Default for DspControls {
     fn default() -> Self {
         Self {
             normalization: AtomicU32::new(1.0_f32.to_bits()),
             volume: AtomicU32::new(1.0_f32.to_bits()),
+            equalizer: std::array::from_fn(|_| AtomicU32::new(0.0_f32.to_bits())),
         }
     }
 }
 
-/// Ponto de extensão do equalizador RF-29. O estágio plano preserva as amostras.
-pub(crate) trait EqStage: Send {
-    fn process(&mut self, sample: f32, channel: usize) -> f32;
-}
-pub(crate) struct FlatEq;
-impl EqStage for FlatEq {
-    fn process(&mut self, sample: f32, _channel: usize) -> f32 {
-        sample
+impl DspControls {
+    // @req RF-29
+    pub fn set_equalizer(&self, gains: [f32; 8]) {
+        for (atom, gain) in self.equalizer.iter().zip(gains) {
+            atom.store(gain.to_bits(), Ordering::Relaxed);
+        }
     }
 }
 
-/// Limita blocos de 5 ms com um bloco de antecipação. O medidor EBU faz
-/// interpolação 4× abaixo de 96 kHz e 2× até 192 kHz.
+/// Limita blocos de 5 ms com um bloco de antecipação e interpolação sinc 4×.
 pub(crate) struct DspSource<S> {
     input: S,
     controls: Arc<DspControls>,
-    eq: Box<dyn EqStage>,
+    eq: Equalizer,
+    eq_gains: [f32; 8],
     gain: f32,
     channel: usize,
     channels: usize,
@@ -45,7 +67,8 @@ pub(crate) struct DspSource<S> {
     future: Vec<f32>,
     output: Vec<f32>,
     output_index: usize,
-    meter: Option<EbuR128>,
+    history: Vec<f32>,
+    oversample: [[f32; 8]; 3],
     limiter_gain: f32,
 }
 impl<S: Source> DspSource<S> {
@@ -58,7 +81,8 @@ impl<S: Source> DspSource<S> {
         Self {
             input,
             controls,
-            eq: Box::new(FlatEq),
+            eq: Equalizer::new(channels, rate as f32),
+            eq_gains: [0.; 8],
             gain,
             channel: 0,
             channels,
@@ -67,7 +91,8 @@ impl<S: Source> DspSource<S> {
             future: Vec::with_capacity(block_len),
             output: Vec::with_capacity(block_len),
             output_index: 0,
-            meter: EbuR128::new(channels as u32, rate, Mode::TRUE_PEAK).ok(),
+            history: vec![0.; channels * 4],
+            oversample: oversample_coefficients(),
             limiter_gain: 1.0,
         }
     }
@@ -81,6 +106,15 @@ impl<S: Source> DspSource<S> {
             let step = 1.0 / (self.input.sample_rate().get() as f32 * 0.010);
             self.gain += (target - self.gain).clamp(-step, step);
             let normalized = sample * self.gain;
+            if self.channel == 0 {
+                let gains = std::array::from_fn(|i| {
+                    f32::from_bits(self.controls.equalizer[i].load(Ordering::Relaxed))
+                });
+                if gains != self.eq_gains {
+                    self.eq.set(gains);
+                    self.eq_gains = gains;
+                }
+            }
             let equalized = self.eq.process(normalized, self.channel);
             let volume = f32::from_bits(self.controls.volume.load(Ordering::Relaxed));
             self.future.push(equalized * volume);
@@ -100,32 +134,69 @@ impl<S: Source> DspSource<S> {
             self.fill_future();
         }
 
-        let sample_peak = self
-            .pending
-            .iter()
-            .chain(&self.future)
-            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
-        let mut peak = sample_peak;
-        if let Some(meter) = &mut self.meter {
-            meter.reset();
-            if meter.add_frames_f32(&self.pending).is_ok()
-                && meter.add_frames_f32(&self.future).is_ok()
-            {
-                for ch in 0..self.channels {
-                    peak = peak.max(meter.true_peak(ch as u32).unwrap_or(0.0) as f32);
+        // @req RF-28: interpolação sinc polifásica 4×, com histórico entre blocos.
+        let mut peak = 0.0_f32;
+        let mut current_peak = 0.0_f32;
+        let count = self.pending.len() + self.future.len();
+        let sample_at = |index: isize, this: &Self| -> f32 {
+            if index < 0 {
+                return this
+                    .history
+                    .get((this.history.len() as isize + index) as usize)
+                    .copied()
+                    .unwrap_or(0.);
+            }
+            let index = index as usize;
+            if index < this.pending.len() {
+                this.pending[index]
+            } else {
+                this.future
+                    .get(index - this.pending.len())
+                    .copied()
+                    .unwrap_or(0.)
+            }
+        };
+        for index in 0..count {
+            let amplitude = sample_at(index as isize, self).abs();
+            peak = peak.max(amplitude);
+            if index < self.pending.len() {
+                current_peak = current_peak.max(amplitude);
+            }
+            for phase in &self.oversample {
+                let mut value = 0.;
+                for (tap, weight) in phase.iter().enumerate() {
+                    let offset = (tap as isize - 3) * self.channels as isize;
+                    value += weight * sample_at(index as isize + offset, self);
+                }
+                peak = peak.max(value.abs());
+                if index < self.pending.len() {
+                    current_peak = current_peak.max(value.abs());
                 }
             }
         }
-        // 0,3 dB de margem para a junção de blocos com ganhos diferentes.
-        let ceiling = 10.0_f32.powf(-1.3 / 20.0);
+        let ceiling = 10.0_f32.powf(-1.2 / 20.0);
         let required = if peak > ceiling { ceiling / peak } else { 1.0 };
         let release = self.block_len as f32
             / self.channels as f32
             / (self.input.sample_rate().get() as f32 * 0.100);
+        let previous_gain = self.limiter_gain;
         self.limiter_gain = required.min(self.limiter_gain + release);
+        // @req RF-28: rampa por amostra, limitada pelo pico do bloco atual.
+        let safe_current = if current_peak > ceiling {
+            ceiling / current_peak
+        } else {
+            1.
+        };
         self.output.clear();
-        self.output
-            .extend(self.pending.iter().map(|s| s * self.limiter_gain));
+        for (i, &sample) in self.pending.iter().enumerate() {
+            let t = (i + 1) as f32 / self.pending.len() as f32;
+            let gain = (previous_gain + (self.limiter_gain - previous_gain) * t).min(safe_current);
+            self.output.push(sample * gain);
+        }
+        for &sample in &self.pending {
+            self.history.rotate_left(1);
+            *self.history.last_mut().unwrap() = sample;
+        }
         self.output_index = 0;
         self.pending.clear();
         std::mem::swap(&mut self.pending, &mut self.future);
@@ -166,6 +237,8 @@ impl<S: Source> Source for DspSource<S> {
         self.output_index = 0;
         self.channel = 0;
         self.limiter_gain = 1.0;
+        self.history.fill(0.);
+        self.eq.reset();
         Ok(())
     }
 }
@@ -174,6 +247,54 @@ impl<S: Source> Source for DspSource<S> {
 mod tests {
     use super::*;
     use rodio::buffer::SamplesBuffer;
+    // @test RF-28 RF-29
+    #[test]
+    fn changing_gain_and_profile_has_no_large_step() {
+        let controls = Arc::new(DspControls::default());
+        let samples: Vec<f32> = (0..48000)
+            .map(|i| 0.3 * (2. * std::f32::consts::PI * 440. * i as f32 / 48000.).sin())
+            .collect();
+        let mut src = DspSource::new(
+            SamplesBuffer::new(
+                std::num::NonZeroU16::new(1).unwrap(),
+                std::num::NonZeroU32::new(48000).unwrap(),
+                samples,
+            ),
+            Arc::clone(&controls),
+        );
+        for _ in 0..2000 {
+            src.next();
+        }
+        controls
+            .normalization
+            .store(2.0_f32.to_bits(), Ordering::Relaxed);
+        controls.set_equalizer([6., 5., 3., 1., 0., 0., 0., 0.]);
+        let mut prev = src.next().unwrap();
+        let mut largest = 0.0_f32;
+        for sample in src.take(2000) {
+            largest = largest.max((sample - prev).abs());
+            prev = sample;
+        }
+        assert!(largest < 0.15, "degrau: {largest}");
+    }
+    // @test RF-28 RF-29
+    #[test]
+    fn seek_clears_delayed_samples() {
+        let controls = Arc::new(DspControls::default());
+        let samples = [vec![0.8; 5000], vec![0.; 5000]].concat();
+        let mut src = DspSource::new(
+            SamplesBuffer::new(
+                std::num::NonZeroU16::new(1).unwrap(),
+                std::num::NonZeroU32::new(48000).unwrap(),
+                samples,
+            ),
+            controls,
+        );
+        src.next();
+        src.try_seek(Duration::from_secs_f64(5000. / 48000.))
+            .unwrap();
+        assert_eq!(src.next(), Some(0.));
+    }
     // @test RF-28
     #[test]
     fn boosted_signal_stays_below_true_peak_ceiling() {

@@ -150,14 +150,15 @@ impl Database {
     // @req RF-17 RF-02
     pub fn get_settings(&self) -> Result<Settings> {
         Ok(self.conn.query_row(
-            "SELECT lava_theme, volume, normalization, sidebar_width FROM settings WHERE id = 1",
+            "SELECT lava_theme, volume, normalization, eq_preset_id, sidebar_width FROM settings WHERE id = 1",
             [],
             |r| {
                 Ok(Settings {
                     lava_theme: r.get(0)?,
                     volume: r.get(1)?,
                     normalization: r.get(2)?,
-                    sidebar_width: r.get(3)?,
+                    eq_preset_id: r.get(3)?,
+                    sidebar_width: r.get(4)?,
                 })
             },
         )?)
@@ -172,13 +173,15 @@ impl Database {
             return Err(Error::invalid("o volume deve estar entre 0.0 e 1.0"));
         }
         self.in_tx(|| {
+            if let Some(id) = &patch.eq_preset_id { self.get_eq_preset(id)?; }
             let cur = self.get_settings()?;
             self.conn.execute(
-                "UPDATE settings SET lava_theme = ?1, volume = ?2, normalization = ?3, sidebar_width = ?4, updated_at = ?5 WHERE id = 1",
+                "UPDATE settings SET lava_theme = ?1, volume = ?2, normalization = ?3, eq_preset_id = ?4, sidebar_width = ?5, updated_at = ?6 WHERE id = 1",
                 params![
                     patch.lava_theme.unwrap_or(cur.lava_theme),
                     patch.volume.unwrap_or(cur.volume),
                     patch.normalization.unwrap_or(cur.normalization),
+                    patch.eq_preset_id.as_deref().unwrap_or(&cur.eq_preset_id),
                     patch.sidebar_width.unwrap_or(cur.sidebar_width).clamp(220, 400),
                     self.now_ms()
                 ],

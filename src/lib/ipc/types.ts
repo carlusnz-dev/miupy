@@ -125,6 +125,7 @@ export interface Settings {
   volume: number;
   gpuMode: GpuMode;
   normalization: Normalization;
+  eqPresetId: string;
   // @req RF-33
   sidebarWidth: number;
 }
@@ -213,3 +214,8 @@ export interface EventMap {
   'ytdlp://status': YtDlpStatus;
 }
 export type EventName = keyof EventMap;
+
+// @req RF-29
+export const EQ_BANDS_HZ = [60,170,310,600,1000,3000,6000,12000] as const;
+export interface EqPreset { id: string; name: string; builtin: boolean; gainsDb: number[]; }
+export interface EqPresetInput { id?: string; name: string; gainsDb: number[]; }

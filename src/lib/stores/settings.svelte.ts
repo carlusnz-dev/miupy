@@ -16,6 +16,7 @@ export function applyLava(t: LavaTheme) {
 class SettingsStore {
   lava = $state<LavaTheme>('orange');
   normalization = $state<Normalization>('normal');
+  eqPresetId = $state('flat');
   sidebarWidth = $state(280);
   loaded = $state(false);
   private sidebarSave: Promise<void> = Promise.resolve();
@@ -29,6 +30,7 @@ class SettingsStore {
       const s = await api.settingsGet();
       this.lava = s.lavaTheme;
       this.normalization = s.normalization;
+      this.eqPresetId = s.eqPresetId;
       this.applySidebarWidth(s.sidebarWidth);
       applyLava(s.lavaTheme);
     } catch { /* mantém o cache */ }
@@ -39,6 +41,12 @@ class SettingsStore {
   async setNormalization(value: Normalization) {
     const saved = await api.settingsUpdate({ settings: { normalization: value } });
     this.normalization = saved.normalization;
+  }
+
+  // @req RF-29
+  async setEqualizer(id: string) {
+    const saved=await api.settingsUpdate({settings:{eqPresetId:id}});
+    this.eqPresetId=saved.eqPresetId;
   }
 
   // @req RF-33

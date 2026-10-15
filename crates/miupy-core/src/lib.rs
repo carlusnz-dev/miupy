@@ -5,6 +5,7 @@ mod activity;
 mod artists;
 mod db;
 mod downloads;
+mod equalizer;
 mod error;
 mod lyrics;
 mod model;
@@ -21,6 +22,7 @@ mod tracks;
 mod testutil;
 
 pub use db::Database;
+pub use equalizer::{BUILTINS, EqPreset, EqPresetInput};
 pub use error::{Error, Result};
 pub use model::*;
 pub use shuffle::{random_order, smart_order};
