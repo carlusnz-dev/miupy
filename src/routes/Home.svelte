@@ -59,7 +59,7 @@
     return () => { active = false; };
   });
   const contextName = $derived(player.state.context?.label || (player.track ? 'Sua fila' : 'Suas músicas recentes'));
-  const contextPath = $derived(currentPlaylist ? paths.playlist(currentPlaylist.id) : player.track ? paths.nowPlaying : paths.library);
+  const contextPath = $derived(player.track ? paths.nowPlaying : paths.library);
   const shortcuts = [
     { label: 'Discoteca', icon: 'library', path: paths.library, text: 'Todas as faixas' },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, text: 'Suas listas' },
@@ -74,7 +74,7 @@
 </header>
 
 <div class="grid gap-3 lg:grid-cols-5">
-  <DashCard path={contextPath} label={player.track ? `Abrir ${contextName}` : 'Abrir discoteca'} colors={palette} class="enter lg:col-span-3">
+  <DashCard path={contextPath} label={player.track ? 'Abrir tocando agora' : 'Abrir discoteca'} colors={palette} class="enter lg:col-span-3">
     <div class="flex min-h-64 flex-col gap-4 p-5 sm:flex-row sm:p-6">
       {#if currentPlaylist}
         <PlaylistCover playlist={currentPlaylist} size={144} />

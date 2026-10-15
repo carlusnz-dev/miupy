@@ -9,13 +9,15 @@
     children: Snippet; action?: Snippet<[() => void]>;
   } = $props();
   let highlighted = $state(false);
+  // Timers separados: o destaque de uma ação interna não cancela a navegação pendente.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  onDestroy(() => clearTimeout(timer));
+  let flash: ReturnType<typeof setTimeout> | undefined;
+  onDestroy(() => { clearTimeout(timer); clearTimeout(flash); });
 
   function highlight() {
     highlighted = true;
-    clearTimeout(timer);
-    timer = setTimeout(() => { highlighted = false; }, 1500);
+    clearTimeout(flash);
+    flash = setTimeout(() => { if (!timer) highlighted = false; }, 1500);
   }
 
   function open(event: MouseEvent | KeyboardEvent) {
