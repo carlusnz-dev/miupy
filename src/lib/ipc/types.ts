@@ -203,6 +203,17 @@ export interface ProgressPayload {
   durationMs: number;
 }
 
+// @req RF-32
+export interface MetadataRefreshStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  failed: number;
+  currentTrackId: string | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
+
 export interface EventMap {
   'player://state': PlayerState;
   'player://progress': ProgressPayload;
@@ -210,7 +221,7 @@ export interface EventMap {
   'library://changed': { reason: string };
   'recommendations://changed': { count: number };
   'player://error': { trackId: string; code: string; message: string };
-  'metadata://progress': { done: number; total: number };
+  'metadata://progress': MetadataRefreshStatus;
   'ytdlp://status': YtDlpStatus;
 }
 export type EventName = keyof EventMap;

@@ -149,6 +149,7 @@ pub fn run() {
             meta::metadata_get_artist,
             meta::metadata_get_lyrics,
             meta::metadata_refresh_library,
+            meta::metadata_refresh_status,
             stats::stats_library,
             stats::stats_wrapped,
             stats::stats_wrapped_years,
