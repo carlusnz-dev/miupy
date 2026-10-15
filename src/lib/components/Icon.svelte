@@ -26,6 +26,8 @@
     trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
     edit: 'M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4',
     close: 'M6 6l12 12M18 6 6 18',
+    'chevron-left': 'M15 6l-6 6 6 6',
+    'chevron-right': 'M9 6l6 6-6 6',
     check: 'M5 12.5 10 17.5 19 7',
     down: 'M6 9l6 6 6-6',
     left: 'M15 5l-7 7 7 7',

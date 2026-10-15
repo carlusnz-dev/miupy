@@ -37,6 +37,15 @@
   const moreNames: RouteName[] = ['downloads', 'stats', 'dna', 'wrapped', 'profile', 'settings'];
   const moreItems = [main[4], ...insights, ...account];
 
+  // @req RF-38
+  const collapsed = $derived(settings.sidebarCollapsed);
+  const toggleCollapsed = () => settings.setSidebarCollapsed(!collapsed);
+  function onShortcut(e: KeyboardEvent) {
+    if (variant !== 'side' || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b') return;
+    e.preventDefault();
+    toggleCollapsed();
+  }
+
   let moreOpen = $state(false);
   const isOn = (i: Item) => i.names.includes(router.current.name);
   $effect(() => { router.current; moreOpen = false; });
@@ -98,42 +107,54 @@
   }
 </script>
 
-{#snippet link(i: Item)}
-  <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined}
-     class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-s2 hover:text-fg aria-[current=page]:bg-s2 aria-[current=page]:text-fg">
-    <Icon name={i.icon} size={20} class={isOn(i) ? 'text-lava-text' : ''} />
-    <span class="flex-1">{i.label}</span>
+{#snippet link(i: Item, rail = false)}
+  <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={rail ? i.label : undefined} title={rail ? i.label : undefined}
+     class="relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-muted hover:bg-s2 hover:text-fg aria-[current=page]:bg-s2 aria-[current=page]:text-fg">
+    <Icon name={i.icon} size={20} class="shrink-0 {isOn(i) ? 'text-lava-text' : ''}" />
+    {#if !rail}<span class="enter flex-1">{i.label}</span>{/if}
     {#if i.path === paths.downloads && downloads.activeCount > 0}
-      <span class="tnum rounded-full px-1.5 text-xs" style="background:var(--grad-lava);color:var(--lava-ink)">{downloads.activeCount}</span>
+      {#if rail}
+        <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full" style="background:var(--lava)"></span>
+      {:else}
+        <span class="tnum rounded-full px-1.5 text-xs" style="background:var(--grad-lava);color:var(--lava-ink)">{downloads.activeCount}</span>
+      {/if}
     {/if}
   </a>
 {/snippet}
 
+<svelte:window onkeydown={onShortcut} />
+
 {#if variant === 'side'}
-<div class="relative hidden h-full w-[var(--sidebar-w)] shrink-0 md:block">
-<nav class="flex h-full flex-col gap-1 overflow-y-auto border-r border-line bg-s1 p-3" aria-label="Principal">
-  <a href={href(paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início">
-    <span class="grid h-8 w-8 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name="flame" size={18} fill /></span>
-    <span class="text-lg font-bold tracking-tight">miupy</span>
+<div class="nav-shell relative hidden h-full shrink-0 md:block" class:collapsed>
+<nav id="nav-principal" class="flex h-full flex-col gap-1 overflow-x-hidden overflow-y-auto border-r border-line bg-s1 p-3" aria-label="Principal">
+  <a href={href(paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início" title={collapsed ? 'miupy' : undefined}>
+    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name="flame" size={18} fill /></span>
+    {#if !collapsed}<span class="enter text-lg font-bold tracking-tight">miupy</span>{/if}
   </a>
-  {#each main as i}{@render link(i)}{/each}
-  <p class="eyebrow mt-4 px-3 pb-1">Discoteca</p>
-  {#each insights as i}{@render link(i)}{/each}
+  {#each main as i}{@render link(i, collapsed)}{/each}
+  {#if collapsed}<hr class="mx-3 my-2 border-line" />{:else}<p class="eyebrow enter mt-4 px-3 pb-1">Discoteca</p>{/if}
+  {#each insights as i}{@render link(i, collapsed)}{/each}
   <div class="mt-auto border-t border-line pt-3">
-    {#each account as i}{@render link(i)}{/each}
+    {#each account as i}{@render link(i, collapsed)}{/each}
     {#if profile.data}
-      <div class="flex items-center gap-2 px-3 pt-2"><Avatar path={profile.data.avatarPath} initials={profile.initials} size={28} /><p class="truncate text-xs text-faint">{profile.data.displayName} · @{profile.data.username}</p></div>
+      <div class="flex items-center gap-2 px-3 pt-2"><Avatar path={profile.data.avatarPath} initials={profile.initials} size={28} />{#if !collapsed}<p class="enter truncate text-xs text-faint">{profile.data.displayName} · @{profile.data.username}</p>{/if}</div>
     {/if}
   </div>
 </nav>
+<button type="button" class="nav-toggle" onclick={toggleCollapsed} aria-expanded={!collapsed} aria-controls="nav-principal"
+        aria-label={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'} title={collapsed ? 'Expandir menu (Ctrl+B)' : 'Recolher menu (Ctrl+B)'}>
+  <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} />
+</button>
 <!-- Separador ajustável segundo ARIA; Svelte classifica todo separator como não interativo. -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+{#if !collapsed}
 <div bind:this={resizeHandle} class="sidebar-resize" role="separator" aria-label="Redimensionar menu lateral" aria-orientation="vertical"
      aria-valuemin="220" aria-valuemax="400" aria-valuenow={settings.sidebarWidth} tabindex="0"
      onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize}
      onpointercancel={cancelResize} onlostpointercapture={cancelResize}
      onkeydown={resizeKey} onblur={() => keySave.flush()} ondblclick={resetWidth}></div>
+{/if}
 </div>
 {:else}
 <nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Principal">
