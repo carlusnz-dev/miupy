@@ -89,11 +89,18 @@ pub async fn playlist_update(
 // @req RF-06
 #[tauri::command]
 pub async fn playlist_delete(state: State<'_, AppState>, playlist_id: String) -> R<()> {
-    state
+    let was_favorites = state
         .db
-        .run(move |db| Ok(db.delete_playlist(&playlist_id)?))
+        .run(move |db| {
+            let was_favorites = db.get_playlist(&playlist_id)?.is_favorites;
+            db.delete_playlist(&playlist_id)?;
+            Ok(was_favorites)
+        })
         .await?;
     state.events.library_changed("playlist_deleted");
+    if was_favorites {
+        state.events.library_changed("favorites");
+    }
     Ok(())
 }
 
@@ -123,6 +130,9 @@ pub async fn playlist_add_tracks(
         .run(move |db| Ok(db.add_tracks_to_playlist(&playlist_id, &track_ids)?))
         .await?;
     state.events.library_changed("playlist_tracks_added");
+    if pl.is_favorites {
+        state.events.library_changed("favorites");
+    }
     Ok(pl)
 }
 
@@ -138,6 +148,9 @@ pub async fn playlist_remove_tracks(
         .run(move |db| Ok(db.remove_tracks_from_playlist(&playlist_id, &track_ids)?))
         .await?;
     state.events.library_changed("playlist_tracks_removed");
+    if pl.is_favorites {
+        state.events.library_changed("favorites");
+    }
     Ok(pl)
 }
 
@@ -155,4 +168,23 @@ pub async fn playlist_move_track(
         .await?;
     state.events.library_changed("playlist_reordered");
     Ok(())
+}
+
+// @req RF-30
+#[tauri::command]
+pub async fn favorites_set_playlist(
+    state: State<'_, AppState>,
+    playlist_id: String,
+) -> R<Playlist> {
+    let (playlist, changed) = state
+        .db
+        .run(move |db| {
+            let changed = db.get_settings()?.favorites_playlist_id.as_deref() != Some(&playlist_id);
+            Ok((db.favorites_set_playlist(&playlist_id)?, changed))
+        })
+        .await?;
+    if changed {
+        state.events.library_changed("favorites");
+    }
+    Ok(playlist)
 }

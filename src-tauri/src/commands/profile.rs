@@ -19,6 +19,8 @@ pub struct SettingsDto {
     eq_preset_id: String,
     // @req RF-33
     sidebar_width: i64,
+    // @req RF-30
+    favorites_playlist_id: Option<String>,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -98,6 +100,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> R<SettingsDto> {
                 normalization: s.normalization,
                 eq_preset_id: s.eq_preset_id,
                 sidebar_width: s.sidebar_width,
+                favorites_playlist_id: s.favorites_playlist_id,
             })
         })
         .await
@@ -132,6 +135,7 @@ pub async fn settings_update(
                 normalization: s.normalization,
                 eq_preset_id: s.eq_preset_id,
                 sidebar_width: s.sidebar_width,
+                favorites_playlist_id: s.favorites_playlist_id,
             })
         })
         .await?;
@@ -228,4 +232,27 @@ pub async fn equalizer_delete_preset(state: State<'_, AppState>, preset_id: Stri
         blocking(move || player.refresh_equalizer()).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod favorites_tests {
+    use super::*;
+
+    // @test RF-30
+    #[test]
+    fn settings_dto_expoe_playlist_de_favoritas() {
+        let dto = SettingsDto {
+            lava_theme: miupy_core::LavaTheme::Orange,
+            volume: 0.8,
+            gpu_mode: GpuMode::Auto,
+            normalization: Normalization::Normal,
+            eq_preset_id: "flat".into(),
+            sidebar_width: 280,
+            favorites_playlist_id: Some("p".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(dto).unwrap()["favoritesPlaylistId"],
+            "p"
+        );
+    }
 }
