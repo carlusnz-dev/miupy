@@ -1,19 +1,18 @@
-<script lang="ts">
+<script lang="ts" generics="T extends string | number">
   // Seletor no tema magma no lugar do <select> nativo. @req RNF-04 RNF-05
   import { springTransition } from '../motion';
   import { dismissable } from '../util/dismiss';
   import { listboxKey } from '../util/listbox';
   import Icon from './Icon.svelte';
 
-  type Value = string | number;
   type Props = {
-    options: { value: Value; label: string }[];
-    value: Value;
+    options: { value: T; label: string }[];
+    value: T;
     /** Vai no `<label for>` ou no `aria-label`; o botão recebe este id. */
     id?: string;
     label?: string;
     class?: string;
-    onchange?: (value: Value) => void;
+    onchange?: (value: T) => void;
   };
   let { options, value = $bindable(), id, label, class: cls = '', onchange }: Props = $props();
 
