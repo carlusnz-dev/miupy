@@ -50,6 +50,8 @@
   const canReorder = $derived(sortBy === 'position' && !search.trim() && !favoritesOnly);
   const queue = $derived(tracks.map((t) => t.id));
   const context = $derived({ kind: 'playlist' as const, id, label: pl?.name ?? '' });
+  const isCurrentPlaylist = $derived(player.state.context?.kind === 'playlist' && player.state.context.id === id && player.active);
+  const isPlayingPlaylist = $derived(player.isPlayingContext('playlist', id));
   const chunk = new Chunked();
   $effect(() => chunk.advance(tracks.length));
   const rows = $derived(tracks.slice(0, chunk.shown));
@@ -132,7 +134,8 @@
   </MeshGradient>
 
   <div class="mb-4 flex flex-wrap items-center gap-2">
-    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue, context)}><Icon name="play" size={16} fill />Tocar</button>
+    <!-- @req RF-42 -->
+    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => isPlayingPlaylist ? player.pause() : isCurrentPlaylist ? player.resume() : player.play(tracks[0].id, queue, context)}><Icon name={isPlayingPlaylist ? 'pause' : 'play'} size={16} fill />{isPlayingPlaylist ? 'Pausar' : isCurrentPlaylist ? 'Continuar' : 'Tocar'}</button>
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
     <!-- @req RF-31 -->
     <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">

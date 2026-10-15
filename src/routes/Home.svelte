@@ -1,26 +1,25 @@
 <script lang="ts">
-  // @req RF-19 RNF-11 RNF-13
-  // Início: resumo da discoteca e atalhos. @req RF-14 RF-05
+  // @req RF-14 RF-19 RF-41 RF-42 RNF-11 RNF-13
   import { api, type LibraryStats, type Track } from '../lib/ipc';
   import { mergeDeep, reconcileList } from '../lib/util/diff';
   import { Resource } from '../lib/stores/resource.svelte';
   import { library } from '../lib/stores/library.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { profile } from '../lib/stores/profile.svelte';
-  import { href, paths } from '../lib/stores/router.svelte';
+  import { paths } from '../lib/stores/router.svelte';
   import { fmtDuration, fmtNumber } from '../lib/util/format';
-  import MeshGradient from '../lib/components/MeshGradient.svelte';
-  import TrackRow from '../lib/components/TrackRow.svelte';
+  import { coverPalette } from '../lib/util/palette';
+  import { assetCrossOrigin } from '../lib/util/asset';
+  import { enterStyle } from '../lib/motion';
+  import DashCard from '../lib/components/DashCard.svelte';
+  import PlaylistCover from '../lib/components/PlaylistCover.svelte';
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import State from '../lib/components/State.svelte';
   import Skeleton from '../lib/components/Skeleton.svelte';
-  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Recommendations from '../lib/components/Recommendations.svelte';
 
   type HomeData = { stats: LibraryStats; recent: Track[] };
-  // Cache entre telas: ao voltar para o Início, o último resumo aparece na hora e atualiza em
-  // segundo plano; só o que mudou é trocado (RNF-11, RNF-13).
   const res = new Resource<HomeData>(['tracks', 'stats'], (prev, next) => {
     const stats = mergeDeep(prev?.stats, next.stats);
     const recent = reconcileList(prev?.recent, next.recent, (t) => t.id);
@@ -45,97 +44,163 @@
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const currentPlaylist = $derived(player.state.context?.kind === 'playlist' ? library.playlists.find((p) => p.id === player.state.context?.id) : undefined);
+  const currentCover = $derived(currentPlaylist?.coverPath ?? currentPlaylist?.mosaicPaths[0] ?? player.track?.coverPath ?? null);
+  const coverSrc = $derived(api.resolveAsset(currentCover) ?? player.track?.thumbnailUrl ?? null);
+  let palette = $state<string[] | null>(null);
+  $effect(() => {
+    const src = coverSrc;
+    palette = null;
+    if (!src) return;
+    let active = true;
+    void coverPalette(src, assetCrossOrigin(src)).then((colors) => {
+      if (active) palette = colors?.length ? [colors[0], colors[1] ?? colors[0], colors[2] ?? colors[1] ?? colors[0]] : null;
+    });
+    return () => { active = false; };
+  });
+  const contextName = $derived(player.state.context?.label || (player.track ? 'Sua fila' : 'Suas músicas recentes'));
+  const contextPath = $derived(player.track ? paths.nowPlaying : paths.library);
   const shortcuts = [
     { label: 'Discoteca', icon: 'library', path: paths.library, text: 'Todas as faixas' },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, text: 'Suas listas' },
     { label: 'Buscar no YouTube', icon: 'search', path: paths.youtube, text: 'Achar e baixar' },
     { label: 'Retrospectiva', icon: 'sparkle', path: paths.wrapped, text: 'Seu ano em música' },
-  ];
+  ] as const;
 </script>
 
-<MeshGradient class="mb-6 rounded-2xl border border-line">
-  <div class="p-5 md:p-8">
-    <p class="eyebrow mb-1 !text-fg/70">{greeting}{profile.data ? `, ${profile.data.displayName.split(' ')[0]}` : ''}</p>
-    <h1 class="text-3xl font-bold tracking-tight md:text-4xl">Sua discoteca</h1>
-    {#if stats}
-      <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
-        {#each [['Faixas', fmtNumber(stats.trackCount)], ['Baixadas', fmtNumber(stats.downloadedCount)], ['Playlists', fmtNumber(stats.playlistCount)], ['Artistas', fmtNumber(stats.artistCount)]] as [k, v]}
-          <div><dt class="text-xs text-fg/70">{k}</dt><dd class="tnum font-display text-2xl font-bold">{v}</dd></div>
-        {/each}
-      </dl>
-      <p class="mt-4 text-sm text-fg/80">{fmtDuration(stats.totalDurationMs)} de música, {fmtDuration(stats.totalListenedMs)} ouvidos no total.</p>
-    {:else if loading}
-      <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4" aria-hidden="true">
-        {#each [0, 1, 2, 3] as i (i)}<div><Skeleton w="3.5rem" h="0.65rem" class="mb-2" /><Skeleton w="4.5rem" h="1.5rem" /></div>{/each}
-      </div>
-      <Skeleton w="min(18rem, 80%)" h="0.8rem" class="mt-4" />
-    {/if}
-    {#if player.active}
-      <a class="btn btn-primary mt-5" href={href(paths.nowPlaying)}><Icon name="play" size={16} fill />Voltar ao que está tocando</a>
-    {:else if recent.length}
-      <button class="btn btn-primary mt-5" onclick={() => player.play(recent[0].id, recent.map((t) => t.id))}><Icon name="play" size={16} fill />Tocar as mais recentes</button>
-    {/if}
-  </div>
-</MeshGradient>
+<header class="mb-5">
+  <p class="eyebrow">{greeting}{profile.data ? `, ${profile.data.displayName.split(' ')[0]}` : ''}</p>
+  <h1 class="text-3xl font-bold tracking-tight md:text-4xl">Sua discoteca</h1>
+</header>
 
-<section class="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Atalhos">
-  {#each shortcuts as s}
-    <a href={href(s.path)} class="card flex flex-col gap-3 p-4 hover:border-line-strong hover:bg-s2">
-      <span class="grid h-9 w-9 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name={s.icon} size={18} /></span>
-      <span><span class="block font-semibold">{s.label}</span><span class="text-xs text-muted">{s.text}</span></span>
-    </a>
-  {/each}
-</section>
-
-{#if loading}
-  <div class="grid gap-8 lg:grid-cols-2">
-    <section aria-label="Adicionadas recentemente"><Skeleton w="12rem" h="1.1rem" class="mb-3" /><SkeletonList variant="tracks" count={6} label="Carregando faixas recentes" /></section>
-    <section aria-label="Mais tocadas"><Skeleton w="8rem" h="1.1rem" class="mb-3" /><SkeletonList variant="tracks" count={6} label="Carregando as mais tocadas" /></section>
-  </div>
-{:else if error}
-  <State kind="error" text={error} onretry={load} />
-{:else if stats && stats.trackCount === 0}
-  <State kind="empty" title="Sua discoteca está vazia" text="Busque músicas no YouTube e baixe para ouvir offline.">
-    <a class="btn btn-primary" href={href(paths.youtube)}>Buscar no YouTube</a>
-  </State>
-{:else}
-  <div class="grid gap-8 lg:grid-cols-2">
-    <section aria-labelledby="h-recent">
-      <h2 id="h-recent" class="mb-2 text-lg font-semibold">Adicionadas recentemente</h2>
-      <div role="list">
-        {#each recent as t, i (t.id)}
-          <TrackRow track={t} index={i} current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, recent.map((x) => x.id))} />
-        {/each}
-      </div>
-    </section>
-    <section aria-labelledby="h-top">
-      <h2 id="h-top" class="mb-2 text-lg font-semibold">Mais tocadas</h2>
-      {#if stats && stats.topTracks.length}
-        <div role="list">
-          {#each stats.topTracks as r, i (r.track.id)}
-            <TrackRow track={r.track} index={i} current={player.track?.id === r.track.id} playing={player.isPlaying} onplay={() => player.play(r.track.id, stats!.topTracks.map((x) => x.track.id))}>
-              {#snippet extra()}<span class="tnum hidden w-16 text-right text-xs text-faint sm:block">{r.plays}×</span>{/snippet}
-            </TrackRow>
-          {/each}
-        </div>
+<div class="grid gap-3 lg:grid-cols-5">
+  <DashCard path={contextPath} label={player.track ? 'Abrir tocando agora' : 'Abrir discoteca'} colors={palette} class="enter lg:col-span-3">
+    <div class="flex min-h-64 flex-col gap-4 p-5 sm:flex-row sm:p-6">
+      {#if currentPlaylist}
+        <PlaylistCover playlist={currentPlaylist} size={144} />
+      {:else if player.track}
+        <Cover path={player.track.coverPath} thumb={player.track.thumbnailUrl} seed={player.track.id} size={144} />
+      {:else if recent.length}
+        <Cover path={recent[0].coverPath} thumb={recent[0].thumbnailUrl} seed={recent[0].id} size={144} />
+      {:else if loading}
+        <Skeleton w="144px" h="144px" />
       {:else}
-        <State kind="empty" title="Ainda sem reproduções" text="As mais tocadas aparecem aqui depois que você ouvir algumas faixas." />
+        <span class="grid h-36 w-36 shrink-0 place-items-center rounded-lg bg-s3 text-lava-text"><Icon name="music" size={48} /></span>
       {/if}
-    </section>
-    {#if library.playlists.length}
-      <section class="lg:col-span-2" aria-labelledby="h-pl">
-        <div class="mb-2 flex items-baseline justify-between"><h2 id="h-pl" class="text-lg font-semibold">Playlists</h2><a class="text-sm text-lava-text hover:underline" href={href(paths.playlists)}>Ver todas</a></div>
-        <ul class="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {#each library.playlists.slice(0, 4) as p (p.id)}
-            <li><a href={href(paths.playlist(p.id))} class="card block p-3 hover:bg-s2">
-              <Cover path={p.coverPath} seed={p.id} class="mb-3 w-full" />
-              <span class="block truncate font-medium">{p.name}</span><span class="text-xs text-muted">{p.trackCount} faixas</span>
-            </a></li>
+      <div class="min-w-0 flex-1 pb-12">
+        <p class="eyebrow !text-fg/70">{player.track ? 'Tocando agora' : 'Para começar'}</p>
+        <h2 class="mt-1 truncate text-2xl font-semibold">{contextName}</h2>
+        {#if player.track}
+          <p class="mt-2 truncate text-sm text-fg/80">{player.track.title} · {player.track.artistName}</p>
+        {:else if recent.length}
+          <p class="mt-2 text-sm text-fg/80">Retome a discoteca pelas faixas adicionadas recentemente.</p>
+        {:else if loading}
+          <Skeleton w="min(18rem, 80%)" h="1.5rem" class="mt-2" />
+        {:else}
+          <p class="mt-2 text-sm text-fg/80">Adicione músicas para começar a ouvir.</p>
+        {/if}
+      </div>
+    </div>
+    {#snippet action(highlight)}
+      {#if player.track}
+        <button class="btn btn-primary absolute bottom-5 left-5 sm:left-[11.5rem]" onclick={() => { highlight(); void player.toggle(); }}>
+          <Icon name={player.isPlaying || player.isLoading ? 'pause' : 'play'} size={16} fill />{player.isPlaying || player.isLoading ? 'Pausar' : 'Continuar'}
+        </button>
+      {:else if recent.length}
+        <button class="btn btn-primary absolute bottom-5 left-5 sm:left-[11.5rem]" onclick={() => { highlight(); void player.play(recent[0].id, recent.map((t) => t.id)); }}>
+          <Icon name="play" size={16} fill />Tocar as recentes
+        </button>
+      {/if}
+    {/snippet}
+  </DashCard>
+
+  <DashCard path={paths.stats} label="Abrir estatísticas" class="enter lg:col-span-2">
+    <div class="p-5 sm:p-6">
+      <p class="eyebrow !text-fg/70">Em números</p>
+      <h2 class="mb-4 text-2xl font-semibold">Sua discoteca</h2>
+      {#if stats}
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-3">
+          {#each [['Faixas', fmtNumber(stats.trackCount)], ['Baixadas', fmtNumber(stats.downloadedCount)], ['Playlists', fmtNumber(stats.playlistCount)], ['Artistas', fmtNumber(stats.artistCount)]] as [label, value]}
+            <div><dt class="text-xs text-fg/70">{label}</dt><dd class="tnum font-display text-2xl font-bold">{value}</dd></div>
+          {/each}
+        </dl>
+        <p class="mt-4 text-sm text-fg/80">{fmtDuration(stats.totalListenedMs)} ouvidos</p>
+      {:else if loading}
+        <div class="grid grid-cols-2 gap-3" aria-label="Carregando estatísticas">
+          {#each [0, 1, 2, 3] as i (i)}<div><Skeleton w="3.5rem" h="0.65rem" class="mb-2" /><Skeleton w="4.5rem" h="1.5rem" /></div>{/each}
+        </div>
+      {/if}
+    </div>
+  </DashCard>
+</div>
+
+{#if error}
+  <div class="mt-5"><State kind="error" text={error} onretry={load} /></div>
+{:else if stats?.trackCount === 0}
+  <div class="mt-5"><State kind="empty" title="Sua discoteca está vazia" text="Busque músicas no YouTube e baixe para ouvir offline." /></div>
+{/if}
+
+<div class="mt-3 grid gap-3 lg:grid-cols-2">
+  <DashCard path={paths.playlists} label="Abrir playlists" class="enter">
+    <div class="min-h-56 p-5 sm:p-6">
+      <p class="eyebrow !text-fg/70">Sua coleção</p>
+      <h2 class="mb-4 text-2xl font-semibold">Playlists</h2>
+      {#if !library.playlistsReady}
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Carregando playlists">{#each [0, 1, 2, 3] as i (i)}<Skeleton w="72px" h="72px" />{/each}</div>
+      {:else if library.playlistsError}
+        <p class="text-sm text-muted">Não foi possível carregar as playlists. Abra Playlists para tentar de novo.</p>
+      {:else if library.playlists.length}
+        <ul class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {#each library.playlists.slice(0, 4) as playlist, i (playlist.id)}
+            <li class="min-w-0 enter" style={enterStyle(i)}>
+              <PlaylistCover {playlist} size={72} />
+              <span class="mt-2 block truncate text-sm font-medium">{playlist.name}</span>
+              <span class="text-xs text-muted">{playlist.trackCount} faixas</span>
+            </li>
           {/each}
         </ul>
-      </section>
-    {/if}
+      {:else}
+        <p class="text-sm text-muted">Crie uma playlist para reunir suas músicas.</p>
+      {/if}
+    </div>
+  </DashCard>
+
+  <DashCard path={paths.stats} label="Abrir mais tocadas" class="enter">
+    <div class="min-h-56 p-5 sm:p-6">
+      <p class="eyebrow !text-fg/70">No seu ritmo</p>
+      <h2 class="mb-4 text-2xl font-semibold">Mais tocadas</h2>
+      {#if stats?.topTracks.length}
+        <ol class="space-y-3">
+          {#each stats.topTracks.slice(0, 3) as ranked, i (ranked.track.id)}
+            <li class="enter flex items-center gap-3" style={enterStyle(i)}>
+              <span class="tnum w-4 text-sm text-faint">{i + 1}</span>
+              <Cover path={ranked.track.coverPath} thumb={ranked.track.thumbnailUrl} seed={ranked.track.id} size={40} />
+              <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{ranked.track.title}</span><span class="block truncate text-xs text-muted">{ranked.track.artistName}</span></span>
+              <span class="tnum text-xs text-faint">{ranked.plays}×</span>
+            </li>
+          {/each}
+        </ol>
+      {:else if loading}
+        <div aria-label="Carregando mais tocadas" class="space-y-3">{#each [0, 1, 2] as i (i)}<Skeleton w="100%" h="2.5rem" />{/each}</div>
+      {:else}
+        <p class="text-sm text-muted">Ouça suas faixas para descobrir quais tocam mais.</p>
+      {/if}
+    </div>
+  </DashCard>
+</div>
+
+<section class="mt-7" aria-label="Atalhos">
+  <h2 class="mb-3 text-xl font-semibold">Atalhos</h2>
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {#each shortcuts as shortcut, i}
+      <DashCard path={shortcut.path} label={`Abrir ${shortcut.label}`} class="enter">
+        <div class="flex min-h-28 items-center gap-3 p-4" style={enterStyle(i)}>
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-s3 text-lava-text"><Icon name={shortcut.icon} size={20} /></span>
+          <span><span class="block font-semibold">{shortcut.label}</span><span class="text-xs text-muted">{shortcut.text}</span></span>
+        </div>
+      </DashCard>
+    {/each}
   </div>
-{/if}
+</section>
 
 <Recommendations />
