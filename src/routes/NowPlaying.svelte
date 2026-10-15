@@ -187,8 +187,8 @@
       <section class="mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" aria-label="Controles">
         <Seek />
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
-          <div class="hidden md:block"></div>
-          <div class="flex items-center gap-2"><ShuffleButton /><Transport big /></div>
+          <div class="flex justify-end md:justify-start"><ShuffleButton /></div>
+          <Transport big />
           <div class="flex items-center justify-end gap-1">
             <button class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
               <Icon name="heart" size={20} fill={favorites.is(t)} />
