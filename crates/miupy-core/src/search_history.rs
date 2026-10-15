@@ -22,10 +22,13 @@ impl Database {
         }
         let now = self.now_ms();
         self.in_tx(|| {
+            // apagar e inserir dá rowid novo, que desempata buscas no mesmo milissegundo
+            let key = name_key(&query);
+            self.conn
+                .execute("DELETE FROM search_history WHERE query_key = ?1", [&key])?;
             self.conn.execute(
-                "INSERT INTO search_history (query_key, query, searched_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(query_key) DO UPDATE SET query = ?2, searched_at = ?3",
-                params![name_key(&query), query, now],
+                "INSERT INTO search_history (query_key, query, searched_at) VALUES (?1, ?2, ?3)",
+                params![key, query, now],
             )?;
             self.conn.execute(
                 "DELETE FROM search_history WHERE query_key NOT IN
