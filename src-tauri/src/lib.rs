@@ -163,6 +163,9 @@ pub fn run() {
             profile::profile_set_avatar,
             profile::settings_get,
             profile::settings_update,
+            profile::equalizer_list_presets,
+            profile::equalizer_save_preset,
+            profile::equalizer_delete_preset,
             profile::system_gpu_status,
             profile::system_gpu_startup_confirmed,
         ])

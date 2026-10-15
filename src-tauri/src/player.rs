@@ -97,6 +97,19 @@ impl Player {
     pub fn restore_prefs(&self) {
         match self.db.with(|db| db.get_settings()) {
             Ok(s) => {
+                match self.db.with(|db| db.get_eq_preset(&s.eq_preset_id)) {
+                    Ok(eq) => match <[f32; 8]>::try_from(eq.gains_db) {
+                        Ok(gains) => {
+                            if let Err(e) = self.backend.set_equalizer(gains) {
+                                log::warn!("não consegui aplicar o equalizador salvo: {e}");
+                            }
+                        }
+                        Err(g) => {
+                            log::warn!("perfil de EQ salvo com {} bandas; usando Plano", g.len())
+                        }
+                    },
+                    Err(e) => log::warn!("não consegui ler o perfil de EQ salvo: {e}"),
+                }
                 if let Err(e) = self.backend.set_volume(s.volume as f32) {
                     log::warn!("não consegui aplicar o volume salvo: {e}");
                 }
@@ -621,6 +634,17 @@ impl Player {
             self.emit(&inner);
         }
         Ok(self.snapshot(&inner))
+    }
+
+    // @req RF-29
+    pub fn refresh_equalizer(&self) -> AppResult<()> {
+        let gains = self.db.with(|db| {
+            let s = db.get_settings()?;
+            db.get_eq_preset(&s.eq_preset_id).map(|p| p.gains_db)
+        })?;
+        self.backend
+            .set_equalizer(gains.try_into().unwrap_or([0.; 8]))?;
+        Ok(())
     }
 
     // @req RF-02
@@ -1609,5 +1633,51 @@ mod normalization_tests {
         player.refresh_normalization().unwrap();
         assert_eq!(backend.normalization_gain_db(), 9.0);
         assert_eq!(backend.state().volume, 1.0);
+    }
+    // @test RF-29
+    #[test]
+    fn saved_profile_reaches_false_backend_on_open_and_edit() {
+        use miupy_core::EqPresetInput;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::new(Database::open_in_memory().unwrap());
+        let preset = db
+            .with(|d| {
+                d.save_eq_preset(&EqPresetInput {
+                    id: None,
+                    name: "Meu som".into(),
+                    gains_db: vec![2.; 8],
+                })
+            })
+            .unwrap();
+        db.with(|d| {
+            d.update_settings(&SettingsPatch {
+                eq_preset_id: Some(preset.id.clone()),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let backend = Arc::new(NullBackend::new());
+        let player = Player::new(
+            db.clone(),
+            backend.clone(),
+            Arc::new(crate::downloads::testing::FakeResolver::default()),
+            Arc::new(RecordingEvents::default()),
+            dir.path().join("prefs.json"),
+        );
+        player.restore_prefs();
+        assert_eq!(backend.equalizer(), [2.; 8]);
+        db.with(|d| {
+            d.save_eq_preset(&EqPresetInput {
+                id: Some(preset.id.clone()),
+                name: "Meu som".into(),
+                gains_db: vec![4.; 8],
+            })
+        })
+        .unwrap();
+        player.refresh_equalizer().unwrap();
+        assert_eq!(backend.equalizer(), [4.; 8]);
+        db.with(|d| d.delete_eq_preset(&preset.id)).unwrap();
+        player.refresh_equalizer().unwrap();
+        assert_eq!(backend.equalizer(), [0.; 8]);
     }
 }

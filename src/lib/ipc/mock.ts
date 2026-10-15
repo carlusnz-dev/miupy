@@ -4,7 +4,7 @@
 import type { MiupyApi } from './api';
 import type {
   ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, PlayerState, Playlist, YtDlpStatus,
-  Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
+  EqPreset, Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
 } from './types';
 
 const MIN = 60_000;
@@ -132,7 +132,16 @@ export function createMockApi(): MiupyApi {
   ];
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal' };
+  // @req RF-33
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat', sidebarWidth: 280 };
+  // @req RF-29
+  const presets: EqPreset[] = [
+    ['flat','Plano',[0,0,0,0,0,0,0,0]], ['bass','Graves',[6,5,3,1,0,0,0,0]],
+    ['treble','Agudos',[0,0,0,0,1,3,5,6]], ['vocal','Vocal',[-2,-1,0,2,4,4,2,0]],
+    ['rock','Rock',[4,3,-1,-2,-1,2,4,5]], ['pop','Pop',[-1,1,3,4,3,0,-1,-1]],
+    ['electronic','Eletrônica',[5,4,1,0,-1,2,3,4]], ['acoustic','Acústico',[3,2,1,1,2,2,3,2]],
+  ].map(([id,name,gainsDb]) => ({id:id as string,name:name as string,gainsDb:gainsDb as number[],builtin:true}));
+  let eqSeq = 0;
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
@@ -536,9 +545,30 @@ export function createMockApi(): MiupyApi {
       profile.avatarPath = image ? `data:${image.mimeType};base64,${image.dataBase64}` : null;
       return { ...profile };
     },
+    async equalizerListPresets() { return presets.map(p => ({...p,gainsDb:[...p.gainsDb]})); },
+    async equalizerSavePreset({preset}) {
+      const name=preset.name.trim();
+      if (!name || [...name].length>30 || preset.gainsDb.length!==8 || preset.gainsDb.some(v=>!Number.isFinite(v)||v < -12||v > 12) || (preset.id && presets.find(p=>p.id===preset.id)?.builtin)) err('invalid_input','Perfil inválido.');
+      const existing=preset.id ? presets.find(p=>p.id===preset.id) : undefined;
+      if (preset.id && !existing) err('not_found','Perfil não encontrado.');
+      if (presets.some(p=>p.id!==preset.id && p.name.toLocaleLowerCase()===name.toLocaleLowerCase())) err('conflict','Nome já usado.');
+      if (!preset.id && presets.length>=11) err('conflict','Limite de três perfis.');
+      const saved={id:preset.id ?? `eq-${++eqSeq}`,name,gainsDb:[...preset.gainsDb],builtin:false};
+      if (existing) Object.assign(existing,saved); else presets.push(saved);
+      return {...saved};
+    },
+    async equalizerDeletePreset({presetId}) {
+      const i=presets.findIndex(p=>p.id===presetId);
+      if (i<0) err('not_found','Perfil não encontrado.');
+      if (presets[i].builtin) err('invalid_input','Perfil pronto não pode ser apagado.');
+      presets.splice(i,1);
+      if(settings.eqPresetId===presetId) settings.eqPresetId='flat';
+    },
     async settingsGet() { await wait(20); return { ...settings }; },
     async settingsUpdate({ settings: s }) {
+      if (s.eqPresetId && !presets.some(p=>p.id===s.eqPresetId)) err('not_found','Perfil não encontrado.');
       settings = { ...settings, ...s };
+      if (s.sidebarWidth !== undefined) settings.sidebarWidth = Math.max(220, Math.min(400, Math.round(s.sidebarWidth)));
       if (s.volume !== undefined) { player.volume = s.volume; pushState(); }
       return { ...settings };
     },

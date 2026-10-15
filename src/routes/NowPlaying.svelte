@@ -2,7 +2,9 @@
   // @req RF-18 RF-20
   // Tela cheia "tocando agora": capa, metadados, controles, seek, volume, favorito, fila e letra.
   // @req RF-01 RF-02 RF-03 RF-04 RF-05 RF-12
-  import { api, type Lyrics } from '../lib/ipc';
+  import { api, type EqPreset, type Lyrics } from '../lib/ipc';
+  import { settings } from '../lib/stores/settings.svelte';
+  import { notifyError } from '../lib/stores/toast.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import { toggleFavorite } from '../lib/actions';
@@ -21,6 +23,11 @@
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
+  let eqOpen = $state(false);
+  let eqPresets = $state<EqPreset[]>([]);
+  $effect(() => { void api.equalizerListPresets().then(v => eqPresets=v).catch(() => {}); });
+  async function openEq() { try { eqPresets=await api.equalizerListPresets(); eqOpen=true; } catch(e) {notifyError(e);} }
+  async function chooseEq(id:string) { try { await settings.setEqualizer(id); eqOpen=false; } catch(e) {notifyError(e);} }
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
   let lyricsErr = $state(false);
@@ -83,6 +90,15 @@
           <button class="icon-btn motion-bounce {t.isFavorite ? 'on' : ''} !h-11 !w-11" aria-pressed={t.isFavorite} aria-label={t.isFavorite ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
             <Icon name="heart" size={24} fill={t.isFavorite} />
           </button>
+        </div>
+        <div class="relative self-start">
+          <button type="button" class="btn text-sm" aria-expanded={eqOpen} onclick={openEq}>Equalizador · {eqPresets.find(p=>p.id===settings.eqPresetId)?.name ?? 'Plano'}</button>
+          {#if eqOpen}
+            <div class="card absolute z-20 mt-1 max-h-72 min-w-44 overflow-auto p-1" aria-label="Perfis do equalizador">
+              {#each eqPresets as preset}<button type="button" class="block w-full rounded px-3 py-2 text-left text-sm hover:bg-surface" aria-current={settings.eqPresetId===preset.id ? 'true' : undefined} onclick={() => chooseEq(preset.id)}>{preset.name}</button>{/each}
+              <button type="button" class="block w-full px-3 py-2 text-left text-sm text-muted" onclick={() => eqOpen=false}>Fechar</button>
+            </div>
+          {/if}
         </div>
         <Seek />
         <div class="flex items-center justify-between">

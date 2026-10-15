@@ -80,6 +80,9 @@ export function createTauriApi(): MiupyApi {
     profileGet: () => call('profile_get'),
     profileUpdate: (a) => call('profile_update', a),
     profileSetAvatar: (a) => call('profile_set_avatar', a), // @req RF-21
+    equalizerListPresets: () => call('equalizer_list_presets'),
+    equalizerSavePreset: (a) => call('equalizer_save_preset', a),
+    equalizerDeletePreset: (a) => call('equalizer_delete_preset', a),
     settingsGet: () => call('settings_get'),
     settingsUpdate: (a) => call('settings_update', a),
     systemGpuStatus: () => call('system_gpu_status'),

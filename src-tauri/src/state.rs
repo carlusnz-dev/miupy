@@ -221,6 +221,10 @@ impl AudioBackend for UnavailableBackend {
     fn set_normalization_gain_db(&self, gain_db: f32) -> miupy_audio::Result<()> {
         self.fallback.set_normalization_gain_db(gain_db)
     }
+    // @req RF-29
+    fn set_equalizer(&self, gains_db: [f32; 8]) -> miupy_audio::Result<()> {
+        self.fallback.set_equalizer(gains_db)
+    }
     fn set_volume(&self, volume: f32) -> miupy_audio::Result<()> {
         self.fallback.set_volume(volume)
     }
