@@ -455,6 +455,8 @@ pub struct Playlist {
     pub cover_path: Option<String>,
     // @req RF-22
     pub mosaic_paths: Vec<String>,
+    // @req RF-30
+    pub is_favorites: bool,
     pub track_count: i64,
     pub total_duration_ms: i64,
     pub created_at: i64,
@@ -654,6 +656,8 @@ pub struct Settings {
     pub eq_preset_id: String,
     // @req RF-33
     pub sidebar_width: i64,
+    // @req RF-30
+    pub favorites_playlist_id: Option<String>,
 }
 
 /// `Partial<Settings>` do ipc.
@@ -682,11 +686,12 @@ mod tests {
             normalization: Normalization::Normal,
             eq_preset_id: "flat".into(),
             sidebar_width: 280,
+            favorites_playlist_id: None,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "eqPresetId": "flat", "sidebarWidth": 280 })
+            serde_json::json!({ "lavaTheme": "purple", "volume": 0.5, "normalization": "normal", "eqPresetId": "flat", "sidebarWidth": 280, "favoritesPlaylistId": null })
         );
         assert_eq!(LavaTheme::default(), LavaTheme::Orange);
     }

@@ -284,7 +284,7 @@ mod tests {
     fn biblioteca_vazia_tem_tudo_zerado() {
         let db = db();
         let s = db.library_stats().unwrap();
-        assert_eq!((s.track_count, s.playlist_count, s.artist_count), (0, 0, 0));
+        assert_eq!((s.track_count, s.playlist_count, s.artist_count), (0, 1, 0));
         assert_eq!((s.total_listened_ms, s.total_plays), (0, 0));
         assert!(s.top_tracks.is_empty());
         let w = db.wrapped(2026, 0).unwrap();
@@ -340,7 +340,7 @@ mod tests {
         let s = db.library_stats().unwrap();
         assert_eq!(s.track_count, 4);
         assert_eq!(s.downloaded_count, 2, "b e a local");
-        assert_eq!(s.playlist_count, 1);
+        assert_eq!(s.playlist_count, 2);
         assert_eq!(s.artist_count, 2);
         assert_eq!(s.favorite_count, 1);
         assert_eq!(s.total_duration_ms, 600_000);
