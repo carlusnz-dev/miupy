@@ -7,7 +7,7 @@
   import Avatar from './Avatar.svelte';
   import { settings } from '../stores/settings.svelte';
   import { notifyError } from '../stores/toast.svelte';
-  import { beginSidebarDrag, clampSidebarWidth, keyboardSidebarWidth, SIDEBAR_DEFAULT } from '../util/sidebar';
+  import { beginSidebarDrag, clampSidebarWidth, createDeferredSave, keyboardSidebarWidth, SIDEBAR_DEFAULT } from '../util/sidebar';
 
   let { variant }: { variant: 'side' | 'bottom' } = $props();
 
@@ -55,8 +55,12 @@
       notifyError(error);
     });
   }
+  // teclas só pré-visualizam; a largura é gravada uma vez, quando o ajuste termina
+  const keySave = createDeferredSave((width) => { if (width !== settings.sidebarWidth) persistWidth(width); });
+  $effect(() => () => keySave.flush());
   function startResize(event: PointerEvent) {
     if (event.button !== 0) return;
+    keySave.cancel();
     const width = currentWidth();
     drag = { pointerId: event.pointerId, session: beginSidebarDrag(width, event.clientX, previewWidth, persistWidth) };
     resizeHandle?.setPointerCapture(event.pointerId);
@@ -85,9 +89,10 @@
     event.preventDefault();
     event.stopPropagation();
     previewWidth(width);
-    if (width !== settings.sidebarWidth) persistWidth(width);
+    keySave.schedule(width);
   }
   function resetWidth() {
+    keySave.cancel();
     previewWidth(SIDEBAR_DEFAULT);
     if (settings.sidebarWidth !== SIDEBAR_DEFAULT) persistWidth(SIDEBAR_DEFAULT);
   }
@@ -128,7 +133,7 @@
      aria-valuemin="220" aria-valuemax="400" aria-valuenow={settings.sidebarWidth} tabindex="0"
      onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize}
      onpointercancel={cancelResize} onlostpointercapture={cancelResize}
-     onkeydown={resizeKey} ondblclick={resetWidth}></div>
+     onkeydown={resizeKey} onblur={() => keySave.flush()} ondblclick={resetWidth}></div>
 </div>
 {:else}
 <nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Principal">
