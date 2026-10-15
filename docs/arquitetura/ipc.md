@@ -526,8 +526,16 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
 
 - `metadata_refresh_library` volta na hora com o número de faixas enfileiradas e roda em segundo
   plano, uma faixa por vez, respeitando o limite do MusicBrainz. Faz o mesmo que
-  `metadata_refresh_track`, inclusive refazer título, artista e álbum a partir dos dados do
-  YouTube. `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
+  `metadata_refresh_track`. Sem gravação com o artista, ou sem artista salvo, a busca só por
+  título exige pontuação mínima 95 e duração conhecida a até 10 s; dela usa apenas MBID, ISRC,
+  gêneros e ano.
+  Só corrige o artista quando o salvo é igual ao canal do vídeo e há uma única candidata
+  nessa tolerância. A associação usa o artista por nome,
+  sem renomear um registro compartilhado. O álbum só é preenchido quando está vazio, tanto
+  com MusicBrainz quanto com YouTube; um álbum existente é preservado.
+  A consulta de letra não segura o lote; continua disponível em
+  `metadata_refresh_track` e na leitura individual de letra.
+  `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
   `metadata://progress` e `library://changed` ao fim.
 - Só pode haver um lote ativo. Enquanto ele roda, outro pedido devolve `conflict`.
 

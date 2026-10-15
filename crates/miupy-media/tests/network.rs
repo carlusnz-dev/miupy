@@ -33,6 +33,33 @@ async fn musicbrainz_recording_e_artista() {
     assert!(!a.name.is_empty());
 }
 
+// @test RF-12 RF-20
+#[tokio::test]
+#[ignore = "rede real: MusicBrainz"]
+async fn musicbrainz_faixas_do_autor_com_canal_errado() {
+    let p = provider();
+    for (title, artist, channel) in [
+        ("Bete Balanço", "Cazuza", "Canal Desconhecido"),
+        ("Velha Infância", "Tribalistas", "Passe em Casa"),
+    ] {
+        let baseline = p.find_recording(title, Some(artist), None).await.unwrap();
+        println!("{title} com artista: {baseline:#?}");
+        let Some(duration) = baseline.as_ref().and_then(|r| r.duration_ms) else {
+            println!("{title}: sem duração na busca com artista");
+            continue;
+        };
+        let found = p
+            .find_recording(title, Some(channel), Some(duration))
+            .await
+            .unwrap();
+        println!("{title}: {found:#?}");
+        let found = found.expect("sem correspondência segura");
+        if !found.title_only {
+            assert_eq!(found.artist, artist, "{title}: artista errado");
+        }
+    }
+}
+
 // @test RF-27
 #[tokio::test]
 #[ignore = "rede real: MusicBrainz, Wikidata e Commons"]

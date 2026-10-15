@@ -240,7 +240,8 @@ fn words(s: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 fn is_noise_group(content: &str) -> bool {
-    words(content).any(|w| NOISE_WORDS.contains(&w.as_str()))
+    let lower = content.to_lowercase();
+    lower.contains("melhores momentos") || words(content).any(|w| NOISE_WORDS.contains(&w.as_str()))
 }
 
 /// Se o conteúdo começa com "feat."/"ft."/"with", devolve os convidados.
@@ -304,6 +305,15 @@ fn strip_groups(s: &str, featured: &mut Vec<String>) -> String {
 /// Remove ruído solto no fim ("... Official Video", "... HD") e separadores pendurados.
 fn strip_trailing_noise(s: &str) -> String {
     let mut tokens: Vec<&str> = s.split_whitespace().collect();
+    // @req RF-12
+    if tokens.len() > 2
+        && !matches!(tokens[tokens.len() - 3], "-" | "–" | "—")
+        && tokens[tokens.len() - 2..]
+            .join(" ")
+            .eq_ignore_ascii_case("Ao Vivo")
+    {
+        tokens.truncate(tokens.len() - 2);
+    }
     let mut stripped_video = false;
     while let Some(last) = tokens.last() {
         let l = last
@@ -376,6 +386,23 @@ mod tests {
         assert_eq!(a.as_deref(), Some("Daft Punk"));
         assert_eq!(t, "Get Lucky");
         assert!(f.is_empty());
+    }
+
+    // @test RF-12
+    #[test]
+    fn limpa_coletanea_entre_aspas_e_ao_vivo() {
+        let (a, t, _) = p(
+            "Cazuza - Bete Balanço (\"Cazuza & BV - Melhores Momentos\")",
+            "Canal",
+        );
+        assert_eq!(a.as_deref(), Some("Cazuza"));
+        assert_eq!(t, "Bete Balanço");
+        let (a, t, _) = p("Tribalistas - Velha Infância Ao Vivo", "Passe em Casa");
+        assert_eq!(a.as_deref(), Some("Tribalistas"));
+        assert_eq!(t, "Velha Infância");
+        let (a, t, _) = p("Alee & Neckklace - Encontro", "Alee");
+        assert_eq!(a.as_deref(), Some("Alee & Neckklace"));
+        assert_eq!(t, "Encontro");
     }
 
     // @test RF-12

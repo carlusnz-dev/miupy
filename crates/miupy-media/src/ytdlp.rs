@@ -598,6 +598,8 @@ fn parse_video_metadata(v: &Value) -> VideoMetadata {
     }
     genres.truncate(8);
     VideoMetadata {
+        channel: field("channel").or_else(|| field("uploader")),
+        raw_title: field("title"),
         artist: field("artist").or_else(|| field("creator")),
         track: field("track"),
         album: field("album"),
@@ -852,6 +854,7 @@ mod tests {
         assert_eq!(stream.expires_at, Some(1791910000));
         assert!(stream.http_headers.contains_key("User-Agent"));
         let meta = parse_video_metadata(&video);
+        assert_eq!(meta.raw_title.as_deref(), Some("Me at the zoo"));
         assert!(meta.genres.contains(&"film & animation".into()));
         assert!(meta.release_year.is_none());
         let mut unsupported = video;
@@ -917,6 +920,10 @@ mod tests {
             assert_eq!(track.album.as_deref(), Some(expected_album));
         }
         let structured = serde_json::json!({"title":"Racionais - álbum - cru", "channel":"Racionais - Topic", "track":"Estruturada", "artist":"Artista estruturado", "album":"Álbum estruturado", "release_year":2003});
+        assert_eq!(
+            parse_video_metadata(&structured).channel.as_deref(),
+            Some("Racionais - Topic")
+        );
         let track = corrected_track(&structured);
         assert_eq!(track.title, "Estruturada");
         assert_eq!(track.artist, "Artista estruturado");

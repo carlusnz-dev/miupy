@@ -282,6 +282,8 @@ mod tests {
         ]);
         let provider = Arc::new(FakeMetadata::default());
         *provider.recording.lock().unwrap() = Some(miupy_media::RecordingMatch {
+            title_only: false,
+            title_only_artist_unambiguous: false,
             mbid: "mb-1".into(),
             title: "Canção".into(),
             artist: "Banda Pedra".into(),
