@@ -1,18 +1,23 @@
-// @req RF-25
+// @req RF-25 RNF-13
+import { SvelteMap } from 'svelte/reactivity';
 import { api, type TrackScore } from '../ipc';
+import { deepEqual } from '../util/diff';
 
-/** Pontuação das faixas. Pedidos feitos no mesmo ciclo (uma lista renderizando) viram uma chamada só. */
+/**
+ * Pontuação das faixas. Pedidos feitos no mesmo ciclo (uma lista renderizando) viram uma chamada só.
+ * Cada faixa tem a própria entrada reativa: chegar a pontuação de uma não repinta as outras linhas (RNF-13).
+ */
 class ScoresStore {
-  values = $state<Record<string, TrackScore>>({});
-  /** Lido por `load`: quem chama dentro de um `$effect` pede de novo depois de `invalidate`. */
-  version = $state(0);
+  private readonly map = new SvelteMap<string, TrackScore>();
   private pending = new Set<string>();
   private requested = new Set<string>();
   private flushing: Promise<void> | null = null;
 
   load(ids: string[]) {
-    void this.version;
-    for (const id of ids) if (!this.requested.has(id)) this.pending.add(id);
+    for (const id of ids) if (!this.requested.has(id)) { this.requested.add(id); this.pending.add(id); }
+    return this.schedule();
+  }
+  private schedule() {
     if (!this.pending.size) return this.flushing ?? Promise.resolve();
     this.flushing ??= Promise.resolve().then(() => this.flush());
     return this.flushing;
@@ -21,17 +26,23 @@ class ScoresStore {
     const ids = [...this.pending];
     this.pending.clear();
     this.flushing = null;
-    ids.forEach((id) => this.requested.add(id));
     try {
       const scores = await api.statsTrackScores({ trackIds: ids });
-      this.values = { ...this.values, ...Object.fromEntries(scores.map((s) => [s.trackId, s])) };
+      for (const s of scores) if (!deepEqual(this.map.get(s.trackId), s)) this.map.set(s.trackId, s);
     } catch {
       ids.forEach((id) => this.requested.delete(id));
     }
   }
-  /** Esquece o que foi carregado (ex.: depois de tocar ou favoritar) para pedir de novo. */
-  invalidate() { this.requested.clear(); this.version++; }
-  get(id: string) { return this.values[id]; }
+  /**
+   * Pede de novo, numa chamada só, a pontuação de `ids` (ou de tudo que já foi carregado). Sem isso,
+   * tocar uma faixa recarregava a lista inteira por causa de uma linha (RNF-13).
+   */
+  invalidate(ids?: string[]) {
+    for (const id of ids ?? this.requested) if (this.requested.has(id)) this.pending.add(id);
+    void this.schedule();
+  }
+  /** Quem lê checa antes de usar (`{#if scores.get(id)}`); o tipo não inclui `undefined` por compatibilidade. */
+  get(id: string) { return this.map.get(id) as TrackScore; }
 }
 export const scores = new ScoresStore();
 

@@ -39,4 +39,4 @@ falhou, isso fica escrito.
 | 2026-10-14 | 05 — correção de capas | [capas](2026-10-14_sessao-05_agente-capas.md) |
 | 2026-10-14 | 05 — integração contínua | [ci](2026-10-14_sessao-05_agente-ci.md) |
 | 2026-10-14 | 05 — equalizador | [equalizador](2026-10-14_sessao-05_agente-equalizador.md) |
-| 2026-10-14 | 05 — correção de capas e visual | [capas](2026-10-14_sessao-05_agente-capas.md) · [visual](2026-10-14_sessao-05_agente-visual.md) |
+| 2026-10-14 | 05 — correção de capas e visual | [capas](2026-10-14_sessao-05_agente-capas.md) · [visual](2026-10-14_sessao-05_agente-visual.md) · [skeleton](2026-10-14_sessao-05_agente-skeleton.md) |

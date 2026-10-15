@@ -1,8 +1,10 @@
-// @req RF-01 RF-02 RF-03 RF-04
+// @req RF-01 RF-02 RF-03 RF-04 RNF-13
 import { api, type PlayerState, type Track } from '../ipc';
 import { nextShuffle } from '../util/shuffle';
 import { notifyError } from './toast.svelte';
 import { scores } from './scores.svelte';
+import { deepEqual } from '../util/diff';
+import { affectsCurrentTrack, affectsScores } from '../util/libraryEvents';
 
 const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1, streaming: false, shuffle: 'off' };
 
@@ -29,16 +31,39 @@ class PlayerStore {
       this.state.durationMs = p.durationMs;
     });
     await api.on('player://error', (e) => notifyError({ message: e.message })); // @req RF-18
-    // favorito alterado fora do player (biblioteca) reflete na faixa atual
-    await api.on('library://changed', () => { scores.invalidate(); void this.refreshCurrent(); });
+    // favorito alterado fora do player (biblioteca) reflete na faixa atual; foto de artista, playlist
+    // e afins não mexem nela, então não custam consulta nem repintura (RNF-13)
+    await api.on('library://changed', (e) => {
+      if (affectsScores(e?.reason)) scores.invalidate();
+      if (affectsCurrentTrack(e?.reason)) void this.refreshCurrent();
+    });
     try { this.apply(await api.playerGetState()); } catch (e) { notifyError(e); }
   }
 
   private apply(s: PlayerState) {
-    if (s.track?.id !== this.state.track?.id) scores.invalidate(); // a faixa anterior ganhou um evento
-    this.state = s;
+    const before = this.state.track?.id;
+    if (s.track?.id !== before) scores.invalidate([before, s.track?.id].filter((id): id is string => !!id)); // a anterior ganhou um evento
+    this.merge(s);
     const key = s.queue.join(',');
     if (key !== this.lastQueueKey) { this.lastQueueKey = key; void this.resolveQueue(s.queue); }
+  }
+
+  /**
+   * Aplica o estado campo a campo: o que não mudou não notifica ninguém. Trocar `this.state` inteiro
+   * reavaliava todos os derivados que leem o player a cada evento (RNF-13).
+   */
+  private merge(s: PlayerState) {
+    const cur = this.state;
+    cur.status = s.status;
+    cur.positionMs = s.positionMs;
+    cur.durationMs = s.durationMs;
+    cur.volume = s.volume;
+    cur.muted = s.muted;
+    cur.queueIndex = s.queueIndex;
+    cur.streaming = s.streaming;
+    cur.shuffle = s.shuffle;
+    if (!deepEqual(cur.track, s.track)) cur.track = s.track;
+    if (!deepEqual(cur.queue, s.queue)) cur.queue = s.queue;
   }
 
   private async resolveQueue(ids: string[]) {
@@ -51,8 +76,9 @@ class PlayerStore {
     if (!t) return;
     try {
       const fresh = await api.libraryGetTrack({ trackId: t.id });
-      if (this.state.track?.id === fresh.id) this.state.track = fresh;
-      this.queueTracks = this.queueTracks.map((q) => (q.id === fresh.id ? fresh : q));
+      if (this.state.track?.id === fresh.id && !deepEqual(this.state.track, fresh)) this.state.track = fresh;
+      const at = this.queueTracks.findIndex((q) => q.id === fresh.id);
+      if (at >= 0 && !deepEqual(this.queueTracks[at], fresh)) this.queueTracks = this.queueTracks.map((q) => (q.id === fresh.id ? fresh : q));
     } catch { /* ignora */ }
   }
 

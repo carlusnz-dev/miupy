@@ -1,39 +1,55 @@
 <script lang="ts">
-  // Artista: dados de metadata_get_artist + faixas dele na discoteca. @req RF-12 RF-05
-  import { api, errorMessage, type ArtistInfo, type Track } from '../lib/ipc';
-  import { library } from '../lib/stores/library.svelte';
+  // Artista: dados de metadata_get_artist + faixas dele na discoteca. @req RF-12 RF-05 RNF-11 RNF-13
+  import { api, type ArtistInfo, type Track } from '../lib/ipc';
+  import { mergeDeep, reconcileList } from '../lib/util/diff';
+  import { Chunked } from '../lib/util/chunked.svelte';
+  import { Resource } from '../lib/stores/resource.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
   import TrackRow from '../lib/components/TrackRow.svelte';
   import Cover from '../lib/components/Cover.svelte';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
   import State from '../lib/components/State.svelte';
+  import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import { useShared } from '../lib/layoutPresence';
 
   let { id }: { id: string } = $props();
-  let info = $state<ArtistInfo | null>(null);
-  let tracks = $state<Track[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-
+  type ArtistData = { info: ArtistInfo; tracks: Track[] };
+  const res = new Resource<ArtistData>(['artist', 'tracks'], (prev, next) => {
+    const info = mergeDeep(prev?.info, next.info);
+    const tracks = reconcileList(prev?.tracks, next.tracks, (t) => t.id);
+    return prev && prev.info === info && prev.tracks === tracks ? prev : { info, tracks };
+  });
+  // svelte-ignore state_referenced_locally
+  const key = `artist:${id}`;
+  res.prime(key);
+  const info = $derived(res.data?.info ?? null);
+  const tracks = $derived(res.data?.tracks ?? []);
+  const loading = $derived(res.loading);
+  const error = $derived(res.data === undefined ? res.error : null);
+  $effect(() => res.attach());
   async function load() {
-    error = null;
-    try {
-      [info, tracks] = await Promise.all([
+    await res.load(key, async () => {
+      const [info, tracks] = await Promise.all([
         api.metadataGetArtist({ artistId: id }),
         api.libraryListTracksByArtist({ artistId: id, query: { sortBy: 'album', sortDir: 'asc' } }),
       ]);
-    } catch (e) { error = errorMessage(e); } finally { loading = false; }
+      return { info, tracks };
+    });
   }
-  $effect(() => { library.version; void load(); });
+  $effect(() => { void load(); });
   const queue = $derived(tracks.map((t) => t.id));
+  const chunk = new Chunked();
+  $effect(() => chunk.advance(tracks.length));
+  const rows = $derived(tracks.slice(0, chunk.shown));
 </script>
 
 <a class="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg" href={href(paths.library)}><Icon name="left" size={16} />Discoteca</a>
 
 {#if loading}
-  <State kind="loading" />
+  <SkeletonList variant="hero" label="Carregando o artista" />
+  <SkeletonList variant="tracks" count={6} />
 {:else if error || !info}
   <State kind="error" title="Artista não encontrado" text={error ?? undefined} onretry={load} />
 {:else}
@@ -66,9 +82,10 @@
     <State kind="empty" title="Nenhuma faixa deste artista na discoteca" />
   {:else}
     <div role="list">
-      {#each tracks as t, i (t.id)}
+      {#each rows as t, i (t.id)}
         <TrackRow track={t} index={i} current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} />
       {/each}
     </div>
+    {#if chunk.shown < tracks.length}<div aria-hidden="true" style="height:{chunk.rest(tracks.length)}px"></div>{/if}
   {/if}
 {/if}

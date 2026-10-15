@@ -64,16 +64,41 @@ describe('player', () => {
   });
 });
 
+describe('player e library://changed', () => {
+  // @test RNF-13
+  it('só relê a faixa atual quando o motivo pode mudá-la', async () => {
+    const { player } = await import('./player.svelte');
+    await player.start();
+    (fake.libraryGetTrack as ReturnType<typeof vi.fn>).mockClear();
+    handlers['library://changed']({ reason: 'artist_photo_updated' });
+    handlers['library://changed']({ reason: 'playlist_reordered' });
+    await Promise.resolve();
+    expect(fake.libraryGetTrack).not.toHaveBeenCalled();
+    handlers['library://changed']({ reason: 'favorite' });
+    await vi.waitFor(() => expect(fake.libraryGetTrack).toHaveBeenCalledTimes(1));
+  });
+
+  // @test RNF-13
+  it('aplicar o mesmo estado não troca a faixa nem a fila', async () => {
+    const { player } = await import('./player.svelte');
+    await player.start();
+    const t = player.state.track, q = player.state.queue;
+    handlers['player://state']({ ...state, status: 'playing', track: { ...track }, queue: [...state.queue] });
+    expect(player.state.track).toBe(t);
+    expect(player.state.queue).toBe(q);
+    expect(player.state.status).toBe('playing');
+  });
+});
+
 describe('library', () => {
   // @test RF-05 RF-06
-  it('atualiza playlists e versão após library://changed', async () => {
+  it('atualiza playlists após library://changed, com intervalo mínimo entre consultas', async () => {
     vi.useFakeTimers();
     const { library } = await import('./library.svelte');
     await library.start();
     fake.playlistList = vi.fn(async () => [{ id: 'pl', name: 'Lista', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: 0, updatedAt: 0 }]) as MiupyApi['playlistList'];
     handlers['library://changed']({ reason: 'playlist' });
-    await vi.advanceTimersByTimeAsync(120);
-    expect(library.version).toBe(1);
+    await vi.advanceTimersByTimeAsync(600);
     expect(library.playlists[0].id).toBe('pl');
     vi.useRealTimers();
   });

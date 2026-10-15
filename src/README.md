@@ -20,8 +20,11 @@ index.html            script inline aplica data-lava antes da primeira pintura
 src/main.ts, App.svelte   casca: layout responsivo, init das stores, atalhos de teclado
 src/app.css           design tokens "magma" (variáveis CSS) + utilitários (.btn, .card, .field...)
 src/lib/ipc/          types.ts (contrato), api.ts (interface MiupyApi), tauri.ts (real), mock.ts, index.ts
-src/lib/stores/       router, player, library, downloads, recommendations, settings (tema), profile, toast, ui, selection
-src/lib/components/   Icon, MeshGradient, Cover, TrackRow, Nav, PlayerBar, MiniPlayer, Modal, ...
+src/lib/stores/       router, player, library, downloads, recommendations, settings (tema), profile, toast, ui, selection,
+                      resource (cache por consulta + invalidação por evento, RNF-11)
+src/lib/util/         diff (listas sem repintar), libraryEvents (reason -> telas), chunked (listas longas em blocos)
+src/lib/dev/          medidor de fluidez, só em dev (RNF-13; docs/contribuicao/desempenho.md)
+src/lib/components/   Icon, MeshGradient, Cover, TrackRow, Nav, PlayerBar, MiniPlayer, Modal, Skeleton/SkeletonList, ...
 src/lib/actions.ts    ações compartilhadas (favoritar, baixar) com aviso por toast
 src/routes/           uma tela por rota (Home, Library, Playlists, PlaylistDetail, YouTube, Downloads,
                       NowPlaying, Artist, Stats, Dna, Wrapped, Profile, Settings)
