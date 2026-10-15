@@ -53,7 +53,7 @@
       </span>
     </button>
     <span class="min-w-0">
-      <button class="block max-w-full truncate text-left text-sm font-medium {current ? 'text-lava-text' : ''}" onclick={onplay} tabindex="-1" aria-hidden="true">{track.title}</button>
+      <button class="block max-w-full truncate text-left text-sm font-medium {current ? 'text-lava-text' : ''}" onclick={onplay}>{track.title}</button>
       <span class="block truncate text-xs text-muted" use:useShared={track.artistId ? `artist-title-${track.artistId}` : ''}>
         {#if track.artistId}<a class="hover:text-fg hover:underline" href={href(paths.artist(track.artistId))}>{track.artistName ?? 'Artista desconhecido'}</a>{:else}{track.artistName ?? 'Artista desconhecido'}{/if}{#if current && player.state.streaming} · {player.isLoading ? 'Conectando…' : 'Streaming'}{:else if track.source === 'youtube' && !track.filePath} · Disponível por streaming{/if}
       </span>

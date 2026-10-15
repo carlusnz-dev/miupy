@@ -1,4 +1,4 @@
-// @req RF-17
+// @req RF-05
 const DAY = 86_400_000;
 
 /** "hoje", "há 3 dias", "há 2 meses", "há 1 ano": o tempo desde `addedAt` na maior unidade que cabe. */
