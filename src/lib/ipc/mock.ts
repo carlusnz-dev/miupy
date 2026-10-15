@@ -208,9 +208,9 @@ export function createMockApi(): MiupyApi {
   }
 
   // --- Player simulado ---
-  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], queueIndex: -1, streaming: false, shuffle: 'off' };
+  let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], context: null, queueIndex: -1, streaming: false, shuffle: 'off' };
   let timer: ReturnType<typeof setInterval> | null = null;
-  const snap = (): PlayerState => ({ ...player, queue: [...player.queue] });
+  const snap = (): PlayerState => ({ ...player, queue: [...player.queue], context: player.context && { ...player.context } });
   const pushState = () => { emit('player://state', snap()); return snap(); };
   function stopTimer() { if (timer) clearInterval(timer); timer = null; }
   function startTimer() {
@@ -296,18 +296,21 @@ export function createMockApi(): MiupyApi {
     kind: 'mock',
 
     async playerGetState() { await wait(20); return snap(); },
-    async playerPlay({ trackId, queue }) {
+    // @req RF-03 RF-42
+    async playerPlay({ trackId, queue, context }) {
       await wait(30);
       const target = byId(trackId);
       if (target.source === 'local' && !target.filePath) err('unavailable', 'Arquivo local indisponível.');
-      const q = queue && queue.length ? queue : player.queue.includes(trackId) ? player.queue : [trackId];
+      const inCurrentQueue = player.queue.includes(trackId);
+      const q = queue !== undefined ? queue : inCurrentQueue ? player.queue : [trackId];
       player.queue = q.includes(trackId) ? [...q] : [trackId, ...q];
+      if (queue !== undefined || !inCurrentQueue) player.context = queue !== undefined ? context ?? null : null;
       loadAt(player.queue.indexOf(trackId));
       return snap();
     },
     async playerPause() { if (player.status === 'playing') { player.status = 'paused'; } return pushState(); },
     async playerResume() { if (player.track && player.status === 'paused') { player.status = 'playing'; startTimer(); } return pushState(); },
-    async playerStop() { player.status = 'stopped'; player.positionMs = 0; stopTimer(); return pushState(); },
+    async playerStop() { player.status = 'stopped'; player.positionMs = 0; player.context = null; stopTimer(); return pushState(); },
     async playerSeek({ positionMs }) {
       player.positionMs = Math.max(0, Math.min(player.durationMs, positionMs));
       emit('player://progress', { positionMs: player.positionMs, durationMs: player.durationMs });
@@ -347,6 +350,14 @@ export function createMockApi(): MiupyApi {
       byId(trackId);
       void deleteFile;
       tracks = tracks.filter((t) => t.id !== trackId);
+      // @req RF-03 RF-42
+      if (player.queue.includes(trackId)) {
+        player.queue = player.queue.filter((id) => id !== trackId);
+        player.queueIndex = player.queue.length ? Math.min(player.queueIndex, player.queue.length - 1) : -1;
+        if (player.track?.id === trackId) { player.track = null; player.status = 'stopped'; stopTimer(); }
+        if (!player.queue.length) player.context = null;
+        pushState();
+      }
       playlists.forEach((p) => (p.ids = p.ids.filter((i) => i !== trackId)));
       changed('track-deleted');
     },
@@ -374,6 +385,8 @@ export function createMockApi(): MiupyApi {
     async playlistUpdate({ playlistId, name, description, autoDownload }) {
       const p = getPl(playlistId);
       if (name !== undefined) { if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.'); p.name = name.trim(); }
+      // @req RF-42
+      if (player.context?.kind === 'playlist' && player.context.id === playlistId && player.context.label !== p.name) { player.context = { ...player.context, label: p.name }; pushState(); }
       if (description !== undefined) p.description = description.trim() || null;
       // @req RF-31
       if (autoDownload !== undefined) { const was = p.autoDownload; p.autoDownload = autoDownload; if (autoDownload && !was) autoEnqueue(p, p.ids, 'enabled'); }
@@ -381,7 +394,7 @@ export function createMockApi(): MiupyApi {
       changed('playlist');
       return plOut(p);
     },
-    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); if (settings.favoritesPlaylistId === playlistId) { settings.favoritesPlaylistId = null; tracks.forEach((t) => { t.isFavorite = false; }); changed('favorites'); } changed('playlist_deleted'); },
+    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); if (player.context?.kind === 'playlist' && player.context.id === playlistId) { player.context = null; pushState(); } if (settings.favoritesPlaylistId === playlistId) { settings.favoritesPlaylistId = null; tracks.forEach((t) => { t.isFavorite = false; }); changed('favorites'); } changed('playlist_deleted'); },
     async playlistGetTracks({ playlistId, query }) {
       await wait();
       const p = getPl(playlistId);

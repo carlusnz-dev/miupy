@@ -1,6 +1,6 @@
 // @req RF-03 RF-05 RF-10 RF-15 RF-19
 import type {
-  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist,
+  ArtistInfo, Dna, DownloadJob, EventMap, EventName, ImageUpload, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist, QueueContext,
   EqPreset, EqPresetInput, GpuStatus, Profile, Recommendation, SearchResult, Settings, ShuffleMode, TasteProfile, Track, TrackQuery, TrackScore, Wrapped, YtDlpStatus,
 } from './types';
 
@@ -9,7 +9,7 @@ export interface MiupyApi {
   readonly kind: 'tauri' | 'mock';
 
   playerGetState(): Promise<PlayerState>;
-  playerPlay(a: { trackId: string; queue?: string[] }): Promise<PlayerState>;
+  playerPlay(a: { trackId: string; queue?: string[]; context?: QueueContext | null }): Promise<PlayerState>; // @req RF-03 RF-42
   playerPause(): Promise<PlayerState>;
   playerResume(): Promise<PlayerState>;
   playerStop(): Promise<PlayerState>;

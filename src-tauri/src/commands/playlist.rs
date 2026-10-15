@@ -87,6 +87,8 @@ pub async fn playlist_update(
             Ok((db.update_playlist(&playlist_id, &patch)?, was_auto))
         })
         .await?;
+    // @req RF-42
+    state.player.playlist_updated(&pl.id, Some(&pl.name));
     state.events.library_changed("playlist_updated");
     if pl.auto_download && !was_auto {
         crate::auto_download::enqueue(&state, pl.id.clone(), None, "enabled").await?;
@@ -97,6 +99,7 @@ pub async fn playlist_update(
 // @req RF-06
 #[tauri::command]
 pub async fn playlist_delete(state: State<'_, AppState>, playlist_id: String) -> R<()> {
+    let context_id = playlist_id.clone();
     let was_favorites = state
         .db
         .run(move |db| {
@@ -105,6 +108,8 @@ pub async fn playlist_delete(state: State<'_, AppState>, playlist_id: String) ->
             Ok(was_favorites)
         })
         .await?;
+    // @req RF-42
+    state.player.playlist_updated(&context_id, None);
     state.events.library_changed("playlist_deleted");
     if was_favorites {
         state.events.library_changed("favorites");

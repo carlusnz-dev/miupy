@@ -50,6 +50,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-38 | Menu lateral recolhível | C | O usuário recolhe o menu lateral num trilho só com ícones (botão na borda ou Ctrl+B) e o expande de novo; cada ícone tem nome acessível e dica. O estado fica salvo entre aberturas. |
 | RF-39 | Painel da direita | C | Painel recolhível à direita com a faixa atual e a fila: capa, título, artista com link e favoritar; a fila destaca a faixa atual e o clique toca a faixa. Botão na borda e Ctrl+J abrem e recolhem; a escolha fica salva entre aberturas. Aberto por padrão a partir de 1280 px (abaixo disso abre por cima do conteúdo); some em Tocando e no celular. |
 | RF-40 | Cores da capa no Tocando | C | O fundo da tela Tocando é um mesh com as cores da capa da faixa atual, com transição ao trocar de faixa; controles seguem o tema. |
+| RF-42 | Playlist tocando | S | O player sabe de onde veio a fila (playlist, artista, discoteca…); o Início mostra a playlist que está tocando e a tela da playlist troca Tocar por Pausar quando é ela que toca. |
 
 ## Requisitos não funcionais
 

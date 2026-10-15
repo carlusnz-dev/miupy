@@ -1,7 +1,7 @@
 <script lang="ts">
   // @req RF-19
   // Detalhe da playlist: faixas, busca/ordenação, reordenar, remover, baixar tudo.
-  // @req RF-06 RF-07 RF-08 RF-11 RNF-11 RNF-13
+  // @req RF-06 RF-07 RF-08 RF-11 RF-42 RNF-11 RNF-13
   import { untrack } from 'svelte';
   import { api, type Playlist, type SortDir, type Track, type TrackSort } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
@@ -49,6 +49,7 @@
   const autoDownloadChecked = $derived(autoDownloadOverride ?? pl?.autoDownload ?? false);
   const canReorder = $derived(sortBy === 'position' && !search.trim() && !favoritesOnly);
   const queue = $derived(tracks.map((t) => t.id));
+  const context = $derived({ kind: 'playlist' as const, id, label: pl?.name ?? '' });
   const chunk = new Chunked();
   $effect(() => chunk.advance(tracks.length));
   const rows = $derived(tracks.slice(0, chunk.shown));
@@ -131,7 +132,7 @@
   </MeshGradient>
 
   <div class="mb-4 flex flex-wrap items-center gap-2">
-    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar</button>
+    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue, context)}><Icon name="play" size={16} fill />Tocar</button>
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
     <!-- @req RF-31 -->
     <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">
@@ -175,7 +176,7 @@
     <div role="list">
       {#each rows as t, i (t.id)}
         <TrackRow track={t} index={i} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
-          current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)}
+          current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue, context)}
           draggable={canReorder}
           ondragstart={(e) => { dragId = t.id; e.dataTransfer?.setData('text/plain', t.id); }}
           ondragover={(e) => { if (dragId) e.preventDefault(); }}

@@ -22,7 +22,7 @@ export function createTauriApi(): MiupyApi {
   return {
     kind: 'tauri',
     playerGetState: () => call('player_get_state'),
-    playerPlay: (a) => call('player_play', a),
+    playerPlay: (a) => call('player_play', a), // @req RF-03 RF-42
     playerPause: () => call('player_pause'),
     playerResume: () => call('player_resume'),
     playerStop: () => call('player_stop'),

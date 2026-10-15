@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MiupyApi, PlayerState, Track } from '../ipc';
 
 const track: Track = { id: 'one', title: 'Uma faixa', artistId: null, artistName: 'Artista', album: null, durationMs: 120000, filePath: null, coverPath: null, source: 'youtube', sourceId: 'yt1', codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: 1, genres: [], releaseYear: null, loudnessLufs: null, thumbnailUrl: null };
-const state: PlayerState = { status: 'playing', track, positionMs: 0, durationMs: track.durationMs, volume: .8, muted: false, queue: ['one'], queueIndex: 0, streaming: true, shuffle: 'off' };
+const state: PlayerState = { status: 'playing', track, positionMs: 0, durationMs: track.durationMs, volume: .8, muted: false, queue: ['one'], context: null, queueIndex: 0, streaming: true, shuffle: 'off' };
 let handlers: Record<string, (value: unknown) => void>;
 let fake: MiupyApi;
 
@@ -33,6 +33,17 @@ beforeEach(() => {
 });
 
 describe('player', () => {
+  // @test RF-42
+  it('reconhece somente o contexto que está tocando', async () => {
+    const { player } = await import('./player.svelte');
+    await player.start();
+    handlers['player://state']({ ...state, context: { kind: 'playlist', id: 'pl-1', label: 'Lista' } });
+    expect(player.isPlayingContext('playlist', 'pl-1')).toBe(true);
+    expect(player.isPlayingContext('playlist', 'pl-2')).toBe(false);
+    expect(player.isPlayingContext('artist', 'pl-1')).toBe(false);
+    handlers['player://state']({ ...state, status: 'paused', context: { kind: 'playlist', id: 'pl-1', label: 'Lista' } });
+    expect(player.isPlayingContext('playlist', 'pl-1')).toBe(false);
+  });
   // @test RF-01 RF-03 RF-18
   it('toca por streaming, carrega a fila completa e reage aos eventos', async () => {
     const { player } = await import('./player.svelte');
