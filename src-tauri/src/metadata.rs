@@ -127,7 +127,7 @@ impl MetadataService {
                     .unwrap_or_else(|e| e.into_inner())
                     .current_track_id = Some(t.id.clone());
                 let mut failed = false;
-                if let Err(e) = this.refresh_track(&t.id).await {
+                if let Err(e) = this.refresh_track_inner(&t.id, false).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
                     failed = true;
                 }
@@ -205,6 +205,11 @@ impl MetadataService {
     /// Aqui a rede é o objetivo: erro de rede volta ao usuário. Sem correspondência, devolve a
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
+        self.refresh_track_inner(track_id, true).await
+    }
+
+    // @req RF-12 RF-32
+    async fn refresh_track_inner(&self, track_id: &str, fetch_lyrics: bool) -> AppResult<Track> {
         let id = track_id.to_owned();
         let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
@@ -269,21 +274,25 @@ impl MetadataService {
         }
 
         // Letra (LRCLIB); falhar não desfaz o resto.
-        let lyrics = match self
-            .provider
-            .lyrics(
-                &rec.title,
-                &rec.artist,
-                rec.album.as_deref().or(track.album.as_deref()),
-                duration.or(rec.duration_ms),
-            )
-            .await
-        {
-            Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
-            Err(e) => {
-                log::warn!("letra de {}: {e}", track.id);
-                None
+        let lyrics = if fetch_lyrics {
+            match self
+                .provider
+                .lyrics(
+                    &rec.title,
+                    &rec.artist,
+                    rec.album.as_deref().or(track.album.as_deref()),
+                    duration.or(rec.duration_ms),
+                )
+                .await
+            {
+                Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
+                Err(e) => {
+                    log::warn!("letra de {}: {e}", track.id);
+                    None
+                }
             }
+        } else {
+            None
         };
 
         // @req RF-20: MusicBrainz é a fonte principal; o vídeo só complementa campos ausentes.
@@ -314,7 +323,7 @@ impl MetadataService {
             cover_path: cover
                 .as_ref()
                 .map(|p| Some(p.to_string_lossy().into_owned())),
-            genres: Some(rec.genres.clone()),
+            genres: (!rec.genres.is_empty()).then(|| rec.genres.clone()),
             release_year: rec
                 .release_year
                 .map(|y| y as i32)
@@ -671,6 +680,33 @@ mod tests {
         assert_eq!((events[1].done, events[1].failed), (1, 1));
         assert_eq!((events[2].done, events[2].failed), (2, 1));
         assert!(!events[3].running);
+    }
+
+    // @test RF-32 RF-12
+    #[tokio::test]
+    async fn lote_avanca_sem_consultar_letras() {
+        let f = fx();
+        track(&f);
+        let mut recording = rec();
+        recording.release_mbids.clear();
+        recording.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(recording);
+        *f.fake.lyrics.lock().unwrap() = Some(LyricsData {
+            plain: Some("letra".into()),
+            synced: None,
+            instrumental: false,
+        });
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while svc.refresh_status().running {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(svc.refresh_status().done, 1);
+        assert_eq!(*f.fake.network_calls.lock().unwrap(), 1);
     }
 
     // @test RF-32

@@ -526,7 +526,8 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
 - `metadata_refresh_library` volta na hora com o número de faixas enfileiradas e roda em segundo
   plano, uma faixa por vez, respeitando o limite do MusicBrainz. Faz o mesmo que
   `metadata_refresh_track`, inclusive refazer título, artista e álbum a partir dos dados do
-  YouTube. `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
+  YouTube. A consulta de letra não segura o lote; continua disponível em
+  `metadata_refresh_track` e na leitura individual de letra. `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
   `metadata://progress` e `library://changed` ao fim.
 - Só pode haver um lote ativo. Enquanto ele roda, outro pedido devolve `conflict`.
 
