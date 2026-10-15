@@ -15,7 +15,7 @@
   serializados por um `Mutex` que a thread de áudio nunca toma, `read_equalizer()` sem lock e sem
   alocação (até 8 tentativas; se falhar mantém os ganhos anteriores). Teste com escritor e leitor
   concorrentes: nunca vê mistura.
-- Sete testes novos do CRUD de perfis (núcleo): nome repetido ignorando caixa, limite de 30
+- Seis testes novos do CRUD de perfis (núcleo): nome repetido ignorando caixa, limite de 30
   caracteres (o contrato diz 1 a 30; 31 é erro), editar mantém id, ordem da lista, máximo de 3
   (e vaga liberada após apagar), apagar o ativo volta para `flat`, apagar outro mantém a seleção.
 
