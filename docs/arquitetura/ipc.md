@@ -58,6 +58,8 @@ interface Playlist {
 
 interface TrackQuery { search?: string; sortBy?: TrackSort; sortDir?: SortDir; favoritesOnly?: boolean; }
 
+interface QueueContext { kind: 'playlist' | 'artist' | 'library' | 'other'; id: string | null; label: string; }
+
 interface PlayerState {
   status: PlayerStatus;
   track: Track | null;
@@ -66,6 +68,7 @@ interface PlayerState {
   volume: number;               // 0.0 a 1.0
   muted: boolean;
   queue: string[];              // ids das faixas
+  context: QueueContext | null;  // origem da fila nesta abertura; não é persistida
   queueIndex: number;           // -1 se vazia
   streaming: boolean;           // true quando a faixa atual toca da rede, sem arquivo local (RF-18)
   shuffle: ShuffleMode;         // RF-24
@@ -292,7 +295,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 | Comando | Argumentos | Retorno | Requisitos |
 |---|---|---|---|
 | `player_get_state` | — | `PlayerState` | RF-01 |
-| `player_play` | `{ trackId, queue?: string[] }` | `PlayerState` | RF-01, RF-03 |
+| `player_play` | `{ trackId, queue?: string[], context?: QueueContext }` | `PlayerState` | RF-01, RF-03, RF-42 |
 | `player_pause` | — | `PlayerState` | RF-01 |
 | `player_resume` | — | `PlayerState` | RF-01 |
 | `player_stop` | — | `PlayerState` | RF-01 |
@@ -400,6 +403,11 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 - "Tentar de novo" em um download com erro é um novo `download_enqueue` da mesma faixa.
 - `player_get_queue` devolve as faixas de `PlayerState.queue`, na mesma ordem. Ids de faixas que já
   foram apagadas ficam de fora.
+- `player_play` com `queue` substitui a fila e seu contexto pelo `context` enviado, ou por `null`
+  quando omitido. Sem `queue`, mantém o contexto se a faixa está na fila atual; uma faixa de fora
+  cria fila unitária sem contexto. `next`, `previous`, `seek` e
+  `set_shuffle` o mantêm; `stop` ou fila esvaziada o limpam. Renomear a playlist atualiza o
+  `label`; apagá-la limpa o contexto. A fila e seu contexto não são persistidos.
 - `stats_wrapped_years` devolve, em ordem decrescente, os anos (horário local) com pelo menos um
   evento de reprodução. Vazio se nunca tocou nada.
 - `download_clear_finished` remove os jobs `done` e `error` e devolve quantos removeu. Não apaga

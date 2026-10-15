@@ -54,9 +54,9 @@
 
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
-  /* menu recolhido, coluna do painel direito (ainda sem painel) e fundo do player flutuante */
+  /* menu recolhido, largura do painel da direita e fundo do player flutuante */
   --rail-w: 4.5rem;
-  --aside-w: 0px;
+  --right-w: 20rem;
   --player-bg: color-mix(in oklab, #050404, var(--lava-deep) 3%);
 }
 
@@ -164,6 +164,19 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 .nav-toggle::after { content: ''; position: absolute; inset: -0.375rem; }
 .nav-toggle:hover { background: var(--surface-3); color: var(--fg); }
 .nav-toggle:focus-visible { outline: 2px solid var(--lava-text); outline-offset: 2px; }
+/* @req RF-39: painel da direita; o miolo tem largura fixa, só o casco anima (sem blur, sem animação contínua). */
+.right-shell { width: 0; transition: width var(--dur-base) var(--ease-spring); }
+.right-shell.open { width: var(--right-w); }
+.right-panel { width: var(--right-w); }
+.right-toggle {
+  position: absolute; z-index: 3; top: 1.75rem; left: -0.75rem; display: grid; place-items: center;
+  width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface-2); color: var(--fg-muted);
+}
+.right-shell:not(.open) .right-toggle { left: -2rem; }
+.right-toggle::after { content: ''; position: absolute; inset: -0.375rem; }
+.right-toggle:hover { background: var(--surface-3); color: var(--fg); }
+.right-toggle:focus-visible { outline: 2px solid var(--lava-text); outline-offset: 2px; }
 /* @req RF-18 RNF-04: player flutuante; fundo sólido mais escuro que a página, com blur leve onde houver suporte. */
 .player-float { background: var(--player-bg); border: 1px solid var(--line); }
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {

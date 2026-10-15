@@ -52,6 +52,9 @@ export interface TrackQuery {
   favoritesOnly?: boolean;
 }
 
+// @req RF-03 RF-42
+export interface QueueContext { kind: 'playlist' | 'artist' | 'library' | 'other'; id: string | null; label: string; }
+
 export interface PlayerState {
   status: PlayerStatus;
   track: Track | null;
@@ -60,6 +63,7 @@ export interface PlayerState {
   volume: number;
   muted: boolean;
   queue: string[];
+  context: QueueContext | null;
   queueIndex: number;
   streaming: boolean; // @req RF-18
   shuffle: ShuffleMode; // @req RF-24
