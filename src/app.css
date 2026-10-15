@@ -74,6 +74,10 @@
   --lava-rgb: 47 140 255;
 }
 
+/* Títulos e números grandes em serifa (decisão do autor, sessão 08); corpo e controles sem serifa. */
+@theme { --font-display: 'Source Serif 4 Variable', ui-serif, Georgia, 'Times New Roman', serif; }
+h1, h2 { font-family: var(--font-display); font-optical-sizing: auto; }
+
 @theme inline {
   --color-bg: var(--bg);
   --color-s1: var(--surface-1);
