@@ -148,7 +148,7 @@ export function createMockApi(): MiupyApi {
   let searchHistory: string[] = ['Daft Punk', 'Björk', 'Sigur Rós']; // @req RF-34
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   // @req RF-32
-  let metadataStatus: MetadataRefreshStatus = { running: false, done: 0, total: 0, failed: 0, currentTrackId: null, startedAt: null, finishedAt: null };
+  let metadataStatus: MetadataRefreshStatus = { running: false, stopping: false, cancelled: false, done: 0, total: 0, failed: 0, currentTrackId: null, startedAt: null, finishedAt: null };
   const youtubeIds = new Map<string, string>(); // sourceId -> trackId
   const dismissed = new Set<string>(); // @req RF-19
 
@@ -497,23 +497,30 @@ export function createMockApi(): MiupyApi {
     async metadataRefreshLibrary({ onlyMissing = true }) { // @req RF-12 RF-20 RF-32
       if (metadataStatus.running) err('conflict', 'Um reprocessamento já está em andamento.');
       const batch = onlyMissing ? tracks.filter((t) => !t.album) : [...tracks];
-      metadataStatus = { running: true, done: 0, total: batch.length, failed: 0, currentTrackId: null, startedAt: Date.now(), finishedAt: null };
+      metadataStatus = { running: true, stopping: false, cancelled: false, done: 0, total: batch.length, failed: 0, currentTrackId: null, startedAt: Date.now(), finishedAt: null };
       emit('metadata://progress', { ...metadataStatus });
       void (async () => {
         for (const [index, track] of batch.entries()) {
+          if (metadataStatus.stopping) break;
           metadataStatus.currentTrackId = track.id;
+          emit('metadata://progress', { ...metadataStatus });
           await wait(50);
           if (!track.album) track.album = 'Single';
           metadataStatus.done = index + 1;
           emit('metadata://progress', { ...metadataStatus });
         }
         changed('metadata');
-        metadataStatus = { ...metadataStatus, running: false, currentTrackId: null, finishedAt: Date.now() };
+        metadataStatus = { ...metadataStatus, running: false, cancelled: metadataStatus.stopping, stopping: false, currentTrackId: null, finishedAt: Date.now() };
         emit('metadata://progress', { ...metadataStatus });
       })();
       return batch.length;
     },
     async metadataRefreshStatus() { return { ...metadataStatus }; }, // @req RF-32
+    async metadataRefreshCancel() { // @req RF-32
+      if (!metadataStatus.running || metadataStatus.stopping) return;
+      metadataStatus = { ...metadataStatus, stopping: true };
+      emit('metadata://progress', { ...metadataStatus });
+    },
     async metadataGetArtist({ artistId }) {
       await wait();
       const a = ARTISTS.find((x) => x.id === artistId) ?? err('not_found', 'Artista não encontrado.');

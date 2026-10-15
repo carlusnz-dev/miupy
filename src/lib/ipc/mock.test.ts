@@ -49,6 +49,23 @@ describe('favoritas no mock', () => {
 
 // @test RF-32
 describe('reprocessamento de metadados no mock', () => {
+  // @test RF-32
+  it('para após a faixa atual e aceita outro lote', async () => {
+    const api = createMockApi();
+    const started = new Promise<void>((resolve) => {
+      void api.on('metadata://progress', (status) => { if (status.running && status.currentTrackId) resolve(); });
+    });
+    await api.metadataRefreshLibrary({ onlyMissing: false });
+    await started;
+    await api.metadataRefreshCancel();
+    expect(await api.metadataRefreshStatus()).toMatchObject({ running: true, stopping: true });
+    await new Promise<void>((resolve) => {
+      void api.on('metadata://progress', (status) => { if (!status.running) resolve(); });
+    });
+    expect(await api.metadataRefreshStatus()).toMatchObject({ done: 1, cancelled: true, stopping: false });
+    await api.metadataRefreshLibrary({ onlyMissing: false });
+    expect(await api.metadataRefreshStatus()).toMatchObject({ running: true, cancelled: false });
+  });
   it('publica início, andamento e fim; mantém o último lote para consulta', async () => {
     const api = createMockApi();
     const seen: Awaited<ReturnType<typeof api.metadataRefreshStatus>>[] = [];
@@ -64,7 +81,7 @@ describe('reprocessamento de metadados no mock', () => {
     const end = await api.metadataRefreshStatus();
     expect(end).toMatchObject({ running: false, done: total, total, failed: 0, currentTrackId: null });
     expect(end.finishedAt).toBeGreaterThanOrEqual(end.startedAt!);
-    expect(seen).toHaveLength(total + 2);
+    expect(seen).toHaveLength(total * 2 + 2);
     expect(seen[0]).toMatchObject({ running: true, done: 0 });
     expect(seen.at(-1)).toEqual(end);
     un();
