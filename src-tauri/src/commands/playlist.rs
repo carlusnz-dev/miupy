@@ -65,24 +65,32 @@ pub async fn playlist_create(
     Ok(pl)
 }
 
-// @req RF-06
+// @req RF-06 RF-31
 #[tauri::command]
 pub async fn playlist_update(
     state: State<'_, AppState>,
     playlist_id: String,
     name: Option<String>,
     description: Option<String>,
+    auto_download: Option<bool>,
 ) -> R<Playlist> {
     let patch = PlaylistPatch {
         name,
         description: description.map(Some),
+        auto_download,
         ..Default::default()
     };
-    let pl = state
+    let (pl, was_auto) = state
         .db
-        .run(move |db| Ok(db.update_playlist(&playlist_id, &patch)?))
+        .run(move |db| {
+            let was_auto = db.get_playlist(&playlist_id)?.auto_download;
+            Ok((db.update_playlist(&playlist_id, &patch)?, was_auto))
+        })
         .await?;
     state.events.library_changed("playlist_updated");
+    if pl.auto_download && !was_auto {
+        crate::auto_download::enqueue(&state, pl.id.clone(), None, "enabled").await?;
+    }
     Ok(pl)
 }
 
@@ -118,13 +126,29 @@ pub async fn playlist_get_tracks(
         .await
 }
 
-// @req RF-06
+// @req RF-06 RF-31
 #[tauri::command]
 pub async fn playlist_add_tracks(
     state: State<'_, AppState>,
     playlist_id: String,
     track_ids: Vec<String>,
 ) -> R<Playlist> {
+    let id = playlist_id.clone();
+    let existing = state
+        .db
+        .run(move |db| {
+            Ok(db
+                .playlist_tracks(&id, &TrackQuery::default())?
+                .into_iter()
+                .map(|t| t.id)
+                .collect::<std::collections::HashSet<_>>())
+        })
+        .await?;
+    let added = track_ids
+        .iter()
+        .filter(|id| !existing.contains(*id))
+        .cloned()
+        .collect();
     let pl = state
         .db
         .run(move |db| Ok(db.add_tracks_to_playlist(&playlist_id, &track_ids)?))
@@ -132,6 +156,9 @@ pub async fn playlist_add_tracks(
     state.events.library_changed("playlist_tracks_added");
     if pl.is_favorites {
         state.events.library_changed("favorites");
+    }
+    if pl.auto_download {
+        crate::auto_download::enqueue(&state, pl.id.clone(), Some(added), "added").await?;
     }
     Ok(pl)
 }

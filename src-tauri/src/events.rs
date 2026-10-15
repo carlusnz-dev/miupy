@@ -11,6 +11,8 @@ pub const EV_PLAYER_STATE: &str = "player://state";
 pub const EV_PLAYER_PROGRESS: &str = "player://progress";
 pub const EV_PLAYER_ERROR: &str = "player://error";
 pub const EV_DOWNLOAD_PROGRESS: &str = "download://progress";
+// @req RF-31
+pub const EV_DOWNLOAD_AUTO: &str = "download://auto";
 pub const EV_LIBRARY_CHANGED: &str = "library://changed";
 // @req RF-19
 pub const EV_RECOMMENDATIONS_CHANGED: &str = "recommendations://changed";
@@ -22,6 +24,8 @@ pub trait Events: Send + Sync + 'static {
     fn ytdlp_status(&self, status: &YtDlpStatus);
     fn metadata_progress(&self, status: &MetadataRefreshStatus);
     fn download_progress(&self, job: &DownloadJob);
+    // @req RF-31
+    fn download_auto(&self, playlist_id: &str, count: usize, reason: &str);
     fn library_changed(&self, reason: &str);
     fn recommendations_changed(&self, count: usize);
 }
@@ -64,6 +68,12 @@ impl Events for TauriEvents {
     fn download_progress(&self, job: &DownloadJob) {
         self.emit(EV_DOWNLOAD_PROGRESS, job);
     }
+    fn download_auto(&self, playlist_id: &str, count: usize, reason: &str) {
+        self.emit(
+            EV_DOWNLOAD_AUTO,
+            serde_json::json!({ "playlistId": playlist_id, "count": count, "reason": reason }),
+        );
+    }
     fn library_changed(&self, reason: &str) {
         self.emit(EV_LIBRARY_CHANGED, LibraryChanged { reason });
     }
@@ -87,6 +97,7 @@ pub mod testing {
         pub player_errors: Mutex<Vec<(String, String, String)>>,
         pub progress: Mutex<Vec<Progress>>,
         pub downloads: Mutex<Vec<DownloadJob>>,
+        pub auto: Mutex<Vec<(String, usize, String)>>,
         pub library: Mutex<Vec<String>>,
         pub recommendations: Mutex<Vec<usize>>,
         pub metadata: Mutex<Vec<MetadataRefreshStatus>>,
@@ -111,6 +122,12 @@ pub mod testing {
         }
         fn download_progress(&self, job: &DownloadJob) {
             self.downloads.lock().unwrap().push(job.clone());
+        }
+        fn download_auto(&self, playlist_id: &str, count: usize, reason: &str) {
+            self.auto
+                .lock()
+                .unwrap()
+                .push((playlist_id.into(), count, reason.into()));
         }
         fn library_changed(&self, reason: &str) {
             self.library.lock().unwrap().push(reason.to_owned());
