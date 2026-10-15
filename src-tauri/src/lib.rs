@@ -91,6 +91,7 @@ pub fn run() {
     let gpu_root = gpu::data_root();
     #[cfg(target_os = "linux")]
     let saved_gpu_mode = gpu::load_saved_mode(gpu_root.as_deref());
+    #[cfg(target_os = "linux")]
     let gpu_decision = gpu::configure_mode(saved_gpu_mode.as_deref(), gpu_root.as_deref());
 
     let app = tauri::Builder::default()
