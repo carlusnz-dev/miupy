@@ -1148,6 +1148,59 @@ mod tests {
         }
     }
 
+    // @test RF-03 RF-18
+    #[test]
+    fn navegar_sem_faixa_tocavel_descarta_url_antiga() {
+        for previous in [false, true] {
+            let f = fx(1);
+            let track =
+                f.db.with(|db| {
+                    db.upsert_track(&NewTrack::youtube("lenta", "Lenta", None, 1000, None))
+                })
+                .unwrap()
+                .track;
+            // A faixa local fica ao lado da que está resolvendo; o carregamento dela vai falhar.
+            let queue = if previous {
+                vec![f.ids[0].clone(), track.id.clone()]
+            } else {
+                vec![track.id.clone(), f.ids[0].clone()]
+            };
+            let (started_tx, started_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            *f.resolver.stream_gate.lock().unwrap() = Some((started_tx, release_rx));
+            f.player.play(&track.id, Some(queue)).unwrap();
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+
+            f.backend.set_fail_loads(true);
+            if previous {
+                f.player.previous().unwrap();
+            } else {
+                f.player.next().unwrap();
+            }
+            f.backend.set_fail_loads(false);
+            // A tentativa de tocar a vizinha já parou o motor e limpou a faixa atual.
+            assert!(f.player.state().track.is_none(), "previous={previous}");
+            release_tx.send(()).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while Arc::strong_count(&f.player) > 1 && std::time::Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+            assert_eq!(Arc::strong_count(&f.player), 1);
+            let state = f.player.state();
+            assert_eq!(state.status, PlayerStatus::Stopped, "previous={previous}");
+            assert!(state.track.is_none(), "previous={previous}");
+            // O motor também não pode ter recebido a URL antiga.
+            assert_ne!(
+                f.backend.state().status,
+                PlaybackStatus::Playing,
+                "previous={previous}"
+            );
+            assert!(f.backend.state().url.is_none(), "previous={previous}");
+        }
+    }
+
     // @test RF-01
     #[test]
     fn arquivo_ausente_no_disco_devolve_unavailable() {
