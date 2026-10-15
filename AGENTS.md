@@ -25,6 +25,13 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
 - Interface e documentação em pt-BR. Identificadores de código em inglês.
 - Antes de encerrar: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (o CI roda os mesmos, com `--locked`).
 
+## Skills do projeto
+
+Em `.claude/skills/`: `revisar-pr` (antes de todo merge), `codigo-enxuto` (antes de implementar),
+`desenhar-interface` e `revisar-design` (interface no tema magma), `revisar-playwright`
+(navegador pelo MCP do `.mcp.json`, sem prints), `relatorio` (fim de frente ou sessão) e
+`briefing-frente` (orquestração, ao soltar um agente).
+
 ## Git
 
 Detalhes em `docs/contribuicao/git.md`. Resumo:
