@@ -146,7 +146,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita. Módulo auto_download liga playlists à fila única e retenta falhas de rede.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura, com parada após a faixa atual. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita. Módulo auto_download liga playlists à fila única e retenta falhas de rede.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -199,7 +199,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento e o resultado do reprocessamento de metadados. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas. Com a caixa de busca vazia, mostra buscas recentes e recomendações; a Discoteca leva à busca. Playlists podem baixar automaticamente e o toast resume a fila.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento, a parada e o resultado do reprocessamento de metadados; um aviso fixo acompanha o lote em qualquer tela. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas. Com a caixa de busca vazia, mostra buscas recentes e recomendações; a Discoteca leva à busca. Playlists podem baixar automaticamente e o toast resume a fila.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],

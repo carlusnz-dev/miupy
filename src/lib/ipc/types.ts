@@ -212,6 +212,8 @@ export interface ProgressPayload {
 // @req RF-32
 export interface MetadataRefreshStatus {
   running: boolean;
+  stopping: boolean;
+  cancelled: boolean;
   done: number;
   total: number;
   failed: number;

@@ -55,6 +55,7 @@ export interface MiupyApi {
 
   metadataRefreshLibrary(a: { onlyMissing?: boolean }): Promise<number>; // @req RF-12 RF-20
   metadataRefreshStatus(): Promise<MetadataRefreshStatus>; // @req RF-32
+  metadataRefreshCancel(): Promise<void>; // @req RF-32
   metadataRefreshTrack(a: { trackId: string }): Promise<Track>;
   metadataGetArtist(a: { artistId: string }): Promise<ArtistInfo>;
   metadataGetLyrics(a: { trackId: string }): Promise<Lyrics>;

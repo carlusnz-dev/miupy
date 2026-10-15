@@ -4,7 +4,8 @@
   // @req RNF-03 RNF-04
   import { onMount } from 'svelte';
   import { springTransition, springCollapse } from './lib/motion';
-  import { api, isMock } from './lib/ipc';
+  import { api, isMock, type MetadataRefreshStatus } from './lib/ipc';
+  import { notifyError, toasts } from './lib/stores/toast.svelte';
   import { router } from './lib/stores/router.svelte';
   import { player } from './lib/stores/player.svelte';
   import { library } from './lib/stores/library.svelte';
@@ -15,6 +16,7 @@
   import PlayerBar from './lib/components/PlayerBar.svelte';
   import MiniPlayer from './lib/components/MiniPlayer.svelte';
   import Toasts from './lib/components/Toasts.svelte';
+  import PinnedToast from './lib/components/PinnedToast.svelte';
   import Dialogs from './lib/components/Dialogs.svelte';
   import State from './lib/components/State.svelte';
   import Home from './routes/Home.svelte';
@@ -31,6 +33,9 @@
   import Profile from './routes/Profile.svelte';
   import SettingsPage from './routes/Settings.svelte';
 
+  // @req RF-32
+  let metadata = $state<MetadataRefreshStatus | null>(null);
+  let hiddenBatch = $state<number | null>(null);
   onMount(() => {
     // @req RNF-09: só confirma quando a interface montou e permaneceu aberta por cinco segundos.
     const gpuTimer = window.setTimeout(() => { void api.systemGpuStartupConfirmed().catch(console.error); }, 5000);
@@ -39,7 +44,26 @@
     void player.start();
     void library.start();
     void downloads.start();
-    return () => window.clearTimeout(gpuTimer);
+    let alive = true;
+    let un: (() => void) | undefined;
+    let revision = 0;
+    void api.on('metadata://progress', (status) => {
+      if (!alive) return;
+      revision++;
+      metadata = status;
+      if (!status.running && status.finishedAt != null) {
+        toasts.push(status.cancelled ? `Reprocessamento parado em ${status.done} de ${status.total} faixas.` : `Metadados reprocessados: ${status.done - status.failed} de ${status.total} faixas.`, 'info');
+      }
+    }).then(async (unsubscribe) => {
+      if (!alive) { unsubscribe(); return; }
+      un = unsubscribe;
+      const before = revision;
+      try {
+        const status = await api.metadataRefreshStatus();
+        if (alive && before === revision) metadata = status;
+      } catch (e) { if (alive) notifyError(e); }
+    }).catch((e) => { if (alive) notifyError(e); });
+    return () => { alive = false; un?.(); window.clearTimeout(gpuTimer); };
   });
 
   let main: HTMLElement;
@@ -116,4 +140,16 @@
 </div>
 
 <Toasts />
+{#if metadata?.running && hiddenBatch !== metadata.startedAt}
+  {@const status = metadata}
+  <PinnedToast title="Reprocessando metadados" onclose={() => { hiddenBatch = status.startedAt; }}>
+    {#snippet content()}
+      <p class="mt-1 text-xs text-muted">{status.done} de {status.total} faixas</p>
+      <div class="mt-3 h-2 overflow-hidden rounded-full bg-s3" role="progressbar" aria-label="Andamento do reprocessamento de metadados" aria-valuemin="0" aria-valuemax={Math.max(status.total, 1)} aria-valuenow={status.done}>
+        <div class="h-full bg-lava" style:width={`${status.total ? status.done / status.total * 100 : 0}%`}></div>
+      </div>
+      <button type="button" class="btn btn-sm mt-3" disabled={status.stopping} onclick={() => { void api.metadataRefreshCancel().catch(notifyError); }}>{status.stopping ? 'Parando…' : 'Parar'}</button>
+    {/snippet}
+  </PinnedToast>
+{/if}
 <Dialogs />

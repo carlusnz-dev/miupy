@@ -254,6 +254,8 @@ interface EqPresetInput { id?: string; name: string; gainsDb: number[]; }   // s
 // ---- Reprocessamento de metadados (RF-32)
 interface MetadataRefreshStatus {
   running: boolean;
+  stopping: boolean;           // parada solicitada; a faixa atual ainda termina
+  cancelled: boolean;          // lote encerrado por pedido de parada
   done: number;                 // faixas processadas, com ou sem sucesso
   total: number;
   failed: number;
@@ -334,8 +336,9 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 | `metadata_refresh_track` | `{ trackId }` | `Track` | RF-12 |
 | `metadata_get_artist` | `{ artistId }` | `ArtistInfo` | RF-12 |
 | `metadata_get_lyrics` | `{ trackId }` | `Lyrics` | RF-12 |
-| `metadata_refresh_library` | `{ onlyMissing?: boolean }` | `number` | RF-12, RF-20 |
+| `metadata_refresh_library` | `{ onlyMissing?: boolean }` | `number` | RF-12, RF-20, RF-32 |
 | `metadata_refresh_status` | — | `MetadataRefreshStatus` | RF-32 |
+| `metadata_refresh_cancel` | — | `void` | RF-32 |
 | `stats_library` | — | `LibraryStats` | RF-14 |
 | `stats_wrapped` | `{ year }` | `Wrapped` | RF-15 |
 | `stats_wrapped_years` | — | `number[]` | RF-15 |
@@ -367,7 +370,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 | `library://changed` | `{ reason: string }` | Faixas ou playlists criadas, alteradas ou removidas. |
 | `recommendations://changed` | `{ count: number }` | A lista de candidatas mudou (atualização, dispensa ou faixa adicionada). |
 | `player://error` | `{ trackId: string, code: string, message: string }` | A faixa pedida não pôde tocar depois de `player_play` já ter voltado (ex.: falha ao resolver o streaming). |
-| `metadata://progress` | `MetadataRefreshStatus` | Andamento de `metadata_refresh_library`: no início, a cada faixa e no fim (`running = false`). Os campos `done` e `total` continuam como antes. |
+| `metadata://progress` | `MetadataRefreshStatus` | Andamento de `metadata_refresh_library`: no início, ao pedir parada (`stopping = true`), a cada faixa e no fim (`running = false`; `cancelled = true` se parado). Os campos `done` e `total` continuam como antes. |
 | `artist://changed` | `{ artistId: string }` | Os dados ou a foto de um artista foram atualizados em segundo plano (RF-35). |
 | `download://auto` | `{ playlistId: string, count: number, reason: 'enabled' \| 'added' \| 'retry' \| 'offline' }` | Downloads automáticos de uma playlist foram enfileirados, ou ficaram esperando a rede (RF-31). |
 | `log://entry` | `LogEntry` | Um registro novo foi gravado; só com `debugMode` ligado (RF-37). |
@@ -536,7 +539,8 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
   A consulta de letra não segura o lote; continua disponível em
   `metadata_refresh_track` e na leitura individual de letra.
   `onlyMissing` (padrão `true`) pega só faixas sem gêneros, sem ano ou sem álbum. Emite
-  `metadata://progress` e `library://changed` ao fim.
+  `metadata://progress` e `library://changed` ao fim. Pode receber um pedido de parada por
+  `metadata_refresh_cancel`, que preserva a requisição da faixa atual.
 - Só pode haver um lote ativo. Enquanto ele roda, outro pedido devolve `conflict`.
 
 ### Recomendações (RF-19)
@@ -656,10 +660,17 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
 
 ### Reprocessamento de metadados (RF-32)
 
+- `metadata_refresh_cancel` pede a parada sem argumentos e não falha sem lote ativo. A requisição
+  da faixa em andamento termina normalmente; o lote encerra antes da próxima. Enquanto isso,
+  `running = true` e `stopping = true`; no evento final, `running = false`, `stopping = false` e
+  `cancelled = true`. Um lote novo limpa os dois estados de parada.
+- Um aviso fixo acima do player acompanha o lote em qualquer tela. Fechá-lo esconde apenas o aviso
+  deste lote; a seção de Configurações continua mostrando o andamento e o botão Parar.
 - `metadata_refresh_status` devolve o lote atual ou o último desta abertura. Na Configurações, a
   interface lê esse estado ao abrir a seção e acompanha `metadata://progress`; com `running`, o
-  botão fica desativado e mostra `done` de `total`. Ao fim, mostra quantas deram certo, quantas
-  falharam e quando terminou. O `conflict` de um segundo pedido continua valendo.
+  botão de iniciar fica desativado, o botão Parar fica disponível até `stopping = true`, e o
+  andamento mostra `done` de `total`. Ao fim, mostra o resumo de conclusão ou “Parado em X de Y”.
+  O `conflict` de um segundo pedido continua valendo.
 
 ### Busca vazia (RF-34)
 
