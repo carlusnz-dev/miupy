@@ -800,7 +800,7 @@ mod tests {
                 [track.artist_id.as_deref().unwrap()],
             )
             .unwrap();
-        let prepared = db.surfle_tracks(&[track.id.clone()]).unwrap();
+        let prepared = db.surfle_tracks(std::slice::from_ref(&track.id)).unwrap();
         assert_eq!(prepared[0].genres, ["rock", "samba"]);
 
         // o gosto também herda: sem isso a afinidade de gênero do Surfle zera
