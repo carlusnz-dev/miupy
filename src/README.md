@@ -65,6 +65,14 @@ janela sem foco; `prefers-reduced-motion` desliga a animação.
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 
+## Movimento (tokens e entrada)
+
+Tokens em `:root` (`app.css`): `--ease-spring` (curva `linear()` com um overshoot de ~1%, a mesma de
+`spring()` em `lib/motion.ts`), `--dur-fast` 180 ms, `--dur-base` 360 ms, `--dur-slow` 420 ms,
+`--enter-y` 8 px. Entrada padrão: classe `.enter` (fade + Y); em lista, `style={enterStyle(i)}`
+escalona por `--enter-delay` só nas 14 primeiras linhas. `AnimatedText` anima título letra por letra.
+Reduzido: só fade curto.
+
 ## Movimento entre telas
 
 `lib/layoutPresence.ts` registra apenas nós marcados com `use:useShared` ou a propriedade `shared` de

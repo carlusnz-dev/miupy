@@ -55,7 +55,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RNF-01 | Banco local SQLite | M | Toda a persistência é local, em SQLite, com migrações versionadas. |
 | RNF-02 | Offline-first | M | Tudo que já foi baixado funciona sem rede; rede só para busca, download e enriquecimento. |
 | RNF-03 | Multiplataforma | M | Roda nativamente em desktop (Linux, Windows, macOS) e Android, via Rust + Tauri v2. |
-| RNF-04 | Interface flat "magma" | M | Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca. Botões sem gradiente; o `primary` ganha só um brilho pequeno no hover. **Exceção autorizada pelo autor (2026-10-14):** o toast usa vidro translúcido com *backdrop blur*, flat e sem bordas complexas. |
+| RNF-04 | Interface flat "magma" | M | Visual flat e simples, sem sombras pesadas nem glass/neumorfismo, com bordas de cor fraca. Botões sem gradiente; o `primary` ganha só um brilho pequeno no hover. **Exceção autorizada pelo autor (2026-10-14):** o toast usa vidro translúcido com *backdrop blur*, flat e sem bordas complexas. **Tipografia (autor, sessão 08):** títulos (`h1`/`h2`) e números grandes de estatística em Source Serif 4 (`--font-display`); corpo, listas e controles sem serifa. |
 | RNF-05 | Gradientes | S | Gradientes bonitos, alguns em *mesh* animado, respeitando `prefers-reduced-motion`. |
 | RNF-06 | Documentação viva | M | `docs/` com README por pasta, arquitetura, stacks, requisitos, relatórios de sessão, matriz gerada e JSON da arquitetura. |
 | RNF-07 | Integrações externas | C | Núcleo desacoplado da UI para permitir integrar serviços externos do usuário no futuro. |
