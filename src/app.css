@@ -224,8 +224,7 @@ input[type='range'].slider::-webkit-slider-thumb {
 }
 input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--fg); border: 0; }
 
-/* mesh estático (animação infinita custava ~40% de CPU): só as cores transicionam quando a lava muda.
-   As variáveis são registradas para a transição interpolar a cor dentro do gradiente. */
+/* As variáveis registradas transicionam as cores dentro do gradiente. */
 @property --mesh-1 { syntax: '<color>'; inherits: true; initial-value: #ff6a2b; }
 @property --mesh-2 { syntax: '<color>'; inherits: true; initial-value: #b3200f; }
 @property --mesh-3 { syntax: '<color>'; inherits: true; initial-value: #ffd27a; }
@@ -234,9 +233,19 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
   transition: --mesh-1 var(--mesh-dur, var(--dur-slow)), --mesh-2 var(--mesh-dur, var(--dur-slow)), --mesh-3 var(--mesh-dur, var(--dur-slow));
 }
 .mesh-layer { position: absolute; width: 90%; height: 90%; }
+/* @req RNF-05 RNF-13 RF-40: apenas o mesh de Tocando anima, só com transform. */
+@keyframes mesh-a { 0%, 100% { transform: translate3d(-8%, -6%, 0) scale(1); } 50% { transform: translate3d(10%, 8%, 0) scale(1.18); } }
+@keyframes mesh-b { 0%, 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } }
+@keyframes mesh-c { 0%, 100% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } }
+.mesh-animated .mesh-layer:nth-child(1) { animation: mesh-a 12s ease-in-out infinite; }
+.mesh-animated .mesh-layer:nth-child(2) { animation: mesh-b 16s ease-in-out infinite; }
+.mesh-animated .mesh-layer:nth-child(3) { animation: mesh-c 20s ease-in-out infinite; }
+.mesh-animated.paused .mesh-layer { animation-play-state: paused; }
+.mesh-animated:not(.paused) .mesh-layer { will-change: transform; }
 
 @media (prefers-reduced-motion: reduce) {
   .mesh { transition-duration: 0s; }
+  .mesh-animated .mesh-layer { animation: none; will-change: auto; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
