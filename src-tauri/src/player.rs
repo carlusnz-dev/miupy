@@ -1158,10 +1158,9 @@ mod tests {
     fn navegar_sem_faixa_tocavel_descarta_url_antiga() {
         for previous in [false, true] {
             let f = fx(1);
-            let track =
-                f.db.with(|db| {
-                    db.upsert_track(&NewTrack::youtube("lenta", "Lenta", None, 1000, None))
-                })
+            let track = f
+                .db
+                .with(|db| db.upsert_track(&NewTrack::youtube("lenta", "Lenta", None, 1000, None)))
                 .unwrap()
                 .track;
             // A faixa local fica ao lado da que está resolvendo; o carregamento dela vai falhar.
@@ -1308,6 +1307,90 @@ mod tests {
                 assert_eq!(state.queue, f.ids);
             }
         }
+    }
+
+    // @test RF-24
+    #[test]
+    fn remover_faixa_ja_tocada_e_alternar_aleatorio_mantem_prefixo_e_restante() {
+        for shuffled_first in [false, true] {
+            let f = fx(6);
+            f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+            for _ in 0..3 {
+                f.player.next().unwrap();
+            }
+            if shuffled_first {
+                f.player.set_shuffle(ShuffleMode::Random).unwrap();
+            }
+            let played = f.player.state().queue[..=3].to_vec();
+            let removed = played[1].clone();
+            f.player.remove_track(&removed);
+
+            let after_remove = f.player.state();
+            let prefix = played
+                .iter()
+                .filter(|id| **id != removed)
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(after_remove.queue_index, 2);
+            assert_eq!(after_remove.track.as_ref().unwrap().id, f.ids[3]);
+            assert_eq!(&after_remove.queue[..=2], prefix);
+            let mut remaining = after_remove.queue[3..].to_vec();
+            remaining.sort();
+            assert_eq!(remaining, vec![f.ids[4].clone(), f.ids[5].clone()]);
+
+            for mode in [
+                ShuffleMode::Random,
+                ShuffleMode::Off,
+                ShuffleMode::Smart,
+                ShuffleMode::Off,
+            ] {
+                let state = f.player.set_shuffle(mode).unwrap();
+                assert_eq!(state.queue_index, 2, "{mode:?}");
+                assert_eq!(state.track.as_ref().unwrap().id, f.ids[3], "{mode:?}");
+                assert_eq!(&state.queue[..=2], prefix, "{mode:?}");
+                assert!(!state.queue.contains(&removed), "{mode:?}");
+                let mut tail = state.queue[3..].to_vec();
+                tail.sort();
+                assert_eq!(tail, remaining, "{mode:?}");
+                if mode == ShuffleMode::Off {
+                    let expected = f
+                        .ids
+                        .iter()
+                        .filter(|id| **id != removed)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    assert_eq!(state.queue, expected);
+                }
+            }
+        }
+    }
+
+    // @test RF-24
+    #[test]
+    fn alternar_aleatorio_com_a_atual_na_ultima_posicao_nao_mexe_na_fila() {
+        let f = fx(5);
+        f.player.play(&f.ids[0], Some(f.ids.clone())).unwrap();
+        for _ in 0..4 {
+            f.player.next().unwrap();
+        }
+        assert_eq!(f.player.state().queue_index, 4);
+        for mode in [
+            ShuffleMode::Random,
+            ShuffleMode::Smart,
+            ShuffleMode::Off,
+            ShuffleMode::Random,
+            ShuffleMode::Off,
+        ] {
+            let state = f.player.set_shuffle(mode).unwrap();
+            assert_eq!(state.queue, f.ids, "{mode:?}");
+            assert_eq!(state.queue_index, 4, "{mode:?}");
+            assert_eq!(state.track.as_ref().unwrap().id, f.ids[4], "{mode:?}");
+        }
+        // Continua sem próxima, e o aleatório ligado não inventa faixa.
+        f.player.set_shuffle(ShuffleMode::Random).unwrap();
+        let end = f.player.next().unwrap();
+        assert_eq!(end.queue_index, 4);
+        assert_eq!(end.track.unwrap().id, f.ids[4]);
     }
 
     // @test RF-24
