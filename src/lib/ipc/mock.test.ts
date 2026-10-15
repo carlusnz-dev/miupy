@@ -1,6 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { createMockApi } from './mock';
 
+// @test RF-03 RF-42
+describe('contexto da fila no mock', () => {
+  it('acompanha a fila, atualiza a playlist e zera ao parar ou esvaziar', async () => {
+    const api = createMockApi();
+    const playlist = (await api.playlistList()).find((p) => p.trackCount > 1)!;
+    const tracks = await api.playlistGetTracks({ playlistId: playlist.id });
+    const context = { kind: 'playlist' as const, id: playlist.id, label: playlist.name };
+    expect((await api.playerPlay({ trackId: tracks[0].id, queue: tracks.map((t) => t.id), context })).context).toEqual(context);
+    expect((await api.playerNext()).context).toEqual(context);
+    expect((await api.playerPrevious()).context).toEqual(context);
+    expect((await api.playerSeek({ positionMs: 500 })).context).toEqual(context);
+    expect((await api.playerSetShuffle({ mode: 'random' })).context).toEqual(context);
+    expect((await api.playerPlay({ trackId: tracks[1].id })).context).toEqual(context);
+    const outside = (await api.libraryListTracks()).find((t) => !tracks.some((x) => x.id === t.id) && (t.source !== 'local' || t.filePath))!;
+    expect((await api.playerPlay({ trackId: outside.id })).context).toBeNull();
+    await api.playerPlay({ trackId: tracks[0].id, queue: tracks.map((t) => t.id), context });
+    await api.playlistUpdate({ playlistId: playlist.id, name: 'Novo nome' });
+    expect((await api.playerGetState()).context?.label).toBe('Novo nome');
+    await api.playlistDelete({ playlistId: playlist.id });
+    expect((await api.playerGetState()).context).toBeNull();
+    await api.playerPlay({ trackId: tracks[0].id, queue: tracks.map((t) => t.id), context });
+    expect((await api.playerPlay({ trackId: tracks[0].id, queue: tracks.map((t) => t.id) })).context).toBeNull();
+    await api.playerPlay({ trackId: tracks[0].id, queue: [tracks[0].id], context });
+    await api.libraryDeleteTrack({ trackId: tracks[0].id, deleteFile: false });
+    expect((await api.playerGetState()).context).toBeNull();
+    expect((await api.playerGetState()).queue).toEqual([]);
+    await api.playerPlay({ trackId: tracks[1].id, queue: [tracks[1].id], context });
+    expect((await api.playerStop()).context).toBeNull();
+  });
+});
+
 // @test RF-31
 describe('download automático no mock', () => {
   it('enfileira apenas o que falta, avisa uma vez e não cancela ao desligar', async () => {

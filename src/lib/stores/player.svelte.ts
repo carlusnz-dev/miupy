@@ -1,12 +1,12 @@
 // @req RF-01 RF-02 RF-03 RF-04 RNF-13
-import { api, type PlayerState, type Track } from '../ipc';
+import { api, type PlayerState, type QueueContext, type Track } from '../ipc';
 import { nextShuffle } from '../util/shuffle';
 import { notifyError } from './toast.svelte';
 import { scores } from './scores.svelte';
 import { deepEqual } from '../util/diff';
 import { affectsCurrentTrack, affectsScores } from '../util/libraryEvents';
 
-const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], queueIndex: -1, streaming: false, shuffle: 'off' };
+const EMPTY: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: 0.8, muted: false, queue: [], context: null, queueIndex: -1, streaming: false, shuffle: 'off' };
 
 class PlayerStore {
   state = $state<PlayerState>({ ...EMPTY });
@@ -21,6 +21,11 @@ class PlayerStore {
   get active() { return this.state.track !== null; }
   get progress() { return this.state.durationMs > 0 ? this.state.positionMs / this.state.durationMs : 0; }
   get hasNext() { return this.state.queueIndex >= 0 && this.state.queueIndex + 1 < this.state.queue.length; }
+  // @req RF-42
+  isPlayingContext(kind: QueueContext['kind'], id: string | null) {
+    const context = this.state.context;
+    return this.isPlaying && context?.kind === kind && context.id === id;
+  }
 
   async start() {
     if (this.started) return;
@@ -60,6 +65,7 @@ class PlayerStore {
     cur.volume = s.volume;
     cur.muted = s.muted;
     cur.queueIndex = s.queueIndex;
+    if (!deepEqual(cur.context, s.context)) cur.context = s.context;
     cur.streaming = s.streaming;
     cur.shuffle = s.shuffle;
     if (!deepEqual(cur.track, s.track)) cur.track = s.track;
@@ -90,7 +96,8 @@ class PlayerStore {
   }
 
   cycleShuffle() { return this.run(api.playerSetShuffle({ mode: nextShuffle(this.state.shuffle) })); } // @req RF-24
-  play(trackId: string, queue?: string[]) { return this.run(api.playerPlay({ trackId, queue })); }
+  // @req RF-03 RF-42
+  play(trackId: string, queue?: string[], context?: QueueContext) { return this.run(api.playerPlay({ trackId, queue, context })); }
   pause() { return this.run(api.playerPause()); }
   resume() { return this.run(api.playerResume()); }
   stop() { return this.run(api.playerStop()); }
