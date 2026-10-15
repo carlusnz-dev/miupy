@@ -119,14 +119,6 @@
               {#if scores.get(t.id)}<span class="chip" title={scoreTooltip(scores.get(t.id))}>Pontuação {fmtScore(scores.get(t.id).score)}</span>{/if}
             </p>
           </div>
-          <button
-            class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''} !h-11 !w-11"
-            aria-pressed={favorites.is(t)}
-            aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'}
-            onclick={() => toggleFavorite(t)}
-          >
-            <Icon name="heart" size={24} fill={favorites.is(t)} />
-          </button>
         </div>
         <div class="relative self-start" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
           <button type="button" class="btn text-sm" aria-expanded={eqOpen} bind:this={eqButton} onclick={openEq}>
@@ -145,14 +137,6 @@
             </div>
           {/if}
         </div>
-        <Seek />
-        <div class="flex items-center justify-between">
-          <div class="w-24"><ShuffleButton /></div>
-          <Transport big />
-          <div class="hidden w-24 md:block"></div>
-          <div class="md:hidden"><Volume /></div>
-        </div>
-        <div class="hidden justify-center md:flex"><Volume /></div>
       </section>
 
       <section class="min-w-0" aria-label="Fila e letra">
@@ -197,6 +181,21 @@
           {:else}
             <State kind="empty" icon="mic" title="Sem letra para esta faixa" text="Não encontramos letra no serviço de metadados." />
           {/if}
+        </div>
+      </section>
+
+      <section class="mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" aria-label="Controles">
+        <Seek />
+        <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
+          <div class="hidden md:block"></div>
+          <div class="flex items-center gap-2"><ShuffleButton /><Transport big /></div>
+          <div class="flex items-center justify-end gap-1">
+            <button class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+              <Icon name="heart" size={20} fill={favorites.is(t)} />
+            </button>
+            <button class="icon-btn {tab === 'queue' ? 'on' : ''}" aria-pressed={tab === 'queue'} aria-label="Mostrar a fila" onclick={() => (tab = 'queue')}><Icon name="queue" size={20} /></button>
+            <Volume />
+          </div>
         </div>
       </section>
     </div>
