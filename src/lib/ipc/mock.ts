@@ -111,7 +111,7 @@ function buildTracks(): Track[] {
   });
 }
 
-const YT_POOL: Omit<SearchResult, 'inLibrary'>[] = [
+const YT_POOL: Omit<SearchResult, 'inLibrary' | 'trackId' | 'isFavorite'>[] = [
   { sourceId: 'yt-n01', title: 'Vulcão (ao vivo)', artist: 'Aurora Basalto', durationMs: 262000, thumbnailUrl: null },
   { sourceId: 'yt-n02', title: 'Rio de Fogo', artist: 'Marés de Obsidiana', durationMs: 215000, thumbnailUrl: null },
   { sourceId: 'yt-n03', title: 'Lava Lamp', artist: 'Noite de Magma', durationMs: 244000, thumbnailUrl: null },
@@ -126,14 +126,16 @@ export function createMockApi(): MiupyApi {
   let tracks = buildTracks();
   const now = Date.now();
   let playlists: (Playlist & { ids: string[] })[] = [
-    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
-    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
-    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
+    { id: 'pl-1', name: 'Fogo Baixo', description: 'Para trabalhar com calma.', coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 90 * DAY, updatedAt: now - 3 * DAY, ids: ['trk-005', 'trk-006', 'trk-008', 'trk-020', 'trk-021', 'trk-022'] },
+    { id: 'pl-2', name: 'Estrada de Verão', description: null, coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 40 * DAY, updatedAt: now - 1 * DAY, ids: ['trk-013', 'trk-014', 'trk-015', 'trk-016', 'trk-025', 'trk-026', 'trk-001'] },
+    { id: 'pl-3', name: 'Favoritas da Casa', description: 'O que nunca sai de rotação.', coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: now - 10 * DAY, updatedAt: now - 10 * DAY, ids: ['trk-002', 'trk-010', 'trk-017', 'trk-023'] },
   ];
+  playlists[2].ids.push(...tracks.filter((t) => t.isFavorite && !playlists[2].ids.includes(t.id)).map((t) => t.id));
+  tracks.forEach((t) => { t.isFavorite = playlists[2].ids.includes(t.id); });
   let jobs: DownloadJob[] = [];
   let profile: Profile = { displayName: 'Carlos Antunes', username: 'cabeto', email: 'carlos@example.com', phone: '+55 31 99999-0000', avatarPath: null };
   // @req RF-33
-  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat', sidebarWidth: 280 };
+  let settings: Settings = { lavaTheme: 'orange', volume: 0.8, gpuMode: 'auto', normalization: 'normal', eqPresetId: 'flat', sidebarWidth: 280, favoritesPlaylistId: 'pl-3' };
   // @req RF-29
   const presets: EqPreset[] = [
     ['flat','Plano',[0,0,0,0,0,0,0,0]], ['bass','Graves',[6,5,3,1,0,0,0,0]],
@@ -166,6 +168,7 @@ export function createMockApi(): MiupyApi {
   playlists.forEach(refreshPl);
   const plOut = (p: Playlist & { ids: string[] }): Playlist => {
     refreshPl(p);
+    p.isFavorites = settings.favoritesPlaylistId === p.id;
     const { ids: _ids, ...rest } = p;
     return rest;
   };
@@ -312,11 +315,18 @@ export function createMockApi(): MiupyApi {
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },
     async libraryGetTrack({ trackId }) { return { ...byId(trackId) }; },
     async libraryListTracksByArtist({ artistId, query }) { return applyQuery(artistTracks(artistId), query).map((t) => ({ ...t })); },
+    // @req RF-04 RF-30
     async librarySetFavorite({ trackId, favorite }) {
       const t = byId(trackId);
-      t.isFavorite = favorite;
+      if (favorite && !settings.favoritesPlaylistId) {
+        const p = { id: uid('pl'), name: 'Favoritas', description: null, coverPath: null, mosaicPaths: [], isFavorites: true, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+        playlists.push(p); settings.favoritesPlaylistId = p.id;
+      }
+      const p = settings.favoritesPlaylistId ? getPl(settings.favoritesPlaylistId) : null;
+      if (p) p.ids = favorite ? [...new Set([...p.ids, trackId])] : p.ids.filter((id) => id !== trackId);
+      t.isFavorite = !!p?.ids.includes(trackId);
       if (player.track?.id === trackId) { player.track = { ...t }; pushState(); }
-      changed('favorite');
+      changed('favorites');
       return { ...t };
     },
     async libraryDeleteTrack({ trackId, deleteFile }) {
@@ -328,10 +338,21 @@ export function createMockApi(): MiupyApi {
     },
 
     async playlistList() { await wait(); return playlists.map(plOut); },
+    // @req RF-30
+    async favoritesSetPlaylist({ playlistId }) {
+      const target = getPl(playlistId);
+      if (settings.favoritesPlaylistId === playlistId) return plOut(target);
+      const old = settings.favoritesPlaylistId ? getPl(settings.favoritesPlaylistId) : null;
+      for (const id of old?.ids ?? []) if (!target.ids.includes(id)) target.ids.push(id);
+      settings.favoritesPlaylistId = playlistId;
+      tracks.forEach((t) => { t.isFavorite = target.ids.includes(t.id); });
+      changed('favorites');
+      return plOut(target);
+    },
     async playlistCreate({ name, description }) {
       if (!name.trim()) err('invalid_input', 'O nome da playlist não pode ficar vazio.');
       if (playlists.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) err('conflict', 'Já existe uma playlist com esse nome.');
-      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
+      const p = { id: uid('pl'), name: name.trim(), description: description?.trim() || null, coverPath: null, mosaicPaths: [], isFavorites: false, trackCount: 0, totalDurationMs: 0, createdAt: Date.now(), updatedAt: Date.now(), ids: [] as string[] };
       playlists.push(p);
       changed('playlist');
       return plOut(p);
@@ -344,7 +365,7 @@ export function createMockApi(): MiupyApi {
       changed('playlist');
       return plOut(p);
     },
-    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); changed('playlist'); },
+    async playlistDelete({ playlistId }) { getPl(playlistId); playlists = playlists.filter((p) => p.id !== playlistId); if (settings.favoritesPlaylistId === playlistId) { settings.favoritesPlaylistId = null; tracks.forEach((t) => { t.isFavorite = false; }); changed('favorites'); } changed('playlist_deleted'); },
     async playlistGetTracks({ playlistId, query }) {
       await wait();
       const p = getPl(playlistId);
@@ -355,12 +376,14 @@ export function createMockApi(): MiupyApi {
       const p = getPl(playlistId);
       for (const id of trackIds) { byId(id); if (!p.ids.includes(id)) p.ids.push(id); }
       p.updatedAt = Date.now();
+      if (p.id === settings.favoritesPlaylistId) { tracks.forEach((t) => { t.isFavorite = p.ids.includes(t.id); }); changed('favorites'); }
       changed('playlist');
       return plOut(p);
     },
     async playlistRemoveTracks({ playlistId, trackIds }) {
       const p = getPl(playlistId);
       p.ids = p.ids.filter((i) => !trackIds.includes(i));
+      if (p.id === settings.favoritesPlaylistId) { tracks.forEach((t) => { t.isFavorite = p.ids.includes(t.id); }); changed('favorites'); }
       p.updatedAt = Date.now();
       changed('playlist');
       return plOut(p);
@@ -384,9 +407,9 @@ export function createMockApi(): MiupyApi {
       const q = query.trim().toLowerCase();
       if (!q) err('invalid_input', 'Digite algo para buscar.');
       const lib = tracks.filter((t) => [t.title, t.artistName].some((v) => v?.toLowerCase().includes(q)));
-      const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true }));
-      const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId) }));
-      const rest = pool.filter((p) => `${p.title} ${p.artist}`.toLowerCase().includes(q));
+      const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true, trackId: t.id, isFavorite: t.isFavorite }));
+      const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId), trackId: youtubeIds.get(p.sourceId) ?? null, isFavorite: tracks.find((t) => t.id === youtubeIds.get(p.sourceId))?.isFavorite ?? false }));
+      const rest = pool.filter((p) => `${p.title} ${p.artist}`.toLowerCase().includes(q) && !lib.some((t) => t.sourceId === p.sourceId));
       const extra = rest.length ? [] : pool.slice(0, 3); // consulta sem correspondência: sugere algo
       return [...fromLib, ...rest, ...extra].slice(0, limit ?? 20);
     },

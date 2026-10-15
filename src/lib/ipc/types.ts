@@ -36,6 +36,7 @@ export interface Playlist {
   description: string | null;
   coverPath: string | null;
   mosaicPaths: string[]; // @req RF-22
+  isFavorites: boolean; // @req RF-30
   trackCount: number;
   totalDurationMs: number;
   createdAt: number;
@@ -82,6 +83,8 @@ export interface SearchResult {
   durationMs: number;
   thumbnailUrl: string | null;
   inLibrary: boolean;
+  trackId: string | null; // @req RF-04
+  isFavorite: boolean;
 }
 
 export interface DownloadJob {
@@ -128,6 +131,7 @@ export interface Settings {
   eqPresetId: string;
   // @req RF-33
   sidebarWidth: number;
+  favoritesPlaylistId: string | null; // @req RF-30
 }
 export type GpuMode = 'auto' | 'on' | 'off';
 export interface GpuStatus { mode: GpuMode; envOverride: GpuMode | null; hardware: boolean; reason: string; restartRequired: boolean; }
