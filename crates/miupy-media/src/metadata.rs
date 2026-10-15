@@ -1267,8 +1267,145 @@ mod tests {
         cfg.coverart_url = base.to_string();
         cfg.lrclib_url = format!("{base}/api");
         cfg.timeout = Duration::from_secs(3);
+        cfg.wikidata_url = format!("{base}/wikidata");
+        cfg.commons_url = format!("{base}/commons");
         cfg.musicbrainz_interval = Duration::from_millis(1);
         OnlineMetadata::new(cfg).unwrap()
+    }
+
+    const MB_WIKIDATA: &str = r#"{"relations":[{"type":"wikidata","url":{"resource":"https://www.wikidata.org/wiki/Q1"}}]}"#;
+    const WD_IMAGE: &str =
+        r#"{"entities":{"Q1":{"claims":{"P18":[{"mainsnak":{"datavalue":{"value":"A.jpg"}}}]}}}}"#;
+    const COMMONS_IMAGE: &str = r#"{"query":{"pages":{"1":{"imageinfo":[{"thumburl":"{BASE}/img/a.webp","extmetadata":{}}]}}}}"#;
+    const WEBP: &str = "RIFF\0\0\0\0WEBPVP8 ";
+    const MBID: &str = "056e4f3e-d505-4dad-8ec1-d04f521cbb56";
+
+    /// Servidor sequencial: `{BASE}` nos corpos vira o endereço do próprio servidor. Devolve o
+    /// horário virtual e a linha de requisição de cada chamada.
+    async fn seq_server(
+        responses: Vec<(u16, &'static str, &'static str)>,
+    ) -> (
+        String,
+        tokio::task::JoinHandle<Vec<(tokio::time::Instant, String)>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let served = base.clone();
+        let h = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            for (status, headers, body) in responses {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let at = tokio::time::Instant::now();
+                let mut buf = [0u8; 8192];
+                let n = s.read(&mut buf).await.unwrap();
+                let line = String::from_utf8_lossy(&buf[..n])
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                seen.push((at, line));
+                let body = body.replace("{BASE}", &served);
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\n{headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                s.write_all(head.as_bytes()).await.unwrap();
+                s.write_all(body.as_bytes()).await.unwrap();
+            }
+            seen
+        });
+        (base, h)
+    }
+
+    // @test RF-27
+    #[tokio::test(start_paused = true)]
+    async fn foto_repete_503_em_wikidata_commons_e_imagem() {
+        let (base, h) = seq_server(vec![
+            (200, "", MB_WIKIDATA),
+            (503, "Retry-After: 2\r\n", "{}"),
+            (200, "", WD_IMAGE),
+            (503, "", "{}"),
+            (200, "", COMMONS_IMAGE),
+            (429, "Retry-After: 3\r\n", "{}"),
+            (200, "", WEBP),
+        ])
+        .await;
+        let photo = provider(&base).artist_photo(Some(MBID)).await.unwrap();
+        assert_eq!(photo.unwrap().extension, "webp");
+        let seen = h.await.unwrap();
+        assert_eq!(seen.len(), 7);
+        let gap = |a: usize, b: usize| seen[b].0.duration_since(seen[a].0);
+        assert!(seen[1].1.contains("/wikidata"));
+        assert!(gap(1, 2) >= Duration::from_secs(2));
+        assert!(seen[3].1.contains("/commons"));
+        assert!(gap(3, 4) >= Duration::from_secs(1));
+        assert!(seen[5].1.contains("/img/a.webp"));
+        assert!(gap(5, 6) >= Duration::from_secs(3));
+    }
+
+    // @test RF-27
+    #[tokio::test(start_paused = true)]
+    async fn foto_respeita_intervalo_entre_chamadas_ao_commons() {
+        let (base, h) = seq_server(vec![
+            (200, "", MB_WIKIDATA),
+            (200, "", WD_IMAGE),
+            (200, "", COMMONS_IMAGE),
+            (200, "", WEBP),
+        ])
+        .await;
+        let mut p = provider(&base);
+        p.cfg.images_interval = Duration::from_secs(5);
+        p.commons_limiter = RateLimiter::new(Duration::from_secs(5));
+        assert!(p.artist_photo(Some(MBID)).await.unwrap().is_some());
+        let seen = h.await.unwrap();
+        // a consulta ao Commons e a foto (upload) dividem a fila do Commons
+        assert!(seen[3].0.duration_since(seen[2].0) >= Duration::from_secs(5));
+    }
+
+    // @test RF-27
+    #[tokio::test(start_paused = true)]
+    async fn foto_com_retry_after_longo_no_wikidata_encerra_sem_nova_chamada() {
+        let (base, h) = seq_server(vec![
+            (200, "", MB_WIKIDATA),
+            (503, "Retry-After: 60\r\n", "{}"),
+        ])
+        .await;
+        let err = provider(&base).artist_photo(Some(MBID)).await.unwrap_err();
+        assert_eq!(err.code(), "network");
+        assert_eq!(h.await.unwrap().len(), 2);
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn capa_repete_503_e_para_apos_tres_tentativas() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, h) = seq_server(vec![(503, "", "{}"), (200, "", WEBP)]).await;
+        let path = provider(&base)
+            .download_cover(MBID, dir.path(), "capa")
+            .await
+            .unwrap();
+        assert!(path.ends_with("capa.webp"));
+        assert_eq!(h.await.unwrap().len(), 2);
+
+        let (base, h) = seq_server(vec![(503, "", "{}"), (503, "", "{}"), (503, "", "{}")]).await;
+        let err = provider(&base)
+            .download_cover(MBID, dir.path(), "outra")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "network");
+        assert_eq!(h.await.unwrap().len(), 3);
+    }
+
+    // @test RF-12
+    #[tokio::test(start_paused = true)]
+    async fn capas_seguidas_respeitam_o_intervalo_do_cover_art() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, h) = seq_server(vec![(200, "", WEBP), (200, "", WEBP)]).await;
+        let p = provider(&base);
+        p.download_cover(MBID, dir.path(), "a").await.unwrap();
+        p.download_cover(MBID, dir.path(), "b").await.unwrap();
+        let seen = h.await.unwrap();
+        assert!(seen[1].0.duration_since(seen[0].0) >= Duration::from_secs(1));
     }
 
     // @test RF-12 RF-20
