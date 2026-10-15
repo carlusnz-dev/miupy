@@ -706,7 +706,7 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 
   | `reason` | Grupos atualizados |
   |---|---|
-  | `favorite`, `favorites` | faixas, estatísticas (e a pontuação) |
+  | `favorite`, `favorites` | faixas, playlists, estatísticas (e a pontuação) |
   | `download_queued`, `download_failed`, `download_cancelled` | faixas |
   | `download_done` | faixas, estatísticas |
   | `playlist_created`, `playlist_deleted` | playlists, estatísticas |

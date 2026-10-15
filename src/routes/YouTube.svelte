@@ -42,11 +42,23 @@
     busy = r.sourceId;
     try {
       const tracks = await api.youtubeAddToLibrary({ sourceIds: [r.sourceId] });
-      results = results?.map((x) => (x.sourceId === r.sourceId ? { ...x, inLibrary: true } : x)) ?? null;
+      results = results?.map((x) => (x.sourceId === r.sourceId ? { ...x, inLibrary: true, trackId: tracks[0]?.id ?? null, isFavorite: tracks[0]?.isFavorite ?? false } : x)) ?? null;
       if (then === 'download') await downloadTracks(tracks.map((t) => t.id));
       else if (then === 'playlist') ui.pickPlaylist(tracks.map((t) => t.id));
       else notify('Adicionada à discoteca.');
     } catch (e) { notifyError(e); } finally { busy = null; }
+  }
+  // @req RF-04
+  async function toggleFavorite(r: SearchResult) {
+    busy = r.sourceId;
+    try {
+      const trackId = r.trackId ?? (await api.youtubeAddToLibrary({ sourceIds: [r.sourceId] }))[0]?.id;
+      if (!trackId) return;
+      const track = await api.librarySetFavorite({ trackId, favorite: !r.isFavorite });
+      results = results?.map((x) => x.sourceId === r.sourceId
+        ? { ...x, inLibrary: true, trackId, isFavorite: track.isFavorite } : x) ?? null;
+    } catch (e) { notifyError(e); }
+    finally { busy = null; }
   }
 </script>
 
@@ -82,6 +94,10 @@
         </div>
         {#if r.inLibrary}<span class="chip text-ok"><Icon name="check" size={12} />Na discoteca</span>{/if}
         <div class="flex gap-1.5">
+          <button class="icon-btn" aria-label={r.isFavorite ? `Desfavoritar ${r.title}` : `Favoritar ${r.title}`}
+            aria-pressed={r.isFavorite} disabled={busy === r.sourceId} onclick={() => toggleFavorite(r)}>
+            <Icon name="heart" size={18} fill={r.isFavorite} />
+          </button>
           {#if !r.inLibrary}
             <button class="btn btn-sm" disabled={busy === r.sourceId} onclick={() => add(r)}><Icon name="plus" size={14} />Adicionar</button>
           {/if}

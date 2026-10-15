@@ -77,8 +77,14 @@
     if (newPosition < 0 || newPosition >= tracks.length) return;
     try { await api.playlistMoveTrack({ playlistId: id, trackId, newPosition }); } catch (e) { notifyError(e); }
   }
+  // @req RF-30
+  async function markFavorites() {
+    if (!pl || pl.isFavorites) return;
+    try { await api.favoritesSetPlaylist({ playlistId: id }); await library.reloadPlaylists(); notify('Playlist marcada como favoritas.'); }
+    catch (e) { notifyError(e); }
+  }
   async function destroy() {
-    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.`, 'Apagar', true))) return;
+    if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.${pl.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
     try { await api.playlistDelete({ playlistId: id }); navigate(paths.playlists); } catch (e) { notifyError(e); }
   }
 
@@ -98,7 +104,7 @@
     <div class="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-end md:p-6">
       {#if pl}<PlaylistCover playlist={pl} size={144} shared={`playlist-cover-${pl.id}`} />{:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
       <div class="min-w-0 flex-1">
-        <p class="eyebrow !text-fg/70">Playlist</p>
+        <p class="eyebrow !text-fg/70">{pl?.isFavorites ? "Playlist de favoritas" : "Playlist"}</p>
         {#if pl}
           <h1 class="truncate text-3xl font-bold tracking-tight md:text-4xl" use:useShared={`playlist-title-${pl.id}`}>{pl.name}</h1>
         {:else}
@@ -117,6 +123,7 @@
     <input bind:this={coverInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher capa" onchange={(e) => { const file = e.currentTarget.files?.[0]; if (file) void setCover(file); e.currentTarget.value = ''; }} />
     <button class="btn" disabled={!pl} onclick={() => coverInput?.click()}>Escolher capa</button>
     {#if pl?.coverPath}<button class="btn" onclick={() => setCover(null)}>Remover capa</button>{/if}
+    {#if pl && !pl.isFavorites}<button class="btn" onclick={markFavorites}><Icon name="heart" size={16} />Marcar como favoritas</button>{/if}
     <button class="btn btn-danger" onclick={destroy} disabled={!pl}><Icon name="trash" size={16} />Apagar</button>
     <a class="btn ml-auto" href={href(paths.playlists)}><Icon name="left" size={16} />Playlists</a>
   </div>

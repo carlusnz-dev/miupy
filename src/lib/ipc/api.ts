@@ -28,6 +28,7 @@ export interface MiupyApi {
   libraryDeleteTrack(a: { trackId: string; deleteFile: boolean }): Promise<void>;
 
   playlistList(): Promise<Playlist[]>;
+  favoritesSetPlaylist(a: { playlistId: string }): Promise<Playlist>; // @req RF-30
   playlistCreate(a: { name: string; description?: string }): Promise<Playlist>;
   playlistUpdate(a: { playlistId: string; name?: string; description?: string }): Promise<Playlist>;
   playlistDelete(a: { playlistId: string }): Promise<void>;
@@ -73,7 +74,7 @@ export interface MiupyApi {
   equalizerSavePreset(a: { preset: EqPresetInput }): Promise<EqPreset>;
   equalizerDeletePreset(a: { presetId: string }): Promise<void>;
   settingsGet(): Promise<Settings>;
-  settingsUpdate(a: { settings: Partial<Settings> }): Promise<Settings>;
+  settingsUpdate(a: { settings: Partial<Omit<Settings, 'favoritesPlaylistId'>> }): Promise<Settings>;
   systemGpuStatus(): Promise<GpuStatus>;
   systemGpuStartupConfirmed(): Promise<void>; // @req RNF-09
 

@@ -8,8 +8,8 @@ export type CacheTag = 'tracks' | 'stats' | 'playlists' | 'artist';
 const ALL: readonly CacheTag[] = ['tracks', 'stats', 'playlists', 'artist'];
 
 const BY_REASON: Record<string, readonly CacheTag[]> = {
-  favorite: ['tracks', 'stats'],
-  favorites: ['tracks', 'stats'],
+  favorite: ['tracks', 'stats', 'playlists'],
+  favorites: ['tracks', 'stats', 'playlists'],
   download_queued: ['tracks'],
   download_failed: ['tracks'],
   download_cancelled: ['tracks'],
