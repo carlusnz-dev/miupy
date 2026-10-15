@@ -1,11 +1,20 @@
 // Ações compartilhadas entre telas (com retorno visual por toast).
 // @req RF-04 RF-10 RF-11
 import { api, type Track } from './ipc';
+import { favorites } from './stores/favorites.svelte';
 import { notify, notifyError } from './stores/toast.svelte';
 
+/** Atualiza o coração na hora e volta ao estado anterior, com aviso, se o comando falhar. */
 export async function toggleFavorite(t: Track) {
-  try { await api.librarySetFavorite({ trackId: t.id, favorite: !t.isFavorite }); }
-  catch (e) { notifyError(e); }
+  const favorite = !favorites.is(t);
+  const change = favorites.apply(t.id, favorite);
+  try {
+    await api.librarySetFavorite({ trackId: t.id, favorite });
+    change.confirm();
+  } catch (e) {
+    change.revert();
+    notifyError(e);
+  }
 }
 
 export async function downloadTracks(ids: string[]) {

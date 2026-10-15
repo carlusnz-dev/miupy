@@ -6,6 +6,7 @@
   import { downloads } from '../stores/downloads.svelte';
   import { href, paths } from '../stores/router.svelte';
   import { downloadTracks, toggleFavorite } from '../actions';
+  import { favorites } from '../stores/favorites.svelte';
   import { fmtTime } from '../util/format';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
@@ -58,8 +59,8 @@
     {#if track.artistId && track.album}<a class="hover:underline" href={href(paths.artist(track.artistId))}>{track.album}</a>{:else}{track.album ?? '—'}{/if}
   </span>
 
-  <button class="icon-btn motion-bounce {track.isFavorite ? 'on' : ''}" aria-pressed={track.isFavorite} aria-label={track.isFavorite ? `Remover ${track.title} das favoritas` : `Favoritar ${track.title}`} onclick={() => toggleFavorite(track)}>
-    <Icon name="heart" size={18} fill={track.isFavorite} />
+  <button class="icon-btn motion-bounce {favorites.is(track) ? 'on' : ''}" aria-pressed={favorites.is(track)} aria-label={favorites.is(track) ? `Remover ${track.title} das favoritas` : `Favoritar ${track.title}`} onclick={() => toggleFavorite(track)}>
+    <Icon name="heart" size={18} fill={favorites.is(track)} />
   </button>
 
   <span class="flex w-9 shrink-0 justify-center">

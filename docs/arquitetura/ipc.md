@@ -488,6 +488,12 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   espera acima de 8 s encerra a consulta sem antecipar nova chamada; cada operação de API tem
   limite total de 15 s no provedor, e a casca corta antes as leituras de letra, artista e foto
   (12 s). O lote avança para a faixa seguinte quando uma consulta falha.
+- As APIs de imagem seguem a mesma política pelo mesmo mecanismo: Wikidata, Wikimedia Commons
+  (consulta e download da foto, que dividem a fila) e Cover Art Archive têm cada uma fila própria
+  com intervalo mínimo de 1 s entre chamadas, até três tentativas em 503/429 e falha de
+  transporte, espera crescente com `Retry-After`, espera acima de 8 s encerrando sem nova chamada
+  e limite total de 15 s por chamada. Só o download de imagens de outras origens (miniaturas do
+  YouTube) fica fora da fila.
 - Letra e foto não encontradas (e erros definitivos, como MBID inválido) são consultadas de novo
   após 5 min. Só falhas temporárias — rede, 503/429 e tempo esgotado — permitem nova tentativa
   após 10 s; os dados locais são preservados.
