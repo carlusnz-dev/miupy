@@ -12,6 +12,7 @@ mod model;
 mod playlists;
 mod profile;
 mod recommendations;
+mod search_history;
 mod shuffle;
 mod stats;
 mod text;
