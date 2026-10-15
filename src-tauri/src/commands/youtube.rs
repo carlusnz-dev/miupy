@@ -34,6 +34,18 @@ pub async fn youtube_suggest(query: String) -> R<Vec<String>> {
     Ok(miupy_media::suggest(&query).await?)
 }
 
+// @req RF-34
+#[tauri::command]
+pub async fn youtube_search_history(state: State<'_, AppState>) -> R<Vec<String>> {
+    state.db.run(|db| Ok(db.recent_searches()?)).await
+}
+
+// @req RF-34
+#[tauri::command]
+pub async fn youtube_search_history_clear(state: State<'_, AppState>) -> R<()> {
+    state.db.run(|db| Ok(db.clear_search_history()?)).await
+}
+
 // @req RF-26
 #[tauri::command]
 pub async fn ytdlp_status(state: State<'_, AppState>) -> R<YtDlpStatus> {

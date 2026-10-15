@@ -9,6 +9,7 @@
   import { player } from '../lib/stores/player.svelte';
   import { Selection } from '../lib/stores/selection.svelte';
   import { ui } from '../lib/stores/ui.svelte';
+  import { href, paths } from '../lib/stores/router.svelte';
   import { downloadTracks } from '../lib/actions';
   import { fmtDuration } from '../lib/util/format';
   import PageHeader from '../lib/components/PageHeader.svelte';
@@ -64,6 +65,7 @@
 
 <PageHeader title="Discoteca" eyebrow="Todas as faixas" subtitle={loading ? undefined : `${tracks.length} faixas · ${fmtDuration(totalMs)}`}>
   {#snippet actions()}
+    <a class="btn" href={href(paths.youtube)}><Icon name="plus" size={16} />Adicionar músicas</a>
     <button class="btn btn-primary" disabled={!tracks.length} onclick={() => player.play(tracks[0].id, queue)}><Icon name="play" size={16} fill />Tocar tudo</button>
   {/snippet}
 </PageHeader>

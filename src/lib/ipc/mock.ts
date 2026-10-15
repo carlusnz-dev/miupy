@@ -144,6 +144,7 @@ export function createMockApi(): MiupyApi {
     ['electronic','Eletrônica',[5,4,1,0,-1,2,3,4]], ['acoustic','Acústico',[3,2,1,1,2,2,3,2]],
   ].map(([id,name,gainsDb]) => ({id:id as string,name:name as string,gainsDb:gainsDb as number[],builtin:true}));
   let eqSeq = 0;
+  let searchHistory: string[] = ['Daft Punk', 'Björk', 'Sigur Rós']; // @req RF-34
   let ytdlp: YtDlpStatus = { state: 'ready', version: '2026.08.19', path: '/dados/miupy/bin/yt-dlp', checkedAt: Date.now() - DAY, progress: 1, error: null }; // @req RF-26
   // @req RF-32
   let metadataStatus: MetadataRefreshStatus = { running: false, done: 0, total: 0, failed: 0, currentTrackId: null, startedAt: null, finishedAt: null };
@@ -408,6 +409,9 @@ export function createMockApi(): MiupyApi {
       await wait(500);
       const q = query.trim().toLowerCase();
       if (!q) err('invalid_input', 'Digite algo para buscar.');
+      const shown = query.split(/\s+/).filter(Boolean).join(' '); // @req RF-34 (como o Rust: sem espaços extras, caixa nem acento)
+      const key = (v: string) => v.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('pt-BR');
+      searchHistory = [shown, ...searchHistory.filter((h) => key(h) !== key(shown))].slice(0, 50);
       const lib = tracks.filter((t) => [t.title, t.artistName].some((v) => v?.toLowerCase().includes(q)));
       const fromLib: SearchResult[] = lib.map((t) => ({ sourceId: t.sourceId ?? t.id, title: t.title, artist: t.artistName ?? '', durationMs: t.durationMs, thumbnailUrl: null, inLibrary: true, trackId: t.id, isFavorite: t.isFavorite }));
       const pool: SearchResult[] = YT_POOL.map((p) => ({ ...p, inLibrary: youtubeIds.has(p.sourceId), trackId: youtubeIds.get(p.sourceId) ?? null, isFavorite: tracks.find((t) => t.id === youtubeIds.get(p.sourceId))?.isFavorite ?? false }));
@@ -424,6 +428,8 @@ export function createMockApi(): MiupyApi {
         .concat(['', ' ao vivo', ' acústico', ' letra', ' álbum completo'].map((s) => query.trim() + s))
         .filter((x, i, all) => all.indexOf(x) === i).slice(0, 8);
     },
+    async youtubeSearchHistory() { return searchHistory.slice(0, 10); }, // @req RF-34
+    async youtubeSearchHistoryClear() { searchHistory = []; }, // @req RF-34
     async ytdlpStatus() { return { ...ytdlp }; }, // @req RF-26
     async ytdlpUpdate() {
       ytdlp = { ...ytdlp, state: 'downloading', progress: 0, error: null }; emit('ytdlp://status', { ...ytdlp });
