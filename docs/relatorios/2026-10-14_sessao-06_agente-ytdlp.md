@@ -33,6 +33,15 @@
 - A falha histórica do teste de processo não foi reproduzida em 550 execuções isoladas nem em
   40 execuções da suíte inteira do `miupy-media` com 4 threads (feitas pela orquestração). Sua causa permanece desconhecida; portanto a correção dessa falha específica não pode ser declarada concluída. Houve registro anterior de 1 falha em 8 execuções (sessão 02), mas sem diagnóstico preservado.
 
+- **Causa provável, achada na revisão (orquestração):** `ETXTBSY` ("Text file busy"). O teste grava
+  o script falso e o executa logo depois; com testes em paralelo, o `fork` de outra thread herda o
+  descritor de escrita até o `exec` do filho, e nesse intervalo o `exec` do script falha. O erro
+  virava `MediaError::Io` em vez de `not_found`, o que casa com "falha na suíte inteira, nunca
+  sozinho". O mesmo risco existe em produção logo depois de instalar ou atualizar o yt-dlp.
+  Correção: `retry_text_busy` repete o `spawn` até 5 vezes quando o erro é `ETXTBSY`, nos dois
+  pontos que iniciam o yt-dlp; o teste passou a mostrar o erro completo se falhar. Não dá para
+  provar que era isso, porque a falha não se reproduziu aqui.
+
 ## Próximos passos
 
 - Se a falha reaparecer, guardar a saída completa, o erro do sistema ao iniciar o filho e os arquivos temporários para identificar a causa antes de alterar o fluxo de download.
