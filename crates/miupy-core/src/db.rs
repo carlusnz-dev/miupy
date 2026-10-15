@@ -21,6 +21,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0005_equalizer.sql")),
         M::up(include_str!("../migrations/0006_sidebar_width.sql")),
         M::up(include_str!("../migrations/0007_favorites_playlist.sql")),
+        M::up(include_str!("../migrations/0008_search_history.sql")),
     ])
 }
 
@@ -138,11 +139,40 @@ mod tests {
         migrations().validate().unwrap();
     }
 
+    // @test RF-34
+    #[test]
+    fn migracao_0008_cria_historico_de_buscas_estrito() {
+        let db = Database::open_in_memory().unwrap();
+        let strict: i64 = db
+            .conn
+            .query_row(
+                "SELECT strict FROM pragma_table_list('search_history')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(strict, 1);
+        db.conn
+            .execute(
+                "INSERT INTO search_history (query_key, query, searched_at) VALUES ('a', 'A', 1)",
+                [],
+            )
+            .unwrap();
+        assert!(
+            db.conn
+                .execute(
+                    "INSERT INTO search_history (query_key, query, searched_at) VALUES ('a', 'a', 2)",
+                    [],
+                )
+                .is_err()
+        );
+    }
+
     // @test RNF-01
     #[test]
     fn abre_em_memoria_com_pragmas_e_versao() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let fk: i64 = db
             .conn
             .pragma_query_value(None, "foreign_keys", |r| r.get(0))
@@ -183,7 +213,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         assert_eq!(db.get_profile().unwrap().display_name, "Carlos");
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
@@ -237,7 +267,7 @@ mod tests {
             .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let track = db.get_track("t").unwrap();
         assert_eq!(track.genres, Vec::<String>::new());
         assert_eq!(track.release_year, None);
@@ -270,7 +300,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let settings = db.get_settings().unwrap();
         assert_eq!(settings.sidebar_width, 280);
         assert_eq!(settings.lava_theme, crate::LavaTheme::Blue);
@@ -311,7 +341,7 @@ mod tests {
                 }
             }
             let db = Database::open(&path).unwrap();
-            assert_eq!(db.schema_version().unwrap(), 7);
+            assert_eq!(db.schema_version().unwrap(), 8);
             let id = db.get_settings().unwrap().favorites_playlist_id.unwrap();
             if existing {
                 assert_eq!(id, "p");
@@ -378,7 +408,7 @@ mod tests {
                 .unwrap();
         }
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 7);
+        assert_eq!(db.schema_version().unwrap(), 8);
         let track = db.get_track("t").unwrap();
         assert_eq!(
             (
