@@ -529,8 +529,8 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
   `metadata_refresh_track`. Sem gravação com o artista, ou sem artista salvo, a busca só por
   título exige pontuação mínima 95 e duração conhecida a até 10 s; dela usa apenas MBID, ISRC,
   gêneros e ano.
-  Só corrige artista salvo como canal quando o vídeo confirma canal ou título sem artista
-  explícito e há uma única candidata nessa tolerância. A associação usa o artista por nome,
+  Só corrige o artista quando o salvo é igual ao canal do vídeo e há uma única candidata
+  nessa tolerância. A associação usa o artista por nome,
   sem renomear um registro compartilhado. O álbum só é preenchido quando está vazio, tanto
   com MusicBrainz quanto com YouTube; um álbum existente é preservado.
   A consulta de letra não segura o lote; continua disponível em
