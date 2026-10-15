@@ -28,6 +28,16 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+// @req RF-32
+/// Fecha o lote ao sair da tarefa, inclusive por pânico; no fim normal não faz nada.
+struct BatchGuard(Arc<MetadataService>);
+
+impl Drop for BatchGuard {
+    fn drop(&mut self) {
+        self.0.abort_batch();
+    }
+}
+
 pub struct MetadataService {
     db: Db,
     provider: Arc<dyn MetadataProvider>,
@@ -109,6 +119,8 @@ impl MetadataService {
         });
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
+            // Se a tarefa morrer no meio (pânico), o lote não fica preso em `running`.
+            let _guard = BatchGuard(this.clone());
             for (i, t) in tracks.into_iter().enumerate() {
                 this.batch_status
                     .lock()
@@ -132,6 +144,22 @@ impl MetadataService {
             });
         });
         Ok(total)
+    }
+
+    /// Encerra o lote em andamento (usado quando a tarefa do lote termina sem chegar ao fim).
+    fn abort_batch(&self) {
+        let running = self
+            .batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .running;
+        if running {
+            self.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
+        }
     }
 
     /// `true` se vale tentar a consulta `key` agora; registra a tentativa.
@@ -657,6 +685,24 @@ mod tests {
             svc.enqueue_library_refresh(false).unwrap_err().code(),
             "conflict"
         );
+        assert_eq!(svc.refresh_status(), status);
+    }
+
+    // @test RF-32
+    #[test]
+    fn guarda_do_lote_encerra_lote_interrompido_e_libera_novo_pedido() {
+        let f = fx();
+        let svc = Arc::new(f.svc);
+        svc.batch_status.lock().unwrap().running = true;
+        svc.batch_status.lock().unwrap().current_track_id = Some("t".into());
+        // A tarefa do lote "morre" (pânico) sem chegar ao fim: só a guarda é solta.
+        drop(BatchGuard(svc.clone()));
+        let status = svc.refresh_status();
+        assert!(!status.running);
+        assert_eq!(status.current_track_id, None);
+        assert!(status.finished_at.is_some());
+        // Lote já encerrado: a guarda não mexe em nada.
+        drop(BatchGuard(svc.clone()));
         assert_eq!(svc.refresh_status(), status);
     }
 
