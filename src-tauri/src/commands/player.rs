@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::db::blocking;
-use crate::dto::PlayerState;
+use crate::dto::{PlayerState, QueueContext};
 use crate::error::AppError;
 use crate::state::AppState;
 use miupy_core::ShuffleMode;
@@ -23,15 +23,16 @@ pub async fn player_get_queue(state: State<'_, AppState>) -> R<Vec<Track>> {
     blocking(move || p.queue_tracks()).await
 }
 
-// @req RF-01 RF-03
+// @req RF-01 RF-03 RF-42
 #[tauri::command]
 pub async fn player_play(
     state: State<'_, AppState>,
     track_id: String,
     queue: Option<Vec<String>>,
+    context: Option<QueueContext>,
 ) -> R<PlayerState> {
     let p = state.player.clone();
-    blocking(move || p.play(&track_id, queue)).await
+    blocking(move || p.play_with_context(&track_id, queue, context)).await
 }
 
 // @req RF-01
