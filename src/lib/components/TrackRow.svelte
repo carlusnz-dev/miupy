@@ -13,6 +13,7 @@
   import Icon from './Icon.svelte';
   import { scores, fmtScore, scoreTooltip } from '../stores/scores.svelte';
   import { useShared } from '../layoutPresence';
+  import { enterStyle } from '../motion';
   $effect(() => { void scores.load([track.id]); }); // @req RF-25
 
   type Props = {
@@ -31,8 +32,8 @@
 </script>
 
 <div
-  class="group motion-item track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
-  style:animation-delay={index !== undefined && index < 14 ? `${index * 20}ms` : undefined}
+  class="group enter track-row flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-s2 {current ? 'bg-s2' : ''} {selected ? 'bg-s3' : ''}"
+  style={index !== undefined ? enterStyle(index) : undefined}
   {draggable} {ondragstart} {ondragover} {ondrop} role="listitem"
 >
   {#if selectable}

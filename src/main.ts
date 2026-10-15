@@ -1,4 +1,5 @@
 import { mount } from 'svelte';
+import '@fontsource-variable/source-serif-4/opsz.css';
 import './app.css';
 import App from './App.svelte';
 

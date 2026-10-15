@@ -60,7 +60,7 @@
     {#if stats}
       <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
         {#each [['Faixas', fmtNumber(stats.trackCount)], ['Baixadas', fmtNumber(stats.downloadedCount)], ['Playlists', fmtNumber(stats.playlistCount)], ['Artistas', fmtNumber(stats.artistCount)]] as [k, v]}
-          <div><dt class="text-xs text-fg/70">{k}</dt><dd class="tnum text-2xl font-bold">{v}</dd></div>
+          <div><dt class="text-xs text-fg/70">{k}</dt><dd class="tnum font-display text-2xl font-bold">{v}</dd></div>
         {/each}
       </dl>
       <p class="mt-4 text-sm text-fg/80">{fmtDuration(stats.totalDurationMs)} de música, {fmtDuration(stats.totalListenedMs)} ouvidos no total.</p>
