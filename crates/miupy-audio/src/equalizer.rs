@@ -194,10 +194,20 @@ impl Equalizer {
         }
         a * (1. - t) + b * t
     }
+    /// Zera só o estado (históricos dos biquads), sem alocar nem recalibrar.
+    /// Uma transição em andamento é concluída: os filtros novos já estão calculados.
     pub fn reset(&mut self) {
-        let gains = self.gains;
-        *self = Self::new(self.current.len(), self.rate);
-        self.set(gains);
+        if self.fade != 0 {
+            std::mem::swap(&mut self.current, &mut self.next);
+            self.pre = self.next_pre;
+            self.fade = 0;
+        }
+        for filters in self.current.iter_mut().chain(self.next.iter_mut()) {
+            for f in filters {
+                f.z1 = 0.;
+                f.z2 = 0.;
+            }
+        }
     }
 }
 
@@ -263,5 +273,28 @@ mod tests {
                 );
             }
         }
+    }
+    // @test RF-29
+    #[test]
+    fn reset_keeps_buffers_and_clears_state() {
+        let mut eq = Equalizer::new(2, 48000.);
+        eq.set([6., 5., 3., 1., 0., 0., 0., 0.]);
+        let (cc, nc) = (eq.current.capacity(), eq.next.capacity());
+        let (cp, np) = (eq.current.as_ptr(), eq.next.as_ptr());
+        for i in 0..500 {
+            eq.process((i as f32 * 0.2).sin(), 0);
+            eq.process((i as f32 * 0.2).sin(), 1);
+        }
+        eq.reset();
+        assert_eq!((eq.current.capacity(), eq.next.capacity()), (cc, nc));
+        let ptrs = [eq.current.as_ptr(), eq.next.as_ptr()];
+        assert!(ptrs == [cp, np] || ptrs == [np, cp]);
+        assert_eq!(eq.fade, 0);
+        for filters in eq.current.iter().chain(eq.next.iter()) {
+            assert!(filters.iter().all(|f| f.z1 == 0. && f.z2 == 0.));
+        }
+        // Silêncio na entrada continua silêncio na saída: nada do passado vaza.
+        assert_eq!(eq.process(0., 0), 0.);
+        assert_eq!(eq.process(0., 1), 0.);
     }
 }
