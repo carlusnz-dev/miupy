@@ -8,6 +8,7 @@
   import { downloadTracks, toggleFavorite } from '../actions';
   import { favorites } from '../stores/favorites.svelte';
   import { fmtTime } from '../util/format';
+  import { fmtAddedAgo } from '../util/age';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   import { scores, fmtScore, scoreTooltip } from '../stores/scores.svelte';
@@ -18,11 +19,12 @@
     track: Track; index?: number; current?: boolean; playing?: boolean;
     selectable?: boolean; selected?: boolean; onselect?: () => void;
     onplay: () => void; ondelete?: () => void;
+    info?: boolean; // colunas extras: adicionada há e gêneros
     extra?: import('svelte').Snippet;
     draggable?: boolean;
     ondragstart?: (e: DragEvent) => void; ondragover?: (e: DragEvent) => void; ondrop?: (e: DragEvent) => void;
   };
-  let { track, index, current = false, playing = false, selectable = false, selected = false, onselect, onplay, ondelete, extra, draggable = false, ondragstart, ondragover, ondrop }: Props = $props();
+  let { track, index, current = false, playing = false, selectable = false, selected = false, onselect, onplay, ondelete, info = false, extra, draggable = false, ondragstart, ondragover, ondrop }: Props = $props();
 
   const job = $derived(downloads.forTrack(track.id));
   const dl = $derived(job && (job.status === 'queued' || job.status === 'downloading') ? job : null);
@@ -60,6 +62,11 @@
   <span class="hidden min-w-0 flex-1 truncate text-sm text-muted lg:block">
     {#if track.artistId && track.album}<a class="hover:underline" href={href(paths.artist(track.artistId))}>{track.album}</a>{:else}{track.album ?? '—'}{/if}
   </span>
+
+  {#if info}
+    <span class="hidden w-24 shrink-0 truncate text-xs text-muted md:block">{fmtAddedAgo(track.addedAt)}</span>
+    <span class="hidden w-32 shrink-0 truncate text-xs text-muted md:block" title={track.genres.join(', ')}>{track.genres.join(', ') || '—'}</span>
+  {/if}
 
   <button class="icon-btn motion-bounce {favorites.is(track) ? 'on' : ''}" aria-pressed={favorites.is(track)} aria-label={favorites.is(track) ? `Remover ${track.title} das favoritas` : `Favoritar ${track.title}`} onclick={() => toggleFavorite(track)}>
     <Icon name="heart" size={18} fill={favorites.is(track)} />

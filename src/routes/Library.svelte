@@ -23,6 +23,13 @@
   let sortBy = $state<TrackSort>('addedAt');
   let sortDir = $state<SortDir>('desc');
   let favoritesOnly = $state(false);
+  // Colunas extras (adicionada há, gêneros): a escolha fica salva neste dispositivo.
+  const INFO_KEY = 'miupy.libraryInfo';
+  let info = $state((() => { try { return localStorage.getItem(INFO_KEY) === '1'; } catch { return false; } })());
+  function toggleInfo() {
+    info = !info;
+    try { localStorage.setItem(INFO_KEY, info ? '1' : '0'); } catch { /* sem storage: ok */ }
+  }
   const sel = new Selection();
 
   // Cache por consulta: voltar à Discoteca mostra a lista na hora e atualiza em segundo plano; um
@@ -93,13 +100,21 @@
     <State kind="empty" title="Discoteca vazia" text="Adicione músicas pela busca do YouTube." />
   {/if}
 {:else}
-  <label class="mb-1 flex items-center gap-2 px-2 text-xs text-muted">
-    <input type="checkbox" class="h-4 w-4 accent-[var(--lava)]" checked={allSelected} onchange={() => (allSelected ? sel.clear() : sel.set(queue))} />
-    Selecionar tudo
-  </label>
+  <div class="mb-1 flex items-center justify-between gap-2 px-2 text-xs text-muted">
+    <label class="flex items-center gap-2">
+      <input type="checkbox" class="h-4 w-4 accent-[var(--lava)]" checked={allSelected} onchange={() => (allSelected ? sel.clear() : sel.set(queue))} />
+      Selecionar tudo
+    </label>
+    <button class="flex items-center gap-2" role="switch" aria-checked={info} onclick={toggleInfo}>
+      Mais informações
+      <span class="relative h-5 w-9 rounded-full border border-line-strong transition-colors {info ? 'bg-[var(--lava)]' : 'bg-s3'}" aria-hidden="true">
+        <span class="absolute top-0.5 h-3.5 w-3.5 rounded-full bg-fg transition-transform {info ? 'translate-x-[1.1rem]' : 'translate-x-0.5'}"></span>
+      </span>
+    </button>
+  </div>
   <div role="list">
     {#each rows as t, i (t.id)}
-      <TrackRow track={t} index={i} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
+      <TrackRow track={t} index={i} {info} selectable selected={sel.has(t.id)} onselect={() => sel.toggle(t.id)}
         current={player.track?.id === t.id} playing={player.isPlaying} onplay={() => player.play(t.id, queue)} ondelete={() => removeTracks([t])} />
     {/each}
   </div>
