@@ -46,6 +46,8 @@
   $effect(() => res.attach());
 
   const pl = $derived(library.playlists.find((p) => p.id === id));
+  let autoDownloadOverride = $state<boolean | null>(null);
+  const autoDownloadChecked = $derived(autoDownloadOverride ?? pl?.autoDownload ?? false);
   const canReorder = $derived(sortBy === 'position' && !search.trim() && !favoritesOnly);
   const queue = $derived(tracks.map((t) => t.id));
   const chunk = new Chunked();
@@ -89,8 +91,16 @@
   }
   // @req RF-31
   async function setAutoDownload(enabled: boolean) {
-    try { await api.playlistUpdate({ playlistId: id, autoDownload: enabled }); }
-    catch (e) { notifyError(e); }
+    const previous = autoDownloadChecked;
+    autoDownloadOverride = enabled;
+    try {
+      await api.playlistUpdate({ playlistId: id, autoDownload: enabled });
+      await library.reloadPlaylists();
+      autoDownloadOverride = null;
+    } catch (e) {
+      autoDownloadOverride = previous;
+      notifyError(e);
+    }
   }
 
   // arrastar e soltar (desktop; no toque, use os botões subir/descer)
@@ -126,7 +136,7 @@
     <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
     <!-- @req RF-31 -->
     <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">
-      <input type="checkbox" checked={pl?.autoDownload ?? false} disabled={!pl} onchange={(e) => setAutoDownload(e.currentTarget.checked)} />
+      <input type="checkbox" checked={autoDownloadChecked} disabled={!pl} onchange={(e) => setAutoDownload(e.currentTarget.checked)} />
       Baixar automaticamente
     </label>
     <button class="btn" onclick={() => (editing = { playlist: pl ?? null })} disabled={!pl}><Icon name="edit" size={16} />Renomear</button>

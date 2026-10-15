@@ -1,6 +1,7 @@
 // @req RF-10 RF-11 RNF-13
 import { SvelteMap } from 'svelte/reactivity';
 import { api, type DownloadJob } from '../ipc';
+import { isWaitingNetwork } from '../ipc/download';
 import { notify } from './toast.svelte';
 
 class DownloadsStore {
@@ -19,7 +20,9 @@ class DownloadsStore {
     this.started = true;
     await api.on('download://progress', (job) => {
       const i = this.jobs.findIndex((j) => j.id === job.id);
-      if (i >= 0) this.jobs[i] = job; else this.jobs.push(job);
+      if (job.status === 'none') {
+        if (i >= 0) this.jobs.splice(i, 1);
+      } else if (i >= 0) this.jobs[i] = job; else this.jobs.push(job);
       this.syncLatest(job.trackId);
     });
     // @req RF-31
@@ -39,8 +42,7 @@ class DownloadsStore {
 
   async clearFinished() { // @req RF-10
     const count = await api.downloadClearFinished();
-    this.jobs = this.jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || j.error?.startsWith('auto_offline:')));
-    this.rebuildLatest();
+    await this.reload();
     return count;
   }
 

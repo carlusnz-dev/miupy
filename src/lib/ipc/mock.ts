@@ -2,6 +2,7 @@
 // Mock em memória do contrato IPC, para navegar a UI sem backend (npm run dev no navegador).
 // Mesma interface (MiupyApi) do cliente real. Dados fictícios.
 import type { MiupyApi } from './api';
+import { isWaitingNetwork } from './download';
 import type {
   ArtistInfo, Dna, DownloadJob, EventMap, EventName, LibraryStats, Lyrics, MetadataRefreshStatus, PlayerState, Playlist, YtDlpStatus,
   EqPreset, Profile, RankedArtist, RankedTrack, Recommendation, SearchResult, Settings, Track, TrackQuery, Wrapped,
@@ -475,14 +476,19 @@ export function createMockApi(): MiupyApi {
     async downloadEnqueue({ trackIds }) { await wait(40); return enqueue(trackIds); },
     async downloadEnqueuePlaylist({ playlistId }) { await wait(40); return enqueue(getPl(playlistId).ids); },
     async downloadList() { await wait(30); return jobs.map((j) => ({ ...j })); },
-    async downloadClearFinished() { const n = jobs.filter((j) => j.status === 'done' || (j.status === 'error' && !j.error?.startsWith('auto_offline:'))).length; jobs = jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || j.error?.startsWith('auto_offline:'))); return n; },
+    async downloadClearFinished() { // @req RF-31
+      for (const j of jobs) if (isWaitingNetwork(j) && !playlists.some((p) => p.autoDownload && p.ids.includes(j.trackId))) j.error = j.error?.slice('auto_offline:'.length) ?? null;
+      const n = jobs.filter((j) => j.status === 'done' || (j.status === 'error' && !isWaitingNetwork(j))).length;
+      jobs = jobs.filter((j) => j.status !== 'done' && (j.status !== 'error' || isWaitingNetwork(j)));
+      return n;
+    },
     async downloadCancel({ jobId }) {
       const j = jobs.find((x) => x.id === jobId) ?? err('not_found', 'Download não encontrado.');
-      if (j.status === 'queued' || j.status === 'downloading') {
-        j.status = 'error'; j.error = 'Cancelado pelo usuário.';
+      if (j.status !== 'done') {
+        jobs = jobs.filter((x) => x.id !== jobId);
         const t = tracks.find((x) => x.id === j.trackId);
         if (t) t.downloadStatus = 'none';
-        emit('download://progress', { ...j });
+        emit('download://progress', { ...j, status: 'none', error: null });
         changed('download');
       }
     },
