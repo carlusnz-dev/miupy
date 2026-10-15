@@ -59,9 +59,9 @@ o basalto (`--bg`, `--surface-1..3`, `--line`) e os gradientes derivados (`--gra
 
 ## MeshGradient
 
-3 camadas com `radial-gradient` animadas devagar só por `transform` (compositor), sem `filter: blur`;
-`will-change` só enquanto anima. Pausa fora da tela (`IntersectionObserver`), com a aba oculta e com a
-janela sem foco; `prefers-reduced-motion` desliga a animação.
+3 camadas com `radial-gradient` **estáticas**, sem `filter: blur` e sem animação infinita (animada, o
+mesh custava ~37% de CPU na janela e ~40% no WebKitWebProcess; parada, 4% e 2%, medido no app real).
+Só as cores transicionam (`--mesh-1..3` registradas com `@property`) quando a lava muda.
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 

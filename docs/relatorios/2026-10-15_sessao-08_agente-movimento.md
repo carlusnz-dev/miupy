@@ -19,8 +19,11 @@
   título da `PageHeader`.
 - Source Serif 4 (`opsz.css` importado em `main.ts`): `h1`/`h2` e classe `font-display` nos números grandes
   (Home, Dna, Stats, Wrapped). RNF-04 atualizado no requisitos.
-- `MeshGradient`: 3 camadas (era 4), animações 34/44/52 s (era 18–31 s), `will-change` só fora da pausa, pausa
-  também com `blur`/`focus` da janela.
+- `MeshGradient` **estático** (corrige o item 5 do briefing, por recado da orquestração): 3 camadas fixas, sem
+  animação infinita, sem `will-change`, sem pausa (o `animation:` inline vencia `.mesh.paused`, então a pausa
+  nunca funcionou). Medido no app real pelo inspetor do WebKit, com as 4 animações: janela ~37% e
+  WebKitWebProcess ~40% de CPU; pausadas: 4% e 2%. Só as cores transicionam (`--mesh-1..3` com `@property`,
+  `--dur-slow`) quando a lava muda; é a base para a tela Tocando.
 
 ## API para as próximas frentes
 
@@ -43,12 +46,11 @@
 - `node scripts/rastreabilidade.mjs --check`: ok, 50 requisitos.
 - Cargo (fmt/clippy/test): **não rodado** — o worktree não tem `target/` e só mexi no frontend; o CI roda.
 - Playwright (`revisar-playwright`): **não rodado** — o MCP não estava disponível nesta sessão; revisão de
-  design feita só lendo o diff. Não provado: aparência da serifa, sensação da mola e o ganho de GPU do mesh
+  design feita só lendo o diff. Não provado: aparência da serifa, sensação da mola e a transição de cor do mesh
   (precisam do app real).
 
 ## Pendências e problemas conhecidos
 
-- Conferir no app (NVIDIA/Wayland) se o stutter do mesh sumiu; se não, o próximo passo é trocar por imagem
-  estática com animação só no hero.
+- Conferir no app se o stutter sumiu com o mesh estático (a transição de cor via `@property` não foi vista).
 - `truncate` no `h1` com `AnimatedText`: palavras são `inline-block`; título longo corta por palavra.
 - Toast ainda usa `springTransition` com duração própria (220 ms).

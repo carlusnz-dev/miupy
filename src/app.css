@@ -190,14 +190,16 @@ input[type='range'].slider::-webkit-slider-thumb {
 }
 input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--fg); border: 0; }
 
-/* mesh animado: só transform/opacity em camadas já compostas */
-@keyframes mesh-a { 0% { transform: translate3d(-8%, -6%, 0) scale(1); } 50% { transform: translate3d(10%, 8%, 0) scale(1.18); } 100% { transform: translate3d(-8%, -6%, 0) scale(1); } }
-@keyframes mesh-b { 0% { transform: translate3d(8%, 6%, 0) scale(1.1); } 50% { transform: translate3d(-10%, -4%, 0) scale(0.95); } 100% { transform: translate3d(8%, 6%, 0) scale(1.1); } }
-@keyframes mesh-c { 0% { transform: translate3d(0, 10%, 0) scale(1); } 50% { transform: translate3d(6%, -10%, 0) scale(1.25); } 100% { transform: translate3d(0, 10%, 0) scale(1); } }
-.mesh-layer { position: absolute; width: 90%; height: 90%; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.mesh:not(.paused) .mesh-layer { will-change: transform; }
-.mesh.paused .mesh-layer { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .mesh-layer { animation: none !important; } }
+/* mesh estático (animação infinita custava ~40% de CPU): só as cores transicionam quando a lava muda.
+   As variáveis são registradas para a transição interpolar a cor dentro do gradiente. */
+@property --mesh-1 { syntax: '<color>'; inherits: true; initial-value: #ff6a2b; }
+@property --mesh-2 { syntax: '<color>'; inherits: true; initial-value: #b3200f; }
+@property --mesh-3 { syntax: '<color>'; inherits: true; initial-value: #ffd27a; }
+.mesh {
+  --mesh-1: var(--lava); --mesh-2: var(--lava-deep); --mesh-3: var(--lava-core);
+  transition: --mesh-1 var(--dur-slow), --mesh-2 var(--dur-slow), --mesh-3 var(--dur-slow);
+}
+.mesh-layer { position: absolute; width: 90%; height: 90%; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
