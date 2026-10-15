@@ -59,9 +59,11 @@ o basalto (`--bg`, `--surface-1..3`, `--line`) e os gradientes derivados (`--gra
 
 ## MeshGradient
 
-3 camadas com `radial-gradient` **estáticas**, sem `filter: blur` e sem animação infinita (animada, o
-mesh custava ~37% de CPU na janela e ~40% no WebKitWebProcess; parada, 4% e 2%, medido no app real).
-Só as cores transicionam (`--mesh-1..3` registradas com `@property`) quando a lava muda.
+3 camadas com `radial-gradient`, sem `filter: blur`. Por padrão são **estáticas** (animada em toda
+tela, o mesh custava ~37% de CPU na janela e ~40% no WebKitWebProcess; parada, 4% e 2%, medido no
+app real). Só a tela Tocando passa `animated`: camadas em 12, 16 e 20 s, só `transform`, com pausa
+pela classe `.paused` quando a janela perde o foco ou fica oculta, e fim imediato ao trocar de rota.
+As cores transicionam (`--mesh-1..3` registradas com `@property`) quando a lava ou a capa mudam.
 Usado em: tocando agora, topo da Home, cabeçalhos de playlist e artista, cartões da retrospectiva e
 pré-visualização das configurações.
 
