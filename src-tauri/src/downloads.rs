@@ -83,12 +83,12 @@ impl Downloads {
         // @req RF-31: uma tentativa na abertura e depois enquanto houver pendentes.
         let retry = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = retry.retry_offline().await {
+            if let Err(e) = retry.retry_offline(true).await {
                 log::warn!("retomar downloads automáticos: {e}");
             }
             loop {
                 tokio::time::sleep(AUTO_RETRY_INTERVAL).await;
-                if let Err(e) = retry.retry_offline().await {
+                if let Err(e) = retry.retry_offline(false).await {
                     log::warn!("retomar downloads automáticos: {e}");
                 }
             }
@@ -189,7 +189,18 @@ impl Downloads {
         let outcome = self.run_job(&job, &token).await;
         self.active_lock().remove(&job.id);
         match outcome {
-            Ok(()) => {}
+            Ok(()) => {
+                // @req RF-31: uma tentativa bem-sucedida encerra o ciclo de aviso.
+                if let Ok(playlists) = self
+                    .db
+                    .with(|db| db.auto_playlists_for_track(&job.track_id))
+                {
+                    let mut notified = self.offline_notified.lock().unwrap();
+                    for id in playlists {
+                        notified.remove(&id);
+                    }
+                }
+            }
             Err(e) if e.is_cancelled() || token.is_cancelled() => {
                 log::info!("download {} cancelado", job.id);
             }
@@ -201,6 +212,26 @@ impl Downloads {
         // @req RF-31: o aviso sai quando a operação inteira terminou, inclusive se
         // uma faixa falhou por outro motivo ou terminou depois da primeira falha de rede.
         self.announce_offline_if_idle(&job.track_id).await;
+        self.prune_offline_notifications().await;
+    }
+
+    // @req RF-31
+    async fn prune_offline_notifications(&self) {
+        let ids: Vec<_> = self
+            .offline_notified
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect();
+        for id in ids {
+            let pending: miupy_core::Result<bool> = self.db.with(|db| {
+                Ok(!db.offline_auto_tracks(&id)?.is_empty() || db.auto_inflight_count(&id)? > 0)
+            });
+            if !matches!(pending, Ok(true)) {
+                self.offline_notified.lock().unwrap().remove(&id);
+            }
+        }
     }
 
     async fn announce_offline_if_idle(&self, track_id: &str) {
@@ -235,10 +266,12 @@ impl Downloads {
     }
 
     // @req RF-31
-    async fn retry_offline(&self) -> AppResult<()> {
+    async fn retry_offline(&self, opening: bool) -> AppResult<()> {
+        self.prune_offline_notifications().await;
         let batches = self
             .db
             .run(|db| {
+                db.release_orphaned_offline_downloads()?;
                 let mut batches = Vec::new();
                 let mut seen = HashSet::new();
                 for playlist_id in db.auto_playlist_ids()? {
@@ -256,12 +289,13 @@ impl Downloads {
             })
             .await?;
         if !batches.is_empty() {
-            self.offline_notified.lock().unwrap().clear();
             for (playlist_id, jobs) in batches {
                 for job in &jobs {
                     self.events.download_progress(job);
                 }
-                self.events.download_auto(&playlist_id, jobs.len(), "retry");
+                if opening {
+                    self.events.download_auto(&playlist_id, jobs.len(), "retry");
+                }
             }
             self.events.library_changed("download_queued");
             self.wake();
@@ -995,8 +1029,15 @@ mod tests {
             *f.events.auto.lock().unwrap(),
             vec![(p.id.clone(), 2, "offline".into())]
         );
+        // @test RF-31: o timer tenta de novo sem gerar outro aviso.
+        f.dl.retry_offline(false).await.unwrap();
+        f.dl.run_until_idle().await;
+        assert_eq!(
+            f.events.auto.lock().unwrap().as_slice(),
+            &[(p.id.clone(), 2, "offline".into())]
+        );
         *f.resolver.always_fail_network.lock().unwrap() = false;
-        f.dl.retry_offline().await.unwrap();
+        f.dl.retry_offline(true).await.unwrap();
         assert_eq!(
             f.events.auto.lock().unwrap().last().unwrap(),
             &(p.id.clone(), 2, "retry".into())
@@ -1008,6 +1049,89 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(f.db.with(|db| db.list_downloads()).unwrap().len(), 2);
+    }
+
+    // @test RF-31
+    #[tokio::test]
+    async fn retry_libera_job_orfao_apos_desligar_playlist() {
+        let f = fx();
+        let a = add(&f, "orphan-a");
+        let p =
+            f.db.with(|db| {
+                let p = db.create_playlist("Auto", None)?;
+                db.add_tracks_to_playlist(&p.id, std::slice::from_ref(&a.id))?;
+                db.update_playlist(
+                    &p.id,
+                    &miupy_core::PlaylistPatch {
+                        auto_download: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })
+            .unwrap();
+        let job = enqueue(&f, &[&a]).remove(0);
+        *f.resolver.always_fail_network.lock().unwrap() = true;
+        f.dl.run_until_idle().await;
+        assert!(
+            f.db.with(|db| db.get_download(&job.id))
+                .unwrap()
+                .error
+                .unwrap()
+                .starts_with(AUTO_OFFLINE_PREFIX)
+        );
+        f.db.with(|db| {
+            db.update_playlist(
+                &p.id,
+                &miupy_core::PlaylistPatch {
+                    auto_download: Some(false),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+        f.dl.retry_offline(false).await.unwrap();
+        let updated = f.db.with(|db| db.get_download(&job.id)).unwrap();
+        assert_eq!(updated.status, DownloadStatus::Error);
+        assert!(!updated.error.unwrap().starts_with(AUTO_OFFLINE_PREFIX));
+        assert_eq!(f.db.with(|db| db.clear_finished_downloads()).unwrap(), 1);
+    }
+
+    // @test RF-31
+    #[tokio::test]
+    async fn nova_queda_avisa_depois_que_a_playlist_perde_pendencias() {
+        let f = fx();
+        let a = add(&f, "queda-a");
+        let b = add(&f, "queda-b");
+        let p =
+            f.db.with(|db| {
+                let p = db.create_playlist("Auto", None)?;
+                db.add_tracks_to_playlist(&p.id, std::slice::from_ref(&a.id))?;
+                db.update_playlist(
+                    &p.id,
+                    &miupy_core::PlaylistPatch {
+                        auto_download: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })
+            .unwrap();
+        enqueue(&f, &[&a]);
+        *f.resolver.always_fail_network.lock().unwrap() = true;
+        f.dl.run_until_idle().await;
+        f.db.with(|db| db.remove_tracks_from_playlist(&p.id, std::slice::from_ref(&a.id)))
+            .unwrap();
+        f.dl.retry_offline(false).await.unwrap();
+        f.db.with(|db| db.add_tracks_to_playlist(&p.id, std::slice::from_ref(&b.id)))
+            .unwrap();
+        enqueue(&f, &[&b]);
+        f.dl.run_until_idle().await;
+        assert_eq!(
+            f.events.auto.lock().unwrap().as_slice(),
+            &[
+                (p.id.clone(), 1, "offline".into()),
+                (p.id.clone(), 1, "offline".into()),
+            ]
+        );
     }
 
     // @test RF-28

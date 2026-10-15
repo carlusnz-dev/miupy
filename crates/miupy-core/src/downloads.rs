@@ -38,6 +38,20 @@ impl Database {
     }
 
     // @req RF-31
+    /// Retira o estado de espera de jobs sem playlist automática vinculada.
+    pub fn release_orphaned_offline_downloads(&self) -> Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE download_jobs SET error = substr(error, 14), updated_at = ?1
+             WHERE status = 'error' AND error LIKE 'auto_offline:%'
+               AND NOT EXISTS (
+                 SELECT 1 FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id
+                 WHERE pt.track_id = download_jobs.track_id AND p.auto_download = 1
+               )",
+            [self.now_ms()],
+        )?)
+    }
+
+    // @req RF-31
     pub fn auto_inflight_count(&self, playlist_id: &str) -> Result<usize> {
         self.get_playlist(playlist_id)?;
         let count: i64 = self.conn.query_row(
@@ -232,10 +246,11 @@ impl Database {
         })
     }
 
-    // @req RF-10
+    // @req RF-10 RF-31
     /// Remove da lista os jobs concluídos ou com erro definitivo. Jobs automáticos
     /// aguardando rede ficam para a próxima tentativa. Não altera faixas nem arquivos.
     pub fn clear_finished_downloads(&self) -> Result<usize> {
+        self.release_orphaned_offline_downloads()?;
         Ok(self.conn.execute(
             "DELETE FROM download_jobs WHERE status = 'done'
              OR (status = 'error' AND (error IS NULL OR error NOT LIKE 'auto_offline:%'))",
@@ -321,6 +336,17 @@ mod tests {
         let db = db();
         let offline = yt(&db, "offline-clear");
         let ordinary = yt(&db, "ordinary-clear");
+        let playlist = db.create_playlist("Auto", None).unwrap();
+        db.add_tracks_to_playlist(&playlist.id, std::slice::from_ref(&offline.id))
+            .unwrap();
+        db.update_playlist(
+            &playlist.id,
+            &crate::model::PlaylistPatch {
+                auto_download: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let jobs = db
             .enqueue_downloads(&[offline.id.clone(), ordinary.id.clone()])
             .unwrap();
@@ -337,6 +363,11 @@ mod tests {
         assert_eq!(db.clear_finished_downloads().unwrap(), 1);
         assert_eq!(db.list_downloads().unwrap().len(), 1);
         assert_eq!(db.list_downloads().unwrap()[0].track_id, offline.id);
+        // @test RF-31: ao retirar a faixa, a limpeza passa a remover o job órfão.
+        db.remove_tracks_from_playlist(&playlist.id, std::slice::from_ref(&offline.id))
+            .unwrap();
+        assert_eq!(db.clear_finished_downloads().unwrap(), 1);
+        assert!(db.list_downloads().unwrap().is_empty());
     }
 
     fn yt(db: &Database, sid: &str) -> Track {
