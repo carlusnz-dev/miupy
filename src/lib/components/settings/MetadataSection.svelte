@@ -44,6 +44,8 @@
     <div class="mt-2 h-2 w-full max-w-sm overflow-hidden rounded-full bg-s2" role="progressbar" aria-label="Andamento do reprocessamento de metadados" aria-valuemin="0" aria-valuemax={Math.max(metadata.total, 1)} aria-valuenow={metadata.done}>
       <div class="h-full bg-lava" style:width={`${metadata.total ? metadata.done / metadata.total * 100 : 0}%`}></div>
     </div>
+  {:else if metadata?.finishedAt != null && metadata.total === 0}
+    <p class="mt-3 text-sm text-muted" role="status">Nenhuma faixa para reprocessar.</p>
   {:else if metadata?.finishedAt !== null && metadata?.finishedAt !== undefined}
     <p class="mt-3 text-sm text-muted" role="status">
       {metadata.done - metadata.failed} com sucesso · {metadata.failed} com falha · Concluído em {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(metadata.finishedAt)}
