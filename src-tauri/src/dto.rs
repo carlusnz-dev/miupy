@@ -51,6 +51,20 @@ pub struct Progress {
     pub duration_ms: u64,
 }
 
+// @req RF-32
+/// Estado do lote de metadados nesta abertura, conforme `ipc.md`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataRefreshStatus {
+    pub running: bool,
+    pub done: usize,
+    pub total: usize,
+    pub failed: usize,
+    pub current_track_id: Option<String>,
+    pub started_at: Option<u64>,
+    pub finished_at: Option<u64>,
+}
+
 /// `SearchResult` de `ipc.md`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

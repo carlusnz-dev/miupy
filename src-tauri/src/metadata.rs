@@ -2,16 +2,14 @@
 //! `MetadataProvider`. Falha de rede nunca derruba a leitura local.
 
 use std::collections::HashMap;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
 use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, tagger};
 
 use crate::db::Db;
+use crate::dto::MetadataRefreshStatus;
 use crate::error::AppResult;
 use crate::events::Events;
 use crate::paths::Dirs;
@@ -23,6 +21,13 @@ const RETRY_AFTER: Duration = Duration::from_secs(300);
 /// Falha temporária pode ser consultada novamente em breve, sem repetir imediatamente.
 const TEMPORARY_RETRY_AFTER: Duration = Duration::from_secs(10);
 
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 pub struct MetadataService {
     db: Db,
     provider: Arc<dyn MetadataProvider>,
@@ -30,7 +35,7 @@ pub struct MetadataService {
     dirs: Dirs,
     events: Arc<dyn Events>,
     attempts: Mutex<HashMap<String, Instant>>,
-    batch_running: AtomicBool,
+    batch_status: Mutex<MetadataRefreshStatus>,
 }
 
 impl MetadataService {
@@ -48,39 +53,83 @@ impl MetadataService {
             dirs,
             events,
             attempts: Mutex::new(HashMap::new()),
-            batch_running: AtomicBool::new(false),
+            batch_status: Mutex::new(MetadataRefreshStatus::default()),
         }
     }
 
-    // @req RF-12 RF-20
+    // @req RF-32
+    pub fn refresh_status(&self) -> MetadataRefreshStatus {
+        self.batch_status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn update_batch_status(&self, update: impl FnOnce(&mut MetadataRefreshStatus)) {
+        let status = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            update(&mut status);
+            status.clone()
+        };
+        self.events.metadata_progress(&status);
+    }
+
+    // @req RF-12 RF-20 RF-32
     pub fn enqueue_library_refresh(self: &Arc<Self>, only_missing: bool) -> AppResult<usize> {
-        if self.batch_running.swap(true, Ordering::AcqRel) {
-            return Err(crate::error::AppError::new(
-                "conflict",
-                "Um reprocessamento já está em andamento.",
-            ));
-        }
+        let previous = {
+            let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+            if status.running {
+                return Err(crate::error::AppError::new(
+                    "conflict",
+                    "Um reprocessamento já está em andamento.",
+                ));
+            }
+            let previous = status.clone();
+            status.running = true;
+            previous
+        };
         let tracks = match self
             .db
             .with(|db| db.tracks_for_metadata_refresh(only_missing))
         {
             Ok(t) => t,
             Err(e) => {
-                self.batch_running.store(false, Ordering::Release);
+                *self.batch_status.lock().unwrap_or_else(|e| e.into_inner()) = previous;
                 return Err(e.into());
             }
         };
         let total = tracks.len();
+        self.update_batch_status(|status| {
+            *status = MetadataRefreshStatus {
+                running: true,
+                total,
+                started_at: Some(now_ms()),
+                ..MetadataRefreshStatus::default()
+            };
+        });
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
             for (i, t) in tracks.into_iter().enumerate() {
+                this.batch_status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .current_track_id = Some(t.id.clone());
+                let mut failed = false;
                 if let Err(e) = this.refresh_track(&t.id).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
+                    failed = true;
                 }
-                this.events.metadata_progress(i + 1, total);
+                this.update_batch_status(|status| {
+                    status.done = i + 1;
+                    status.failed += usize::from(failed);
+                });
             }
             this.events.library_changed("metadata_batch_finished");
-            this.batch_running.store(false, Ordering::Release);
+            this.update_batch_status(|status| {
+                status.running = false;
+                status.current_track_id = None;
+                status.finished_at = Some(now_ms());
+            });
         });
         Ok(total)
     }
