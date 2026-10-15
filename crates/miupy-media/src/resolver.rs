@@ -106,6 +106,8 @@ pub struct StreamAudio {
 // @req RF-20
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VideoMetadata {
+    pub channel: Option<String>,
+    pub raw_title: Option<String>,
     pub artist: Option<String>,
     pub track: Option<String>,
     pub album: Option<String>,

@@ -285,6 +285,8 @@ mod tests {
     #[test]
     fn chave_do_album_prefere_grupo_e_normaliza_artista_album() {
         let mut rec = miupy_media::RecordingMatch {
+            title_only: false,
+            title_only_artist_unambiguous: false,
             mbid: "rec".into(),
             title: "Faixa".into(),
             artist: " Daft   Punk ".into(),

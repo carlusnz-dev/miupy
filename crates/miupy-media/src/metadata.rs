@@ -8,7 +8,9 @@
 //! [`ArtistDetails::image_url`] ficam `None`. [`OnlineMetadata::artist_photo`] consulta Wikidata e
 //! Wikimedia Commons quando há MBID e relação disponível.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -20,6 +22,7 @@ use crate::ratelimit::RateLimiter;
 
 const MAX_IMAGE_BYTES: usize = 15 * 1024 * 1024;
 const MIN_MATCH_SCORE: u64 = 70;
+const MIN_TITLE_ONLY_SCORE: u32 = 95;
 const WIKIDATA_ENDPOINT: &str = "https://www.wikidata.org/w/api.php";
 const COMMONS_ENDPOINT: &str = "https://commons.wikimedia.org/w/api.php";
 const MAX_API_ATTEMPTS: usize = 3;
@@ -29,6 +32,8 @@ const MAX_REQUEST_WINDOW: Duration = Duration::from_secs(15);
 /// Gravação encontrada no MusicBrainz.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordingMatch {
+    pub title_only: bool,
+    pub title_only_artist_unambiguous: bool,
     pub mbid: String,
     pub title: String,
     pub artist: String,
@@ -249,6 +254,7 @@ pub struct OnlineMetadata {
     commons_limiter: RateLimiter,
     coverart_limiter: RateLimiter,
     user_agent: String,
+    artist_genres: Mutex<HashMap<String, Vec<String>>>,
 }
 
 impl OnlineMetadata {
@@ -352,6 +358,7 @@ impl OnlineMetadata {
             coverart_limiter: RateLimiter::new(cfg.images_interval),
             cfg,
             user_agent,
+            artist_genres: Mutex::new(HashMap::new()),
         })
     }
 
@@ -500,14 +507,38 @@ impl MetadataProvider for OnlineMetadata {
         artist: Option<&str>,
         duration_ms: Option<u64>,
     ) -> Result<Option<RecordingMatch>> {
-        let query = recording_query(title, artist)?;
+        let cleaned = crate::title::clean_title(title, "").title;
+        let query = recording_query(&cleaned, artist)?;
         let json = self
             .mb_get(
                 "recording",
                 &[("query", &query), ("fmt", "json"), ("limit", "10")],
             )
             .await?;
-        let Some(mut recording) = parse_recordings(&json, duration_ms) else {
+        let mut recording = if artist.is_none_or(|a| a.trim().is_empty()) {
+            duration_ms
+                .filter(|d| *d > 0)
+                .and_then(|duration| parse_title_only_recording(&json, duration))
+        } else {
+            parse_recordings(&json, duration_ms)
+        };
+        // @req RF-12: canal do vídeo pode ter sido gravado como artista. Sem esse filtro,
+        // só uma correspondência muito forte de título e duração pode substituir o artista.
+        if recording.is_none()
+            && duration_ms.is_some_and(|d| d > 0)
+            && artist.is_some_and(|a| !a.trim().is_empty())
+        {
+            let query = recording_query(&cleaned, None)?;
+            let json = self
+                .mb_get(
+                    "recording",
+                    &[("query", &query), ("fmt", "json"), ("limit", "10")],
+                )
+                .await?;
+            recording =
+                duration_ms.and_then(|duration| parse_title_only_recording(&json, duration));
+        }
+        let Some(mut recording) = recording else {
             return Ok(None);
         };
         let details = self
@@ -516,7 +547,36 @@ impl MetadataProvider for OnlineMetadata {
                 &[("inc", "genres tags isrcs"), ("fmt", "json")],
             )
             .await?;
-        recording.genres = ranked_genres(&details);
+        let detail_genres = ranked_genres(&details);
+        if !detail_genres.is_empty() {
+            recording.genres = detail_genres;
+        }
+        if recording.genres.is_empty()
+            && let Some(id) = recording.artist_mbid.as_deref()
+        {
+            let cached = self
+                .artist_genres
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(id)
+                .cloned();
+            if let Some(genres) = cached {
+                recording.genres = genres;
+            } else if let Ok(json) = self
+                .mb_get(
+                    &format!("artist/{id}"),
+                    &[("inc", "genres tags"), ("fmt", "json")],
+                )
+                .await
+            {
+                // @req RF-20: uma consulta complementar por faixa, reutilizada pelo artista.
+                recording.genres = ranked_genres(&json);
+                self.artist_genres
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(id.to_string(), recording.genres.clone());
+            }
+        }
         recording.release_year = release_year(&details).or(recording.release_year);
         recording.isrc = details
             .get("isrcs")
@@ -554,7 +614,12 @@ impl MetadataProvider for OnlineMetadata {
                 &[("inc", "genres tags"), ("fmt", "json")],
             )
             .await?;
-        parse_artist(&json)
+        let artist = parse_artist(&json)?;
+        self.artist_genres
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(mbid.to_string(), artist.genres.clone());
+        Ok(artist)
     }
 
     // @req RF-12
@@ -714,13 +779,40 @@ fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
 
 /// Escolhe a melhor gravação: pontuação mínima e, havendo duração, a mais próxima (≤ 10 s).
 pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option<RecordingMatch> {
+    parse_recordings_scored(json, duration_ms, MIN_MATCH_SCORE)
+}
+
+// @req RF-12: a consulta sem artista nunca autoriza trocar campos do lançamento.
+fn parse_title_only_recording(json: &Value, duration: u64) -> Option<RecordingMatch> {
+    let mut found = parse_recordings_scored(json, Some(duration), MIN_TITLE_ONLY_SCORE.into())
+        .filter(|r| r.duration_ms.is_some())?;
+    found.title_only = true;
+    found.title_only_artist_unambiguous = json["recordings"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .filter(|item| {
+                item["length"]
+                    .as_u64()
+                    .is_some_and(|d| d.abs_diff(duration) <= 10_000)
+            })
+            .count()
+            == 1
+    });
+    Some(found)
+}
+
+fn parse_recordings_scored(
+    json: &Value,
+    duration_ms: Option<u64>,
+    minimum_score: u64,
+) -> Option<RecordingMatch> {
     let candidates: Vec<RecordingMatch> = json
         .get("recordings")?
         .as_array()?
         .iter()
         .filter_map(|r| {
             let score = r.get("score").and_then(Value::as_u64).unwrap_or(0);
-            if score < MIN_MATCH_SCORE {
+            if score < minimum_score {
                 return None;
             }
             let credits = r.get("artist-credit").and_then(Value::as_array);
@@ -763,6 +855,8 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
                 .map(String::from)
                 .collect();
             Some(RecordingMatch {
+                title_only: false,
+                title_only_artist_unambiguous: false,
                 mbid: str_of(r, "id")?.to_string(),
                 title: str_of(r, "title")?.to_string(),
                 artist,
@@ -776,7 +870,26 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
                 release_mbids,
                 duration_ms: r.get("length").and_then(Value::as_u64),
                 score: score as u32,
-                genres: ranked_genres(r),
+                genres: {
+                    let own = ranked_genres(r);
+                    if own.is_empty() {
+                        release
+                            .map(|item| {
+                                let group = item
+                                    .get("release-group")
+                                    .map(ranked_genres)
+                                    .unwrap_or_default();
+                                if group.is_empty() {
+                                    ranked_genres(item)
+                                } else {
+                                    group
+                                }
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        own
+                    }
+                },
                 release_year: release_year(r),
                 isrc: r
                     .get("isrcs")
@@ -845,7 +958,7 @@ fn ranked_genres(json: &Value) -> Vec<String> {
                 str_of(item, "name")?.trim().to_lowercase(),
             ))
         })
-        .filter(|(_, name)| !name.is_empty())
+        .filter(|(count, name)| *count >= 2 && !name.is_empty())
         .collect();
     items.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let mut seen = std::collections::HashSet::new();
@@ -1014,6 +1127,14 @@ mod tests {
         assert!(parse_recordings(&baixa, None).is_none());
     }
 
+    // @test RF-12
+    #[test]
+    fn busca_sem_artista_rejeita_pontuacao_baixa() {
+        let json =
+            fixture(r#"{"recordings":[{"id":"a","title":"Música","score":94,"length":200000}]}"#);
+        assert!(parse_recordings_scored(&json, Some(200_000), 95).is_none());
+    }
+
     // @test RF-20
     #[test]
     fn generos_ordenados_sem_repeticao_e_ano() {
@@ -1022,6 +1143,9 @@ mod tests {
         );
         assert_eq!(ranked_genres(&value), ["jazz", "funk", "rock"]);
         assert_eq!(release_year(&value), Some(2007));
+        assert!(
+            ranked_genres(&fixture(r#"{"tags":[{"name":"irrelevante","count":1}]}"#)).is_empty()
+        );
     }
 
     // @test RF-12
@@ -1040,6 +1164,10 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(b.genres, vec!["pop", "rock"]);
+        let low_votes = parse_artist(&fixture(
+            r#"{"id":"x","name":"N","genres":[{"name":"noise","count":1},{"name":"soul","count":2}]}"#,
+        )).unwrap();
+        assert_eq!(low_votes.genres, ["soul"]);
         assert_eq!(b.country, None);
         assert!(parse_artist(&fixture("{}")).is_err());
         assert_eq!(
@@ -1417,6 +1545,7 @@ mod tests {
         let (base, h) = mock_server(vec![
             (200, "application/json", MB_REC.as_bytes().to_vec()),
             (200, "application/json", detail.as_bytes().to_vec()),
+            (200, "application/json", MB_ART.as_bytes().to_vec()),
         ])
         .await;
         let m = provider(&base)
@@ -1426,6 +1555,7 @@ mod tests {
             .unwrap();
         assert_eq!(m.title, "Get Lucky");
         assert_eq!(m.release_year, Some(2015));
+        assert_eq!(m.genres.first().map(String::as_str), Some("house"));
         let requests = h.await.unwrap();
         assert!(requests[1].contains("inc=genres+tags+isrcs"));
         let req = requests[0].to_lowercase();
@@ -1435,6 +1565,145 @@ mod tests {
             req.starts_with("get /ws/2/recording?query=recording%3a%22get+lucky"),
             "{req}"
         );
+    }
+
+    // @test RF-12 RF-20
+    #[tokio::test]
+    async fn busca_sem_artista_marca_origem_sem_autorizar_troca_ambigua() {
+        let (base, h) = mock_server(vec![
+            (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+            (
+                200,
+                "application/json",
+                br#"{"genres":[{"name":"pop","count":2}]}"#.to_vec(),
+            ),
+        ])
+        .await;
+        let m = provider(&base)
+            .find_recording("Get Lucky", Some("Canal Errado"), Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.artist, "Daft Punk feat. Pharrell Williams");
+        assert!(m.title_only);
+        assert!(m.title_only_artist_unambiguous);
+        assert_eq!(m.genres, ["pop"]);
+        let requests = h.await.unwrap();
+        assert!(requests[0].contains("artist%3A%22Canal+Errado"));
+        assert!(!requests[1].contains("artist%3A"));
+        assert_eq!(requests.len(), 3);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn busca_sem_artista_rejeita_duracao_distante_e_ausente() {
+        let (base, h) = mock_server(vec![
+            (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+        ])
+        .await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", Some("Canal"), Some(200_000))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 2);
+
+        let (base, h) = mock_server(vec![(
+            200,
+            "application/json",
+            br#"{"recordings":[]}"#.to_vec(),
+        )])
+        .await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", Some("Canal"), None)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 1);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn faixa_sem_artista_tambem_recebe_apenas_casamento_por_titulo() {
+        let (base, h) = mock_server(vec![
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+            (200, "application/json", br#"{}"#.to_vec()),
+        ])
+        .await;
+        let found = provider(&base)
+            .find_recording("Get Lucky", None, Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(found.title_only);
+        assert!(found.title_only_artist_unambiguous);
+        assert_eq!(h.await.unwrap().len(), 2);
+
+        let (base, h) =
+            mock_server(vec![(200, "application/json", MB_REC.as_bytes().to_vec())]).await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", None, None)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 1);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn busca_sem_artista_com_duas_candidatas_nao_autoriza_artista() {
+        let mut search = fixture(MB_REC);
+        let mut second = search["recordings"][0].clone();
+        second["id"] = Value::String("outra-gravacao".into());
+        second["artist-credit"][0]["name"] = Value::String("Outro artista".into());
+        search["recordings"].as_array_mut().unwrap().push(second);
+        let (base, h) = mock_server(vec![
+            (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
+            (
+                200,
+                "application/json",
+                serde_json::to_vec(&search).unwrap(),
+            ),
+            (200, "application/json", br#"{}"#.to_vec()),
+        ])
+        .await;
+        let found = provider(&base)
+            .find_recording("Get Lucky", Some("Canal"), Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(found.title_only);
+        assert!(!found.title_only_artist_unambiguous);
+        assert_eq!(h.await.unwrap().len(), 3);
+    }
+
+    // @test RF-20
+    #[tokio::test]
+    async fn genero_do_release_group_quando_gravacao_nao_tem_tags() {
+        let mut search = fixture(MB_REC);
+        search["recordings"][0]["releases"][1]["release-group"]["genres"] =
+            fixture(r#"[{"name":"rock","count":3}]"#);
+        let (base, h) = mock_server(vec![
+            (200, "application/json", search.to_string().into_bytes()),
+            (200, "application/json", br#"{"genres":[]}"#.to_vec()),
+        ])
+        .await;
+        let found = provider(&base)
+            .find_recording("Get Lucky", Some("Daft Punk"), Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.genres, ["rock"]);
+        let requests = h.await.unwrap();
+        assert_eq!(requests.len(), 2);
     }
 
     // @test RF-12

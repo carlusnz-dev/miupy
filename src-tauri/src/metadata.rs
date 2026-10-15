@@ -127,7 +127,7 @@ impl MetadataService {
                     .unwrap_or_else(|e| e.into_inner())
                     .current_track_id = Some(t.id.clone());
                 let mut failed = false;
-                if let Err(e) = this.refresh_track(&t.id).await {
+                if let Err(e) = this.refresh_track_inner(&t.id, false).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
                     failed = true;
                 }
@@ -205,6 +205,11 @@ impl MetadataService {
     /// Aqui a rede é o objetivo: erro de rede volta ao usuário. Sem correspondência, devolve a
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
+        self.refresh_track_inner(track_id, true).await
+    }
+
+    // @req RF-12 RF-32
+    async fn refresh_track_inner(&self, track_id: &str, fetch_lyrics: bool) -> AppResult<Track> {
         let id = track_id.to_owned();
         let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
@@ -226,7 +231,12 @@ impl MetadataService {
             let patch = TrackPatch {
                 title: video.track,
                 artist_name: video.artist.map(Some),
-                album: video.album.map(Some),
+                album: track
+                    .album
+                    .is_none()
+                    .then_some(video.album)
+                    .flatten()
+                    .map(Some),
                 release_year: video.release_year.map(|year| Some(year as i32)),
                 ..Default::default()
             };
@@ -240,9 +250,13 @@ impl MetadataService {
             return Ok(updated);
         };
 
-        // Capa: tenta os releases candidatos em ordem; o primeiro que tiver capa vale.
-        let mut mbids = rec.release_mbids.clone();
-        if mbids.is_empty() {
+        // Busca só por título não confirma o lançamento nem sua capa.
+        let mut mbids = if rec.title_only {
+            Vec::new()
+        } else {
+            rec.release_mbids.clone()
+        };
+        if mbids.is_empty() && !rec.title_only {
             mbids.extend(rec.release_mbid.clone());
         }
         let key = crate::paths::album_key(&rec);
@@ -269,21 +283,25 @@ impl MetadataService {
         }
 
         // Letra (LRCLIB); falhar não desfaz o resto.
-        let lyrics = match self
-            .provider
-            .lyrics(
-                &rec.title,
-                &rec.artist,
-                rec.album.as_deref().or(track.album.as_deref()),
-                duration.or(rec.duration_ms),
-            )
-            .await
-        {
-            Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
-            Err(e) => {
-                log::warn!("letra de {}: {e}", track.id);
-                None
+        let lyrics = if fetch_lyrics && !rec.title_only {
+            match self
+                .provider
+                .lyrics(
+                    &rec.title,
+                    &rec.artist,
+                    rec.album.as_deref().or(track.album.as_deref()),
+                    duration.or(rec.duration_ms),
+                )
+                .await
+            {
+                Ok(l) => l.filter(|l| !l.instrumental && (l.plain.is_some() || l.synced.is_some())),
+                Err(e) => {
+                    log::warn!("letra de {}: {e}", track.id);
+                    None
+                }
             }
+        } else {
+            None
         };
 
         // @req RF-20: MusicBrainz é a fonte principal; o vídeo só complementa campos ausentes.
@@ -292,21 +310,47 @@ impl MetadataService {
         } else {
             None
         };
+        // @req RF-12: só corrige canal salvo como artista com uma candidata e duração conhecida.
+        let correct_artist = rec.title_only
+            && rec.title_only_artist_unambiguous
+            && duration.is_some()
+            && video
+                .as_ref()
+                .and_then(|v| v.channel.as_deref())
+                .is_some_and(|channel| {
+                    track
+                        .artist_name
+                        .as_deref()
+                        .is_some_and(|name| name.trim().eq_ignore_ascii_case(channel.trim()))
+                });
         let patch = TrackPatch {
-            title: Some(rec.title.clone())
+            title: (!rec.title_only)
+                .then(|| rec.title.clone())
                 .filter(|t| !t.trim().is_empty())
-                .or_else(|| video.as_ref().and_then(|v| v.track.clone())),
-            artist_name: Some(rec.artist.clone())
+                .or_else(|| {
+                    (!rec.title_only)
+                        .then(|| video.as_ref().and_then(|v| v.track.clone()))
+                        .flatten()
+                }),
+            artist_name: (correct_artist || !rec.title_only)
+                .then(|| rec.artist.clone())
                 .filter(|a| !a.trim().is_empty())
-                .or_else(|| video.as_ref().and_then(|v| v.artist.clone()))
+                .or_else(|| {
+                    (!rec.title_only)
+                        .then(|| video.as_ref().and_then(|v| v.artist.clone()))
+                        .flatten()
+                })
                 .filter(|a| !a.trim().is_empty())
                 .map(Some),
-            album: rec
-                .album
-                .clone()
-                .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+            album: (track.album.is_none() && !rec.title_only)
+                .then(|| {
+                    rec.album
+                        .clone()
+                        .or_else(|| video.as_ref().and_then(|v| v.album.clone()))
+                })
+                .flatten()
                 .map(Some),
-            duration_ms: if track.duration_ms <= 0 {
+            duration_ms: if track.duration_ms <= 0 && !rec.title_only {
                 rec.duration_ms.and_then(|d| i64::try_from(d).ok())
             } else {
                 None
@@ -314,7 +358,7 @@ impl MetadataService {
             cover_path: cover
                 .as_ref()
                 .map(|p| Some(p.to_string_lossy().into_owned())),
-            genres: Some(rec.genres.clone()),
+            genres: (!rec.genres.is_empty()).then(|| rec.genres.clone()),
             release_year: rec
                 .release_year
                 .map(|y| y as i32)
@@ -342,7 +386,9 @@ impl MetadataService {
                     })?;
                 }
                 let mut updated = updated;
-                if let Some(aid) = &updated.artist_id {
+                if !rec.title_only
+                    && let Some(aid) = &updated.artist_id
+                {
                     // O núcleo reaproveita o artista de mesmo nome (sem diferenciar caixa), então
                     // "daft punk" continuaria assim; aqui ele ganha a grafia do MusicBrainz.
                     let rename = (updated.artist_name.as_deref() != Some(artist_name.as_str()))
@@ -622,6 +668,8 @@ mod tests {
 
     fn rec() -> RecordingMatch {
         RecordingMatch {
+            title_only: false,
+            title_only_artist_unambiguous: false,
             mbid: "rec-1".into(),
             title: "Get Lucky".into(),
             artist: "Daft Punk".into(),
@@ -673,6 +721,33 @@ mod tests {
         assert!(!events[3].running);
     }
 
+    // @test RF-32 RF-12
+    #[tokio::test]
+    async fn lote_avanca_sem_consultar_letras() {
+        let f = fx();
+        track(&f);
+        let mut recording = rec();
+        recording.release_mbids.clear();
+        recording.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(recording);
+        *f.fake.lyrics.lock().unwrap() = Some(LyricsData {
+            plain: Some("letra".into()),
+            synced: None,
+            instrumental: false,
+        });
+        let svc = Arc::new(f.svc);
+        svc.enqueue_library_refresh(false).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while svc.refresh_status().running {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(svc.refresh_status().done, 1);
+        assert_eq!(*f.fake.network_calls.lock().unwrap(), 1);
+    }
+
     // @test RF-32
     #[tokio::test]
     async fn segundo_pedido_devolve_conflict_sem_apagar_estado() {
@@ -717,6 +792,8 @@ mod tests {
         mb.isrc = Some("USABC1300001".into());
         *f.fake.recording.lock().unwrap() = Some(mb);
         *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: None,
+            raw_title: None,
             artist: Some("Outro".into()),
             track: Some("Vídeo".into()),
             album: Some("Outro álbum".into()),
@@ -739,6 +816,8 @@ mod tests {
         let f = fx();
         let t = track(&f);
         *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: None,
+            raw_title: None,
             artist: Some("Artista".into()),
             track: Some("Título".into()),
             album: Some("Álbum".into()),
@@ -749,6 +828,111 @@ mod tests {
         assert_eq!(saved.release_year, Some(2022));
         assert_eq!(saved.album.as_deref(), Some("Álbum"));
         assert!(saved.genres.is_empty());
+    }
+
+    // @test RF-12 RF-20
+    #[tokio::test]
+    async fn busca_so_por_titulo_preserva_campos_e_corrige_canal_com_seguranca() {
+        for (channel, raw, unique, duration_ms, expected_artist) in [
+            ("Canal Errado", "Get Lucky", true, 369_000, "Daft Punk"),
+            ("Canal Errado", "Get Lucky", true, 0, "Canal Errado"),
+            ("Canal Errado", "Get Lucky", false, 369_000, "Canal Errado"),
+            ("Outro canal", "Get Lucky", true, 369_000, "Canal Errado"),
+            (
+                "Outro canal",
+                "Canal Errado - Get Lucky",
+                true,
+                369_000,
+                "Canal Errado",
+            ),
+        ] {
+            let f = fx();
+            let t =
+                f.db.with(|db| {
+                    db.upsert_track(&NewTrack::youtube(
+                        "vid1",
+                        "get lucky",
+                        Some("Canal Errado".into()),
+                        duration_ms,
+                        None,
+                    ))
+                })
+                .unwrap()
+                .track;
+            let original_artist_id = t.artist_id.clone();
+            let mut mb = rec();
+            mb.title_only = true;
+            mb.title_only_artist_unambiguous = unique;
+            mb.genres = vec!["disco".into()];
+            mb.release_year = Some(2013);
+            mb.isrc = Some("USABC1300001".into());
+            *f.fake.recording.lock().unwrap() = Some(mb);
+            *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+                channel: Some(channel.into()),
+                raw_title: Some(raw.into()),
+                ..Default::default()
+            });
+            let saved = f.svc.refresh_track(&t.id).await.unwrap();
+            assert_eq!(saved.title, "get lucky");
+            assert_eq!(saved.artist_name.as_deref(), Some(expected_artist));
+            assert_eq!(saved.album, None);
+            assert_eq!(saved.cover_path, None);
+            assert_eq!(saved.genres, ["disco"]);
+            assert_eq!(saved.release_year, Some(2013));
+            assert_eq!(
+                f.db.with(|db| db.get_artist_info(original_artist_id.as_ref().unwrap()))
+                    .unwrap()
+                    .name,
+                "Canal Errado"
+            );
+            if unique && duration_ms > 0 && channel == "Canal Errado" {
+                assert_ne!(saved.artist_id, original_artist_id);
+            }
+        }
+    }
+
+    // @test RF-12 RF-20
+    #[tokio::test]
+    async fn album_existente_e_preservado_nos_dois_caminhos() {
+        for title_only in [false, true] {
+            let f = fx();
+            let t = track(&f);
+            f.db.with(|db| {
+                db.update_track(
+                    &t.id,
+                    &TrackPatch {
+                        album: Some(Some("Álbum escolhido".into())),
+                        ..Default::default()
+                    },
+                )
+            })
+            .unwrap();
+            let mut mb = rec();
+            mb.title_only = title_only;
+            *f.fake.recording.lock().unwrap() = Some(mb);
+            let saved = f.svc.refresh_track(&t.id).await.unwrap();
+            assert_eq!(saved.album.as_deref(), Some("Álbum escolhido"));
+        }
+        let f = fx();
+        let t = track(&f);
+        f.db.with(|db| {
+            db.update_track(
+                &t.id,
+                &TrackPatch {
+                    album: Some(Some("Álbum escolhido".into())),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            album: Some("Álbum do vídeo".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            f.svc.refresh_track(&t.id).await.unwrap().album.as_deref(),
+            Some("Álbum escolhido")
+        );
     }
 
     // @test RF-12
