@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { nextShuffle } from './shuffle';
+import { nextShuffle, shuffleLabel } from './shuffle';
 import { mosaicCells } from './mosaic';
 import { readImageUpload } from './imageUpload';
 
@@ -7,8 +7,9 @@ describe('modo aleatório', () => {
   // @test RF-24
   it('percorre os três estados e volta ao inicial', () => {
     expect(nextShuffle('off')).toBe('random');
-    expect(nextShuffle('random')).toBe('smart');
-    expect(nextShuffle('smart')).toBe('off');
+    expect(nextShuffle('random')).toBe('surfle');
+    expect(nextShuffle('surfle')).toBe('off');
+    expect(shuffleLabel('surfle')).toBe('Surfle');
   });
 });
 describe('mosaico', () => {
