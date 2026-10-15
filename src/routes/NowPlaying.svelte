@@ -11,6 +11,7 @@
   import { favorites } from '../lib/stores/favorites.svelte';
   import { fmtTime, parseLrc } from '../lib/util/format';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
+  import AnimatedText from '../lib/components/AnimatedText.svelte';
   import Cover from '../lib/components/Cover.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import Transport from '../lib/components/Transport.svelte';
@@ -21,6 +22,8 @@
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { dismissable } from '../lib/util/dismiss';
+  import { assetCrossOrigin } from '../lib/util/asset';
+  import { coverPalette } from '../lib/util/palette';
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
@@ -54,6 +57,16 @@
       notifyError(error);
     }
   }
+
+  // Cores da capa para o mesh; sem capa ou com canvas "tainted" fica `undefined` e vale o tema.
+  let meshColors = $state<string[] | undefined>();
+  $effect(() => {
+    const src = api.resolveAsset(t?.coverPath ?? null) ?? t?.thumbnailUrl;
+    if (!src) { meshColors = undefined; return; }
+    let cancelled = false;
+    void coverPalette(src, assetCrossOrigin(src)).then((colors) => { if (!cancelled) meshColors = colors?.length ? [colors[0], colors[1] ?? colors[0], colors[2] ?? colors[1] ?? colors[0]] : undefined; });
+    return () => { cancelled = true; };
+  });
 
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
@@ -93,14 +106,16 @@
     <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
   </State>
 {:else}
-  <MeshGradient class="min-h-full">
+  <MeshGradient class="min-h-full" colors={meshColors}>
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full max-w-[22rem] self-center" rounded="0.75rem" label="Capa de {t.title}" />
+        <div class="enter flex w-full max-w-[22rem] self-center">
+          <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full" rounded="0.75rem" label="Capa de {t.title}" />
+        </div>
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <h1 class="text-2xl font-bold leading-tight">{t.title}</h1>
-            <p class="mt-1 text-muted">
+            <h1 class="text-2xl font-bold leading-tight"><AnimatedText text={t.title} /></h1>
+            <p class="enter mt-1 text-muted" style="--enter-delay:140ms">
               {#if t.artistId}
                 <a class="hover:underline" href={href(paths.artist(t.artistId))}>{t.artistName}</a>
               {:else}
@@ -108,7 +123,7 @@
               {/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>
-            <p class="mt-2 flex flex-wrap gap-1.5">
+            <p class="enter mt-2 flex flex-wrap gap-1.5" style="--enter-delay:200ms">
               {#if t.codec}<span class="chip">{t.codec.toUpperCase()}{t.bitrate ? ` ${t.bitrate} kbps` : ''}</span>{/if}
               {#if player.state.streaming}<span class="chip text-lava-text">{player.isLoading ? 'Conectando…' : 'Streaming'}</span>{/if}
               {#if t.releaseYear}<span class="chip">{t.releaseYear}</span>{/if}
@@ -119,7 +134,7 @@
             </p>
           </div>
         </div>
-        <div class="relative self-start" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
+        <div class="enter relative self-start" style="--enter-delay:260ms" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
           <button type="button" class="btn text-sm" aria-expanded={eqOpen} bind:this={eqButton} onclick={openEq}>
             Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
           </button>
@@ -139,12 +154,12 @@
       </section>
 
       <section class="min-w-0" aria-label="Fila e letra">
-        <div class="mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" role="tablist">
+        <div class="enter mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" style="--enter-delay:120ms" role="tablist">
           <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm flex-1 !border-0 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
           <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm flex-1 !border-0 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
         </div>
 
-        <div class="card max-h-[60vh] overflow-y-auto bg-s1/90 p-2" bind:this={lyricBox} role="tabpanel">
+        <div class="enter card max-h-[60vh] overflow-y-auto bg-s1/90 p-2" style="--enter-delay:200ms" bind:this={lyricBox} role="tabpanel">
           {#if tab === 'queue'}
             {#if player.queueTracks.length === 0}
               <State kind="empty" title="Fila vazia" />
@@ -172,7 +187,7 @@
           {:else if lines.length}
             <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
               {#each lines as l, i}
-                <button data-i={i} class="border-0 bg-transparent px-2 {i === activeLine ? 'text-lava-text' : 'text-faint hover:text-muted'}" onclick={() => player.seek(l.timeMs)}>{l.text || '♪'}</button>
+                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
               {/each}
             </div>
           {:else if lyrics?.plain}
@@ -183,7 +198,7 @@
         </div>
       </section>
 
-      <section class="mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" aria-label="Controles">
+      <section class="enter mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" style="--enter-delay:320ms" aria-label="Controles">
         <Seek />
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
           <div class="flex justify-end md:justify-start"><ShuffleButton /></div>
