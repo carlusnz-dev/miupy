@@ -32,6 +32,8 @@ const MAX_REQUEST_WINDOW: Duration = Duration::from_secs(15);
 /// Gravação encontrada no MusicBrainz.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordingMatch {
+    pub title_only: bool,
+    pub title_only_artist_unambiguous: bool,
     pub mbid: String,
     pub title: String,
     pub artist: String,
@@ -513,11 +515,17 @@ impl MetadataProvider for OnlineMetadata {
                 &[("query", &query), ("fmt", "json"), ("limit", "10")],
             )
             .await?;
-        let mut recording = parse_recordings(&json, duration_ms);
+        let mut recording = if artist.is_none_or(|a| a.trim().is_empty()) {
+            duration_ms
+                .filter(|d| *d > 0)
+                .and_then(|duration| parse_title_only_recording(&json, duration))
+        } else {
+            parse_recordings(&json, duration_ms)
+        };
         // @req RF-12: canal do vídeo pode ter sido gravado como artista. Sem esse filtro,
         // só uma correspondência muito forte de título e duração pode substituir o artista.
         if recording.is_none()
-            && duration_ms.is_some()
+            && duration_ms.is_some_and(|d| d > 0)
             && artist.is_some_and(|a| !a.trim().is_empty())
         {
             let query = recording_query(&cleaned, None)?;
@@ -527,11 +535,8 @@ impl MetadataProvider for OnlineMetadata {
                     &[("query", &query), ("fmt", "json"), ("limit", "10")],
                 )
                 .await?;
-            if let Some(duration) = duration_ms {
-                recording =
-                    parse_recordings_scored(&json, Some(duration), MIN_TITLE_ONLY_SCORE.into())
-                        .filter(|r| r.duration_ms.is_some());
-            }
+            recording =
+                duration_ms.and_then(|duration| parse_title_only_recording(&json, duration));
         }
         let Some(mut recording) = recording else {
             return Ok(None);
@@ -777,6 +782,25 @@ pub(crate) fn parse_recordings(json: &Value, duration_ms: Option<u64>) -> Option
     parse_recordings_scored(json, duration_ms, MIN_MATCH_SCORE)
 }
 
+// @req RF-12: a consulta sem artista nunca autoriza trocar campos do lançamento.
+fn parse_title_only_recording(json: &Value, duration: u64) -> Option<RecordingMatch> {
+    let mut found = parse_recordings_scored(json, Some(duration), MIN_TITLE_ONLY_SCORE.into())
+        .filter(|r| r.duration_ms.is_some())?;
+    found.title_only = true;
+    found.title_only_artist_unambiguous = json["recordings"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .filter(|item| {
+                item["length"]
+                    .as_u64()
+                    .is_some_and(|d| d.abs_diff(duration) <= 10_000)
+            })
+            .count()
+            == 1
+    });
+    Some(found)
+}
+
 fn parse_recordings_scored(
     json: &Value,
     duration_ms: Option<u64>,
@@ -831,6 +855,8 @@ fn parse_recordings_scored(
                 .map(String::from)
                 .collect();
             Some(RecordingMatch {
+                title_only: false,
+                title_only_artist_unambiguous: false,
                 mbid: str_of(r, "id")?.to_string(),
                 title: str_of(r, "title")?.to_string(),
                 artist,
@@ -1138,6 +1164,10 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(b.genres, vec!["pop", "rock"]);
+        let low_votes = parse_artist(&fixture(
+            r#"{"id":"x","name":"N","genres":[{"name":"noise","count":1},{"name":"soul","count":2}]}"#,
+        )).unwrap();
+        assert_eq!(low_votes.genres, ["soul"]);
         assert_eq!(b.country, None);
         assert!(parse_artist(&fixture("{}")).is_err());
         assert_eq!(
@@ -1539,7 +1569,7 @@ mod tests {
 
     // @test RF-12 RF-20
     #[tokio::test]
-    async fn busca_sem_artista_errado_exige_pontuacao_e_duracao() {
+    async fn busca_sem_artista_marca_origem_sem_autorizar_troca_ambigua() {
         let (base, h) = mock_server(vec![
             (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
             (200, "application/json", MB_REC.as_bytes().to_vec()),
@@ -1556,11 +1586,103 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(m.artist, "Daft Punk feat. Pharrell Williams");
+        assert!(m.title_only);
+        assert!(m.title_only_artist_unambiguous);
         assert_eq!(m.genres, ["pop"]);
         let requests = h.await.unwrap();
         assert!(requests[0].contains("artist%3A%22Canal+Errado"));
         assert!(!requests[1].contains("artist%3A"));
         assert_eq!(requests.len(), 3);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn busca_sem_artista_rejeita_duracao_distante_e_ausente() {
+        let (base, h) = mock_server(vec![
+            (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+        ])
+        .await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", Some("Canal"), Some(200_000))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 2);
+
+        let (base, h) = mock_server(vec![(
+            200,
+            "application/json",
+            br#"{"recordings":[]}"#.to_vec(),
+        )])
+        .await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", Some("Canal"), None)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 1);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn faixa_sem_artista_tambem_recebe_apenas_casamento_por_titulo() {
+        let (base, h) = mock_server(vec![
+            (200, "application/json", MB_REC.as_bytes().to_vec()),
+            (200, "application/json", br#"{}"#.to_vec()),
+        ])
+        .await;
+        let found = provider(&base)
+            .find_recording("Get Lucky", None, Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(found.title_only);
+        assert!(found.title_only_artist_unambiguous);
+        assert_eq!(h.await.unwrap().len(), 2);
+
+        let (base, h) =
+            mock_server(vec![(200, "application/json", MB_REC.as_bytes().to_vec())]).await;
+        assert!(
+            provider(&base)
+                .find_recording("Get Lucky", None, None)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(h.await.unwrap().len(), 1);
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn busca_sem_artista_com_duas_candidatas_nao_autoriza_artista() {
+        let mut search = fixture(MB_REC);
+        let mut second = search["recordings"][0].clone();
+        second["id"] = Value::String("outra-gravacao".into());
+        second["artist-credit"][0]["name"] = Value::String("Outro artista".into());
+        search["recordings"].as_array_mut().unwrap().push(second);
+        let (base, h) = mock_server(vec![
+            (200, "application/json", br#"{"recordings":[]}"#.to_vec()),
+            (
+                200,
+                "application/json",
+                serde_json::to_vec(&search).unwrap(),
+            ),
+            (200, "application/json", br#"{}"#.to_vec()),
+        ])
+        .await;
+        let found = provider(&base)
+            .find_recording("Get Lucky", Some("Canal"), Some(369_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(found.title_only);
+        assert!(!found.title_only_artist_unambiguous);
+        assert_eq!(h.await.unwrap().len(), 3);
     }
 
     // @test RF-20
