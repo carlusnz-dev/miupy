@@ -3,6 +3,8 @@
   import { api, EQ_BANDS_HZ, type EqPreset, type Normalization } from '../../ipc';
   import { settings } from '../../stores/settings.svelte';
   import { notifyError } from '../../stores/toast.svelte';
+  import { eqDraft } from '../../util/eqEditor';
+  import Dropdown from '../Dropdown.svelte';
 
   const modes: { id: Normalization; name: string; description: string }[] = [
     { id: 'off', name: 'Desligado', description: 'Mantém o volume original de cada faixa.' },
@@ -16,19 +18,22 @@
   let editId = $state<string | undefined>();
   let name = $state('');
   let gains = $state<number[]>(Array(8).fill(0));
+  let readOnly = $state(false);
   let busy = $state(false);
   $effect(() => {
-    void api.equalizerListPresets().then((list) => { presets = list; }).catch(notifyError);
+    void api.equalizerListPresets().then((list) => { presets = list; edit(list.find((p) => p.id === settings.eqPresetId)); }).catch(notifyError);
   });
 
   function edit(preset?: EqPreset) {
-    editId = preset?.id;
-    name = preset?.name ?? '';
-    gains = [...(preset?.gainsDb ?? Array(8).fill(0))];
+    const draft = eqDraft(preset, gains);
+    editId = draft.id;
+    name = draft.name;
+    gains = draft.gains;
+    readOnly = draft.readOnly;
   }
 
   async function select(id: string) {
-    try { await settings.setEqualizer(id); } catch (error) { notifyError(error); }
+    try { await settings.setEqualizer(id); edit(presets.find((p) => p.id === id)); } catch (error) { notifyError(error); }
   }
 
   async function save() {
@@ -51,7 +56,7 @@
       await api.equalizerDeletePreset({ presetId: editId });
       presets = await api.equalizerListPresets();
       if (settings.eqPresetId === editId) settings.eqPresetId = 'flat';
-      edit();
+      edit(presets.find((p) => p.id === settings.eqPresetId));
     } catch (error) {
       notifyError(error);
     } finally {
@@ -80,11 +85,7 @@
   <h3 class="mt-6 mb-2 font-medium">Equalizador</h3>
   <p class="mb-3 text-sm text-muted">Ajuste o som com um perfil pronto ou crie até três perfis.</p>
   <label class="block text-sm" for="eq-preset">Perfil ativo</label>
-  <select id="eq-preset" class="input mt-1 w-full" value={settings.eqPresetId} onchange={(e) => select(e.currentTarget.value)}>
-    {#each presets as preset}
-      <option value={preset.id}>{preset.name}</option>
-    {/each}
-  </select>
+  <Dropdown id="eq-preset" class="mt-1 block" value={settings.eqPresetId} options={presets.map((p) => ({ value: p.id, label: p.name }))} onchange={select} />
   <div class="mt-4 flex flex-wrap gap-2">
     {#each presets.filter((p) => !p.builtin) as preset}
       <button type="button" class="btn" onclick={() => edit(preset)}>{preset.name}</button>
@@ -96,23 +97,27 @@
   {#if editId || presets.length < 11}
     <div class="card mt-4 space-y-3 p-4">
       <label class="block text-sm" for="eq-name">Nome do perfil</label>
-      <input id="eq-name" class="input w-full" maxlength="30" bind:value={name} placeholder="Meu perfil" />
+      <input id="eq-name" class="input w-full" maxlength="30" disabled={readOnly} bind:value={name} placeholder="Meu perfil" />
       {#each EQ_BANDS_HZ as hz, i}
         <label class="flex items-center gap-3 text-sm">
           <span class="w-16">{hz >= 1000 ? `${hz / 1000} kHz` : `${hz} Hz`}</span>
           <input
-            type="range" min="-12" max="12" step="0.5" value={gains[i]} class="min-w-0 flex-1"
+            type="range" min="-12" disabled={readOnly} max="12" step="0.5" value={gains[i]} class="min-w-0 flex-1"
             oninput={(e) => { gains[i] = Number(e.currentTarget.value); gains = [...gains]; }}
           />
           <span class="w-12 text-right">{gains[i]} dB</span>
         </label>
       {/each}
-      <div class="flex gap-2">
-        <button type="button" class="btn btn-primary" disabled={busy || !name.trim()} onclick={save}>Salvar perfil</button>
-        {#if editId}
-          <button type="button" class="btn" disabled={busy} onclick={remove}>Apagar</button>
-        {/if}
-      </div>
+      {#if readOnly}
+        <p class="text-sm text-muted">Perfil pronto: só leitura. Use “Criar perfil” para partir desta curva.</p>
+      {:else}
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-primary" disabled={busy || !name.trim()} onclick={save}>Salvar perfil</button>
+          {#if editId}
+            <button type="button" class="btn" disabled={busy} onclick={remove}>Apagar</button>
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </section>
