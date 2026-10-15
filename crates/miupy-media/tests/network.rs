@@ -54,21 +54,8 @@ async fn musicbrainz_faixas_do_autor_com_canal_errado() {
             .unwrap();
         println!("{title}: {found:#?}");
         let found = found.expect("sem correspondência segura");
-        let saved_artist = if found.title_only {
-            channel
-        } else {
-            &found.artist
-        };
-        assert_eq!(
-            saved_artist,
-            if found.title_only { channel } else { artist }
-        );
-        if found.title_only {
-            let saved_album: Option<&str> = None;
-            assert_eq!(
-                saved_album, None,
-                "{title}: busca só por título não deve gravar álbum"
-            );
+        if !found.title_only {
+            assert_eq!(found.artist, artist, "{title}: artista errado");
         }
     }
 }
