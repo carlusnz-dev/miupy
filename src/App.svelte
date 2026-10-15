@@ -15,6 +15,7 @@
   import { isTyping } from './lib/util/typing';
   import Nav from './lib/components/Nav.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
+  import RightPanel from './lib/components/RightPanel.svelte';
   import MiniPlayer from './lib/components/MiniPlayer.svelte';
   import Toasts from './lib/components/Toasts.svelte';
   import PinnedToast from './lib/components/PinnedToast.svelte';
@@ -92,8 +93,8 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)">
-  <!-- @req RF-38: grade menu | conteúdo | painel (a terceira coluna, --aside-w, ainda não tem painel) -->
-  <div class="grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_var(--aside-w)]">
+  <!-- @req RF-38 RF-39: grade menu | conteúdo | painel da direita -->
+  <div class="relative grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto]">
     <Nav variant="side" />
     <div class="relative col-start-2 flex min-h-0 min-w-0 flex-col">
     <main bind:this={main} class="relative min-h-0 flex-1 overflow-y-auto {name !== 'now-playing' ? 'md:pb-[calc(var(--player-h)+2.5rem)]' : ''}" id="conteudo" tabindex="-1">
@@ -128,6 +129,8 @@
       <div class="pointer-events-none absolute inset-x-5 bottom-4 hidden md:block" transition:springTransition><PlayerBar /></div>
     {/if}
     </div>
+    <!-- @req RF-39: em Tocando a tela já mostra fila e letra -->
+    {#if name !== 'now-playing'}<RightPanel />{/if}
   </div>
 
   <div class="md:hidden">
