@@ -1,5 +1,6 @@
 // @req RF-17
 import { api, type LavaTheme, type Normalization, type Settings } from '../ipc';
+import { parseRightPanel, RIGHT_PANEL_KEY } from '../util/rightPanel';
 import { clampSidebarWidth, parseCollapsed, SIDEBAR_COLLAPSED_KEY, SIDEBAR_KEY } from '../util/sidebar';
 
 const KEY = 'miupy.lava';
@@ -17,12 +18,18 @@ function readCollapsed(): boolean {
   try { return parseCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)); } catch { return false; }
 }
 
+function readRightPanel(): boolean | null {
+  try { return parseRightPanel(localStorage.getItem(RIGHT_PANEL_KEY)); } catch { return null; }
+}
+
 class SettingsStore {
   lava = $state<LavaTheme>('orange');
   normalization = $state<Normalization>('normal');
   eqPresetId = $state('flat');
   sidebarWidth = $state(280);
   sidebarCollapsed = $state(readCollapsed());
+  /** @req RF-39: `null` até o usuário abrir ou recolher o painel da direita. */
+  rightPanel = $state<boolean | null>(readRightPanel());
   loaded = $state(false);
   private sidebarSave: Promise<void> = Promise.resolve();
   private sidebarSaveGeneration = 0;
@@ -78,6 +85,12 @@ class SettingsStore {
   setSidebarCollapsed(value: boolean) {
     this.sidebarCollapsed = value;
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? '1' : '0'); } catch { /* sem storage: ok */ }
+  }
+
+  // @req RF-39
+  setRightPanel(value: boolean) {
+    this.rightPanel = value;
+    try { localStorage.setItem(RIGHT_PANEL_KEY, value ? '1' : '0'); } catch { /* sem storage: ok */ }
   }
 
   /** Aplica na hora (pré-visualização imediata) e persiste em seguida. */
