@@ -14,6 +14,24 @@ pub enum PlayerStatus {
     Paused,
 }
 
+// @req RF-03 RF-42
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueContext {
+    pub kind: QueueContextKind,
+    pub id: Option<String>,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QueueContextKind {
+    Playlist,
+    Artist,
+    Library,
+    Other,
+}
+
 impl From<PlaybackStatus> for PlayerStatus {
     fn from(s: PlaybackStatus) -> Self {
         match s {
@@ -36,6 +54,8 @@ pub struct PlayerState {
     pub volume: f32,
     pub muted: bool,
     pub queue: Vec<String>,
+    // @req RF-03 RF-42
+    pub context: Option<QueueContext>,
     /// -1 se a fila está vazia.
     pub queue_index: i64,
     // @req RF-18
@@ -143,6 +163,11 @@ mod tests {
             volume: 0.8,
             muted: false,
             queue: vec!["a".into()],
+            context: Some(QueueContext {
+                kind: QueueContextKind::Playlist,
+                id: Some("pl-1".into()),
+                label: "Minha lista".into(),
+            }),
             queue_index: 0,
             streaming: false,
             shuffle: ShuffleMode::Off,
@@ -154,6 +179,10 @@ mod tests {
         assert_eq!(v["queueIndex"], 0);
         assert!(v["track"].is_null());
         assert_eq!(v["queue"][0], "a");
+        // @test RF-42
+        assert_eq!(v["context"]["kind"], "playlist");
+        assert_eq!(v["context"]["id"], "pl-1");
+        assert_eq!(v["context"]["label"], "Minha lista");
         assert_eq!(serde_json::to_string(&s.volume).unwrap(), "0.8");
     }
 
