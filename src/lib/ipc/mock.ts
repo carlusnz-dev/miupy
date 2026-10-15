@@ -107,7 +107,7 @@ function buildTracks(): Track[] {
       isFavorite: r() < 0.25,
       downloadStatus: dl === 'queued' ? 'none' : dl,
       addedAt: now - Math.floor(r() * 200) * DAY,
-      genres: [...a.genres], releaseYear: 2018 + i % 8, loudnessLufs: dl === 'done' ? -16 + i % 8 : null,
+      genres: [...a.genres], releaseYear: 2018 + i % 8, loudnessLufs: dl === 'done' ? -16 + i % 8 : null, thumbnailUrl: null,
     } satisfies Track;
   });
 }
@@ -463,7 +463,7 @@ export function createMockApi(): MiupyApi {
         if (ex) { out.push({ ...ex }); continue; }
         const src = YT_POOL.find((p) => p.sourceId === sid) ?? err('not_found', 'Resultado não encontrado.');
         const art = ARTISTS.find((a) => a.name === src.artist);
-        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null, loudnessLufs: null };
+        const t: Track = { id: uid('trk'), title: src.title, artistId: art?.id ?? null, artistName: src.artist, album: null, durationMs: src.durationMs, filePath: null, coverPath: null, source: 'youtube', sourceId: sid, codec: null, bitrate: null, isFavorite: false, downloadStatus: 'none', addedAt: Date.now(), genres: [], releaseYear: null, loudnessLufs: null, thumbnailUrl: null };
         tracks.push(t);
         youtubeIds.set(sid, t.id);
         out.push({ ...t });
