@@ -41,10 +41,11 @@ npx tauri dev
 Abra o DevTools da janela (botão direito, "Inspecionar elemento") e, no console:
 
 ```js
-const r = await __miupyPerf.run();
-console.table(r.steps);
-r.ok; r.over50; r.fastRatio; r.p95Ms; r.maxMs
+__miupyPerf.run().then(r => { console.table(r.steps); console.log(r) })
 ```
+
+O console do WebKitGTK não aceita `await` no nível de cima; por isso o `.then`. Em `r` olhe `ok`,
+`over50`, `fastRatio`, `p95Ms` e `maxMs`.
 
 Cuidados: o passo 0 **toca a primeira faixa de verdade** (baixe o volume antes); o passo 9 usa o
 `emit` do Tauri, o que dispara o mesmo `library://changed` que o backend emite. Rode 3 vezes e ignore
@@ -55,7 +56,7 @@ centenas de faixas.
 
 ```bash
 npm run dev                       # http://localhost:1420 (use outra porta se o app já ocupar)
-# no console da página:  await __miupyPerf.run()
+# no console da página:  __miupyPerf.run().then(r => console.log(r))
 ```
 
 Parâmetros do mock (só em dev):
