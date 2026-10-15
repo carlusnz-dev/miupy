@@ -6,7 +6,9 @@ description: Confere uma mudança de interface do miupy no navegador com o MCP d
 # Revisar no navegador (Playwright MCP)
 
 O servidor `playwright` está em `.mcp.json` (headless, perfil isolado, **sem imagem nas
-respostas**). Ele roda o frontend com o **mock** (`src/lib/ipc/mock.ts`), não o app Tauri: serve
+respostas**; prints vão para `target/playwright/` relativo à raiz do repo, então lance a sessão
+da raiz). Na primeira vez o Claude Code pede para aprovar o servidor do projeto; o Chromium do
+Playwright precisa estar instalado (`npx playwright install chromium`). Ele roda o frontend com o **mock** (`src/lib/ipc/mock.ts`), não o app Tauri: serve
 para fluxo, estado e acessibilidade; áudio, GPU e arquivos reais ficam para o autor no app.
 
 ## Subir
@@ -15,7 +17,8 @@ para fluxo, estado e acessibilidade; áudio, GPU e arquivos reais ficam para o a
 npm run dev -- --port 1430 --strictPort    # porta própria; a 1420 é do tauri dev
 ```
 
-Se precisar de fundo para o servidor, rode-o num terminal do Orca, não em segundo plano na sessão.
+O servidor é a única exceção ao "nada em segundo plano": rode-o num terminal do Orca
+(`orca terminal create --worktree path:$PWD --command "npm run dev -- --port 1430 --strictPort"`).
 Parâmetros do mock: `?perfTracks=300` (acervo maior), `?latency=800` (ver esqueletos).
 
 ## Conferir gastando pouco
@@ -26,9 +29,9 @@ Parâmetros do mock: `?perfTracks=300` (acervo maior), `?latency=800` (ver esque
 3. Ações pelo `ref` do snapshot (`browser_click`, `browser_type`, `browser_press_key` — ex.:
    Escape para popups). Depois da ação, leia só o que mudou com `browser_evaluate`, por exemplo:
    - `() => document.activeElement?.getAttribute('aria-label')` (foco voltou?);
-   - `() => getComputedStyle(document.body).userSelect` (seleção desligada?);
-   - `() => [...document.querySelectorAll('[data-row]')].length` (quantas linhas);
-   - `() => document.querySelector('.player-bar') !== null` (componente na tela?).
+   - `() => getComputedStyle(document.body).userSelect` (seleção de texto desligada?);
+   - `() => document.querySelectorAll('[role=listitem]').length` (quantas linhas de faixa);
+   - `() => !!document.querySelector('footer[aria-label=Player]')` (player de baixo na tela?).
 4. Print (`browser_take_screenshot`) **só** quando o visual é o objeto (alinhamento, cor), no
    máximo um por tela; ele vai para `target/playwright/` e você o lê com a ferramenta de arquivo
    só se precisar.

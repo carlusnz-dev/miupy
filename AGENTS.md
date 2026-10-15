@@ -30,7 +30,7 @@ Player de música offline (Rust + Tauri 2, desktop e Android). Leia antes de mex
 Em `.claude/skills/`: `revisar-pr` (antes de todo merge), `codigo-enxuto` (antes de implementar),
 `desenhar-interface` e `revisar-design` (interface no tema magma), `revisar-playwright`
 (navegador pelo MCP do `.mcp.json`, sem prints), `relatorio` (fim de frente ou sessão) e
-`briefing-frente` (orquestração, ao soltar um agente).
+`briefing-frente` (orquestração, ao soltar um agente). `relatorio` cobre o passo 3 de "Fim de sessão".
 
 ## Git
 

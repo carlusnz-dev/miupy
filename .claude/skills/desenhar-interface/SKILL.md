@@ -5,8 +5,7 @@ description: Princípios de UI/UX para criar ou mudar telas e componentes do miu
 
 # Desenhar interface no miupy
 
-Adaptado da skill `frontend-design` da Anthropic para um app que já tem identidade: aqui não se
-inventa estilo, se **estende o magma** (`src/app.css`, cabeçalho "Design tokens magma").
+Aqui não se inventa estilo, se **estende o magma** (`src/app.css`, cabeçalho "Design tokens magma").
 
 ## Identidade (não negociável)
 
@@ -27,7 +26,7 @@ inventa estilo, se **estende o magma** (`src/app.css`, cabeçalho "Design tokens
 
 ## Movimento
 
-- Poucos e com propósito: abrir, expandir, confirmar. Molas do projeto (`src/lib/motion.ts`, primitivas
+- Poucos e com propósito: abrir, expandir, confirmar. Molas do projeto (`springTransition` em `src/lib/motion.ts`, `src/lib/layoutPresence.ts`; primitivas
   existentes), não transições soltas.
 - Listas: a entrada animada vale para as linhas visíveis de forma consistente (todas com a mesma
   animação até o limite, sem metade com mola e metade só com fade). Respeite

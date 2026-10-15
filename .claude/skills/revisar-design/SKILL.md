@@ -9,14 +9,14 @@ Barato: leia o diff de `src/` e confira a lista. Só abra o navegador (`revisar-
 que o código não responde.
 
 ```sh
-git diff develop...HEAD --stat -- src
-git diff develop...HEAD -- src '*.svelte' '*.css'
+git diff develop...HEAD --stat -- src && git diff develop...HEAD -- src
 ```
 
 ## Lista
 
 1. **Tokens:** nenhuma cor/raio/sombra literal nova (`#`, `rgb(`, `box-shadow`) fora de
-   `src/app.css`; usa `var(--…)` do magma (`desenhar-interface`).
+   `src/app.css`; usa `var(--…)` do magma ou as classes Tailwind ligadas a ele (`bg-s1`,
+   `text-lava-text`…). Sobreposição `bg-black/50` em cima de capa é aceita (já é o padrão).
 2. **Componentes do app:** nenhum `<select>`, checkbox ou botão cru onde existe componente do
    tema; componente novo vai para `src/lib/components/` e é reaproveitado.
 3. **Estados:** carregando (esqueleto no formato), vazio (convida a agir), erro (diz o que fazer)

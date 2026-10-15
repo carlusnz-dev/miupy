@@ -7,7 +7,7 @@ description: Escreve o relatório de agente ou de sessão do miupy em docs/relat
 
 Modelo e nomes em `docs/relatorios/README.md` (não o reescreva aqui; leia só o bloco "Modelo").
 
-- Agente: `docs/relatorios/AAAA-MM-DD_sessao-NN_agente-<frente>.md`.
+- Agente: `docs/relatorios/AAAA-MM-DD_sessao-NN_agente-<frente>.md` (data e NN que o briefing der).
 - Sessão: `docs/relatorios/AAAA-MM-DD_sessao-NN.md`; só a orquestração edita o índice do README.
 
 ## Como montar sem gastar

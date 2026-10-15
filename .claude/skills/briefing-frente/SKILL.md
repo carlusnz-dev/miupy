@@ -24,10 +24,10 @@ Escreva só o que é **desta frente**; as regras fixas vêm do bloco abaixo, cop
 Leia AGENTS.md e use as skills do projeto: codigo-enxuto ao implementar, relatorio no fim,
 revisar-design/revisar-playwright se mexer na interface.
 Cargo: CARGO_BUILD_JOBS=<n> RUST_TEST_THREADS=<n> nice -n 10; nunca exporte RUSTFLAGS nem
-CARGO_TARGET_DIR. node_modules é link somente leitura: não rode npm install. Não rode
+CARGO_TARGET_DIR. Nos worktrees do Orca, node_modules é link somente leitura: não rode npm install. Não rode
 npm run docs:matriz. // @req RF-NN no código, // @test RF-NN nos testes. pt-BR na interface e nos
 docs; identificadores em inglês. Commits em Conventional Commits (tipo/escopo em inglês; descrição
-em pt-BR no presente do indicativo, minúscula, sem ponto, até 72 caracteres; escopos core, audio,
+em pt-BR no imperativo do projeto ("adiciona", "corrige"), minúscula, sem ponto, até 72 caracteres; escopos core, audio,
 media, shell, ui, ipc, db, docs, deps). Antes de terminar, rode e registre: cargo fmt --all;
 cargo clippy --workspace --all-targets -- -D warnings; cargo test --workspace; npm run check;
 npm test; npm run build; node scripts/rastreabilidade.mjs --check. Nada em segundo plano. Tarefa
@@ -41,11 +41,11 @@ Commite localmente. Push por HTTPS:
 git -c url."https://github.com/".insteadOf="git@github.com:" -c credential.helper= -c credential.helper='!gh auth git-credential' push -u upstream <branch>
 Confira o título: node scripts/ci/verificar-pr.mjs --head <branch> --base develop --titulo "<t>".
 gh pr create --base develop. Depois lance UM subagente revisor (ferramenta Agent, model sonnet,
-sem segundo plano) com a skill revisar-pr, proibido de fazer merge/comentar/push; corrija os
+sem segundo plano) com a skill revisar-pr só até a decisão (passos 1 a 3), proibido de fazer merge/comentar/push: comentário e merge são seus; corrija os
 achados e devolva ao mesmo revisor. Aprovado: gh pr comment com o parecer, espere
 gh pr checks <n> --watch verde e gh pr merge <n> --squash. Nunca --admin, nunca force-push, nunca
-fechar/reabrir PR; branch atrás da develop: git merge upstream/develop. Não apague o worktree (a
-orquestração apaga). Termine com o número do PR e o estado.
+fechar/reabrir PR; branch atrás da develop: git merge upstream/develop. Não apague o worktree nem o branch
+(a orquestração apaga os dois). Termine com o número do PR e o estado.
 ```
 
 ### Codex

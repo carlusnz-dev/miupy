@@ -10,11 +10,15 @@ Objetivo: resolver com o que já existe, no menor diff que se lê de uma vez.
 ## Antes de escrever
 
 1. **Já existe?** Procure antes de criar, com `grep -rn` pelo nome provável e pelo comportamento:
-   - Rust: `crates/miupy-core/src/` (domínio), `src-tauri/src/` (cola), `crates/miupy-media/src/`.
+   - Rust: `crates/miupy-core/src/` (domínio), `src-tauri/src/` (cola), `crates/miupy-media/src/`,
+     `crates/miupy-audio/src/`.
    - Svelte: `src/lib/components/`, `src/lib/stores/`, `src/lib/util/`, `src/lib/ipc/`.
-   - Exemplos que já existem: `Resource` (cache por consulta), `Chunked` (listas longas),
-     `SkeletonList`, `Modal`, `Toasts`/`notifyError`, `name_key` (chave sem caixa e acento),
-     `request_limited` (ritmo de API), `FakeResolver` (testes do player).
+   - Já existem: `Resource` (`src/lib/stores/resource.svelte.ts`, cache por consulta),
+     `Chunked` (`src/lib/util/chunked.svelte.ts`, listas longas), `notifyError`
+     (`src/lib/stores/toast.svelte.ts`), `dismiss` (`src/lib/util/dismiss.ts`, Escape/clique fora),
+     `SkeletonList`, `Modal`, `name_key` (`crates/miupy-core/src/text.rs`, chave sem caixa e
+     acento), `request_limited` (`crates/miupy-media/src/metadata.rs`, ritmo de API),
+     `FakeResolver` (`src-tauri/src/youtube.rs`, testes do player).
 2. **Precisa mesmo?** Se a mudança cabe numa função existente com um parâmetro a mais, não crie
    outra. Se só um lugar usa, não abstraia.
 3. **Leia só o necessário:** `grep -n` para achar, depois `sed -n 'a,bp'` do trecho. Não leia
