@@ -21,6 +21,32 @@ fn job_from_row(r: &Row<'_>) -> rusqlite::Result<DownloadJob> {
 }
 
 impl Database {
+    // @req RF-31
+    /// Jobs automáticos que aguardam rede, incluindo os que sobreviveram a outra abertura.
+    pub fn offline_auto_tracks(&self, playlist_id: &str) -> Result<Vec<String>> {
+        self.get_playlist(playlist_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT j.track_id FROM download_jobs j
+             JOIN playlist_tracks pt ON pt.track_id = j.track_id
+             WHERE pt.playlist_id = ?1 AND j.status = 'error'
+               AND j.error LIKE 'auto_offline:%'
+             ORDER BY pt.position, j.id",
+        )?;
+        Ok(stmt
+            .query_map([playlist_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    // @req RF-31
+    pub fn auto_inflight_count(&self, playlist_id: &str) -> Result<usize> {
+        self.get_playlist(playlist_id)?;
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM download_jobs j JOIN playlist_tracks pt ON pt.track_id = j.track_id
+             WHERE pt.playlist_id = ?1 AND j.status IN ('queued', 'downloading')",
+            [playlist_id], |r| r.get(0),
+        )?;
+        Ok(count as usize)
+    }
     // @req RF-10
     pub fn get_download(&self, job_id: &str) -> Result<DownloadJob> {
         self.conn
@@ -207,10 +233,12 @@ impl Database {
     }
 
     // @req RF-10
-    /// Remove da lista os jobs concluídos ou com erro. Não altera faixas nem arquivos.
+    /// Remove da lista os jobs concluídos ou com erro definitivo. Jobs automáticos
+    /// aguardando rede ficam para a próxima tentativa. Não altera faixas nem arquivos.
     pub fn clear_finished_downloads(&self) -> Result<usize> {
         Ok(self.conn.execute(
-            "DELETE FROM download_jobs WHERE status IN ('done', 'error')",
+            "DELETE FROM download_jobs WHERE status = 'done'
+             OR (status = 'error' AND (error IS NULL OR error NOT LIKE 'auto_offline:%'))",
             [],
         )?)
     }
@@ -285,6 +313,30 @@ mod tests {
             db.get_track(&error.id).unwrap().download_status,
             DownloadStatus::Error
         );
+    }
+
+    // @test RF-31
+    #[test]
+    fn limpar_concluidos_preserva_espera_por_rede() {
+        let db = db();
+        let offline = yt(&db, "offline-clear");
+        let ordinary = yt(&db, "ordinary-clear");
+        let jobs = db
+            .enqueue_downloads(&[offline.id.clone(), ordinary.id.clone()])
+            .unwrap();
+        db.update_download(
+            &jobs[0].id,
+            &upd(DownloadStatus::Error, None, Some("auto_offline:sem rede")),
+        )
+        .unwrap();
+        db.update_download(
+            &jobs[1].id,
+            &upd(DownloadStatus::Error, None, Some("outro erro")),
+        )
+        .unwrap();
+        assert_eq!(db.clear_finished_downloads().unwrap(), 1);
+        assert_eq!(db.list_downloads().unwrap().len(), 1);
+        assert_eq!(db.list_downloads().unwrap()[0].track_id, offline.id);
     }
 
     fn yt(db: &Database, sid: &str) -> Track {
