@@ -113,6 +113,27 @@ ruído de uma máquina em uso); com 1500 faixas e sem virtualização ainda sobr
 Tentativas que pioraram e foram descartadas: `content-visibility: auto` nas linhas (de 0 para 40
 quadros acima de 50 ms ao montar a Discoteca no Firefox).
 
+## GPU no Linux (WebKitGTK)
+
+O WebKitGTK prende a renderização perto de 60 fps (`PreferPageRenderingUpdatesNear60FPS`). Com a
+GPU em uso, `src-tauri/src/webkit_frames.rs` desliga essa preferência e o rAF segue o monitor. Em
+software ela fica ligada: sem o teto, a rolagem caiu para ~40 fps, com p95 de 30 a 57 ms.
+
+Para medir com GPU, abra o app com o inspetor remoto e fale com ele pelo protocolo
+(`Target.sendMessageToTarget` → `Runtime.evaluate`). O `awaitPromise` não funciona: guarde o
+resultado numa global e leia depois.
+
+```bash
+MIUPY_GPU=on WEBKIT_SHOW_FPS=1 WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9333 npx tauri dev
+```
+
+Resultado na sessão 09 (Hyprland, NVIDIA + Intel híbrido, 144 Hz, escala 1,2): rAF a 144 fps,
+p95 de 8 ms e pior quadro de 11 ms, em repouso e rolando. **Mesmo assim, a tela engasga**: a página
+entrega os quadros, e o problema está no caminho até o compositor (DMABUF, SHM, Intel e NVIDIA
+deram o mesmo resultado). Por isso o modo Automático usa software em Wayland + NVIDIA. O VFR e o
+*direct scanout* do Hyprland já estavam desligados. Ainda falta testar um bisect por versões com
+a GPU ligada.
+
 ## Tabela para o app real
 
 Preencha depois de rodar no `tauri dev` (3 rodadas, ignorando a primeira):
