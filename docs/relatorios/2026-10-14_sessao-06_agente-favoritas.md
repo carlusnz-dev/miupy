@@ -34,6 +34,10 @@
 
 ## Pendências e problemas conhecidos
 
+- O evento de atividade `track_favorited` só é registrado por `library_set_favorite`. Faixa que
+  entra na playlist marcada por `playlist_add_tracks` (ou pela migração) não gera o evento; a
+  pontuação lê a view `favorites` e fica certa (achado da revisão).
+
 - Não houve verificação visual em janela Tauri ou Android nesta sessão.
 - Testes de rede seguem ignorados pela suíte padrão do projeto.
 
