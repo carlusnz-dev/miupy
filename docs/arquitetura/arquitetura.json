@@ -1,8 +1,8 @@
 {
   "projeto": "miupy",
   "versao": "0.2.1",
-  "atualizadoEm": "2026-10-14",
-  "sessao": "2026-10-14_sessao-06",
+  "atualizadoEm": "2026-10-15",
+  "sessao": "2026-10-15_sessao-07",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -33,7 +33,7 @@
       "id": "miupy-core",
       "caminho": "crates/miupy-core",
       "tipo": "crate-rust",
-      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006). Favoritas mantidas pela playlist marcada, com migração 0007 e view para pontuação, gosto e DNA.",
+      "papel": "Domínio e persistência: modelos, SQLite com migrações, FTS5, playlists, downloads, atividade, estatísticas, retrospectiva, perfil, configurações, metadados da faixa e motor de recomendação local. Pontuação por faixa, DNA, aleatório e smart random, mosaico da playlist, imagens (avatar, capa, foto de artista) e modo de GPU salvo. Medições de loudness e preferência de normalização por faixa. Perfis prontos e personalizados do equalizador (migração 0005) e largura salva do menu lateral (0006). Favoritas mantidas pela playlist marcada, com migração 0007 e view para pontuação, gosto e DNA. Download automático por playlist (migração 0009).",
       "dependeDe": [],
       "tecnologias": [
         "rusqlite (bundled)",
@@ -66,7 +66,8 @@
         "RNF-01",
         "RF-28",
         "RF-29",
-        "RF-33"
+        "RF-33",
+        "RF-31"
       ],
       "limitacoes": []
     },
@@ -145,7 +146,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita. Módulo auto_download liga playlists à fila única e retenta falhas de rede.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -185,7 +186,8 @@
         "RNF-12",
         "RF-29",
         "RF-33",
-        "RF-32"
+        "RF-32",
+        "RF-31"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",
@@ -197,7 +199,7 @@
       "id": "frontend",
       "caminho": "src",
       "tipo": "spa-svelte",
-      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento e o resultado do reprocessamento de metadados. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas.",
+      "papel": "Interface magma: telas, stores, tema da lava, cliente IPC tipado (mock só em desenvolvimento), seção de recomendações, primitivas de movimento de mola, cache de respostas por consulta com esqueleto de carregamento (RNF-11) e medidor de fluidez só de desenvolvimento (RNF-13). Seção de áudio com seleção do modo de normalização. Seleção e edição de perfis do equalizador nas Configurações e seleção rápida em Tocando. Botão primário flat, toast de vidro e menu lateral redimensionável. Configurações mostram o andamento e o resultado do reprocessamento de metadados. Busca do YouTube permite favoritar e playlists mostram a marcação de favoritas. Playlists podem baixar automaticamente e o toast resume a fila.",
       "dependeDe": [
         "src-tauri (via IPC)"
       ],
@@ -225,7 +227,8 @@
         "RF-29",
         "RF-30",
         "RF-32",
-        "RF-33"
+        "RF-33",
+        "RF-31"
       ],
       "limitacoes": [
         "Visual na janela (WebKitGTK) não visto pela orquestração.",

@@ -161,7 +161,7 @@ uma migração já aplicada no banco do autor não pode mudar de posição.
 | `0006_sidebar_width.sql` | `feat/visual-flat` | **Implementada:** `settings.sidebar_width` |
 | `0007_favorites_playlist.sql` | `feat/favoritas-playlist` | **Implementada:** `settings.favorites_playlist_id`; migra favoritas para a playlist marcada e substitui a tabela por *view* |
 | `0008_search_history.sql` | `feat/busca-vazia` | `search_history` |
-| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | `playlists.auto_download` |
+| `0009_auto_download.sql` | `feat/playlist-baixar-automatico` | **Implementada:** `playlists.auto_download` (0/1, padrão 0) |
 | `0010_artist_refresh.sql` | `feat/artista-e-cache` | `artists.fetched_at`; `settings.artist_auto_refresh` |
 | `0011_system_logs.sql` | `feat/registros-sistema` | `system_logs`; `settings.debug_mode` |
 
