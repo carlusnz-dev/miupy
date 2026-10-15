@@ -104,8 +104,8 @@ ler queue[i].id.
 1. Branch a partir de `develop` (ou de `main`, se for `hotfix/*`).
 2. Antes de abrir: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
    `cargo test --workspace`; se tocou no frontend, `npm run check`, `npm test` e `npm run build`.
-   A matriz de rastreabilidade não precisa ser gerada à mão: o CI faz isso (ver "Integração
-   contínua").
+   Não gere a matriz de rastreabilidade no PR de trabalho: ela é gerada no branch de versão (ver
+   "Matriz de rastreabilidade").
 3. O **título do PR segue o mesmo formato de commit**, porque vira a mensagem do commit de
    integração: `feat(audio): toca M4A por streaming`.
 4. Revisão antes do merge: quem revisa lê o diff inteiro e roda a verificação. Para agentes, é a
@@ -151,6 +151,9 @@ O job `docs` cobra a matriz em dia só no PR e no push para a `main`.
 - Até a sessão 06 havia um `matriz.yml` que commitava a matriz no branch de cada PR. O CI do
   commit do bot rodava por `workflow_dispatch`, que o ruleset nem sempre ligava ao PR, e os PRs
   ficavam bloqueados com tudo verde. Por isso nenhum bot commita mais em branch de PR.
+- PR `hotfix/*` → `main` é cobrado como qualquer PR para a `main`: se o hotfix mexe em
+  `@req`/`@test`, rode `npm run docs:matriz` no próprio branch. O retorno do hotfix para
+  `develop` não é cobrado.
 - `node scripts/rastreabilidade.mjs --check` continua útil localmente para achar ID inexistente
   (o job `docs` roda esse check em todo PR).
 
