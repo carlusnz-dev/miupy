@@ -41,3 +41,9 @@ pub async fn metadata_refresh_library(
 pub fn metadata_refresh_status(state: State<'_, AppState>) -> MetadataRefreshStatus {
     state.metadata.refresh_status()
 }
+
+// @req RF-32
+#[tauri::command]
+pub fn metadata_refresh_cancel(state: State<'_, AppState>) {
+    state.metadata.cancel_library_refresh();
+}

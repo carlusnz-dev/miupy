@@ -57,6 +57,8 @@ pub struct Progress {
 #[serde(rename_all = "camelCase")]
 pub struct MetadataRefreshStatus {
     pub running: bool,
+    pub stopping: bool,
+    pub cancelled: bool,
     pub done: usize,
     pub total: usize,
     pub failed: usize,
@@ -179,6 +181,8 @@ mod tests {
     fn metadata_refresh_status_serializa_todos_os_campos_do_contrato() {
         let status = MetadataRefreshStatus {
             running: true,
+            stopping: false,
+            cancelled: false,
             done: 1,
             total: 3,
             failed: 1,
@@ -190,6 +194,8 @@ mod tests {
             serde_json::to_value(status).unwrap(),
             serde_json::json!({
                 "running": true,
+                "stopping": false,
+                "cancelled": false,
                 "done": 1,
                 "total": 3,
                 "failed": 1,

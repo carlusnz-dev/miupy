@@ -75,6 +75,17 @@ impl MetadataService {
             .clone()
     }
 
+    // @req RF-32
+    pub fn cancel_library_refresh(&self) {
+        let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+        if !status.running || status.stopping {
+            return;
+        }
+        status.stopping = true;
+        let snapshot = status.clone();
+        self.events.metadata_progress(&snapshot);
+    }
+
     fn update_batch_status(&self, update: impl FnOnce(&mut MetadataRefreshStatus)) {
         let status = {
             let mut status = self.batch_status.lock().unwrap_or_else(|e| e.into_inner());
@@ -110,8 +121,10 @@ impl MetadataService {
         };
         let total = tracks.len();
         self.update_batch_status(|status| {
+            let stopping = status.stopping;
             *status = MetadataRefreshStatus {
                 running: true,
+                stopping,
                 total,
                 started_at: Some(now_ms()),
                 ..MetadataRefreshStatus::default()
@@ -122,10 +135,13 @@ impl MetadataService {
             // Se a tarefa morrer no meio (pânico), o lote não fica preso em `running`.
             let _guard = BatchGuard(this.clone());
             for (i, t) in tracks.into_iter().enumerate() {
-                this.batch_status
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .current_track_id = Some(t.id.clone());
+                {
+                    let mut status = this.batch_status.lock().unwrap_or_else(|e| e.into_inner());
+                    if status.stopping {
+                        break;
+                    }
+                    status.current_track_id = Some(t.id.clone());
+                }
                 let mut failed = false;
                 if let Err(e) = this.refresh_track_inner(&t.id, false).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
@@ -139,6 +155,8 @@ impl MetadataService {
             this.events.library_changed("metadata_batch_finished");
             this.update_batch_status(|status| {
                 status.running = false;
+                status.cancelled = status.stopping;
+                status.stopping = false;
                 status.current_track_id = None;
                 status.finished_at = Some(now_ms());
             });
@@ -156,6 +174,8 @@ impl MetadataService {
         if running {
             self.update_batch_status(|status| {
                 status.running = false;
+                status.cancelled = status.stopping;
+                status.stopping = false;
                 status.current_track_id = None;
                 status.finished_at = Some(now_ms());
             });
@@ -719,6 +739,63 @@ mod tests {
         assert_eq!((events[1].done, events[1].failed), (1, 1));
         assert_eq!((events[2].done, events[2].failed), (2, 1));
         assert!(!events[3].running);
+    }
+
+    // @test RF-32
+    #[tokio::test]
+    async fn parar_termina_faixa_atual_e_permite_novo_lote() {
+        let f = fx();
+        track(&f);
+        for n in 2..=3 {
+            f.db.with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    format!("vid{n}"),
+                    "Outra",
+                    None,
+                    1000,
+                    None,
+                ))
+            })
+            .unwrap();
+        }
+        *f.fake.network_delay.lock().unwrap() = Some(Duration::from_millis(100));
+        let svc = Arc::new(f.svc);
+        svc.cancel_library_refresh();
+        assert_eq!(svc.refresh_status(), MetadataRefreshStatus::default());
+        assert_eq!(svc.enqueue_library_refresh(false).unwrap(), 3);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while *f.fake.network_calls.lock().unwrap() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        svc.cancel_library_refresh();
+        assert!(svc.refresh_status().stopping);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while svc.refresh_status().running {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let end = svc.refresh_status();
+        assert_eq!((end.done, end.total, end.failed), (1, 3, 0));
+        assert!(end.cancelled);
+        assert!(!end.stopping);
+        svc.cancel_library_refresh();
+        assert_eq!(svc.refresh_status(), end);
+        assert_eq!(svc.enqueue_library_refresh(false).unwrap(), 3);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while svc.refresh_status().running {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let next = svc.refresh_status();
+        assert_eq!(next.done, 3);
+        assert!(!next.cancelled);
     }
 
     // @test RF-32 RF-12

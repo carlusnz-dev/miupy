@@ -817,6 +817,7 @@ pub mod testing {
         pub covers_for: Mutex<Vec<String>>,
         pub cover_attempts: Mutex<Vec<String>>,
         pub network_calls: Mutex<u32>,
+        pub network_delay: Mutex<Option<std::time::Duration>>,
     }
 
     impl Default for FakeMetadata {
@@ -830,6 +831,7 @@ pub mod testing {
                 covers_for: Mutex::new(Vec::new()),
                 cover_attempts: Mutex::new(Vec::new()),
                 network_calls: Mutex::new(0),
+                network_delay: Mutex::new(None),
             }
         }
     }
@@ -861,6 +863,10 @@ pub mod testing {
             _duration_ms: Option<u64>,
         ) -> Result<Option<RecordingMatch>> {
             self.call()?;
+            let delay = *self.network_delay.lock().unwrap();
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
             Ok(self.recording.lock().unwrap().clone())
         }
 
