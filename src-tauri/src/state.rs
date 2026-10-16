@@ -662,6 +662,87 @@ mod tests {
         assert_eq!(st.player.state().status, crate::dto::PlayerStatus::Playing);
     }
 
+    // @test RF-09 RF-12
+    #[tokio::test]
+    #[ignore = "rede real: yt-dlp, YouTube e MusicBrainz"]
+    async fn integracao_real_titulo_e_artista() {
+        use miupy_media::{MetadataConfig, OnlineMetadata, YtDlpManager, YtDlpResolver};
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = YtDlpManager::new(tmp.path().join("bin")).unwrap();
+        let status = manager.update(true, None).await.unwrap();
+        let provider = Arc::new(OnlineMetadata::new(MetadataConfig::new("miupy test")).unwrap());
+        let resolver = Arc::new(YtDlpResolver::with_binary(status.path.unwrap()));
+        {
+            use miupy_media::MediaResolver;
+            for r in resolver.search("racionais negro drama", 10).await.unwrap() {
+                println!("BRUTO | {} | {} | {}", r.video_id, r.title, r.channel);
+            }
+            for id in ["u4lcUooNNLY", "tWSr-NDZI4s"] {
+                let m = resolver.video_metadata(id).await.unwrap();
+                println!("META | {id} | {:?} | {:?}", m.raw_title, m.channel);
+            }
+        }
+        let st = AppState::new(Parts {
+            dirs: Dirs::new(tmp.path().join("app")),
+            events: Arc::new(RecordingEvents::default()),
+            backend: Arc::new(NullBackend::new()),
+            resolver,
+            provider,
+        })
+        .unwrap();
+        let res = st
+            .youtube
+            .search("racionais negro drama", Some(10))
+            .await
+            .unwrap();
+        for r in &res {
+            println!("BUSCA | {} | {} | {}", r.source_id, r.title, r.artist);
+        }
+        for (id, title, artist) in [
+            ("DaCK8snx9ac", "Negro Drama", "Racionais MC's"),
+            ("tWSr-NDZI4s", "Negro drama", "Racionais Mcs"),
+            ("u4lcUooNNLY", "Negro Drama", "Racionais"),
+            ("vGAoGRq4oVI", "Negro Drama", "Racionais Mc's"),
+        ] {
+            let hit = res.iter().find(|hit| hit.source_id == id).unwrap();
+            assert_eq!(hit.title, title, "{id}");
+            assert_eq!(hit.artist, artist, "{id}");
+        }
+        let vid = "u4lcUooNNLY".to_string();
+        let track = st
+            .db
+            .with(|db| {
+                Ok::<_, miupy_core::Error>(
+                    db.upsert_track(&NewTrack::youtube(
+                        &vid,
+                        "Racionais",
+                        Some("Negro Drama".into()),
+                        0,
+                        None,
+                    ))?
+                    .track,
+                )
+            })
+            .unwrap();
+        println!("ANTES | {} | {:?}", track.title, track.artist_name);
+        assert_eq!(st.metadata.enqueue_library_refresh(false).unwrap(), 1);
+        tokio::time::timeout(std::time::Duration::from_secs(180), async {
+            while st.metadata.refresh_status().running {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(st.metadata.refresh_status().failed, 0);
+        let fixed = st.db.with(|db| db.get_track(&track.id)).unwrap();
+        println!(
+            "DEPOIS | {} | {:?} | {:?}",
+            fixed.title, fixed.artist_name, fixed.album
+        );
+        assert_eq!(fixed.title, "Negro Drama");
+        assert_eq!(fixed.artist_name.as_deref(), Some("Racionais MC's"));
+    }
+
     fn parts(root: &std::path::Path, backend: Arc<dyn AudioBackend>) -> Parts {
         Parts {
             dirs: Dirs::new(root),
