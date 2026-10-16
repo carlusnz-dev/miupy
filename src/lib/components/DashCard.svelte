@@ -35,9 +35,9 @@
 </script>
 
 <MeshGradient class="dash-card rounded-xl border border-line {cls}" intensity={highlighted ? 0.65 : 0.22} colors={colors ?? undefined}>
-  <div class="relative h-full">
+  <div class="relative flex h-full flex-col">
     <a class="dash-card-link absolute inset-0 z-10 rounded-xl" href={href(path)} aria-label={label} onclick={open} onkeydown={keydown}></a>
-    <div class="pointer-events-none h-full">{@render children()}</div>
+    <div class="pointer-events-none flex-1">{@render children()}</div>
     {#if action}<div class="relative z-20 pointer-events-auto">{@render action(highlight)}</div>{/if}
   </div>
 </MeshGradient>

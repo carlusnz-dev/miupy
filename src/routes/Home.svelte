@@ -27,6 +27,7 @@
   });
   res.prime('home');
   const stats = $derived(res.data?.stats ?? null);
+  const topTracks = $derived(stats?.topTracks.slice(0, 3) ?? []);
   const recent = $derived(res.data?.recent ?? []);
   const loading = $derived(res.loading);
   const error = $derived(res.data === undefined ? res.error : null);
@@ -87,7 +88,7 @@
       {:else}
         <span class="grid h-36 w-36 shrink-0 place-items-center rounded-lg bg-s3 text-lava-text"><Icon name="music" size={48} /></span>
       {/if}
-      <div class="min-w-0 flex-1 pb-12">
+      <div class="min-w-0 flex-1">
         <p class="eyebrow !text-fg/70">{player.track ? 'Tocando agora' : 'Para começar'}</p>
         <h2 class="mt-1 truncate text-2xl font-semibold">{contextName}</h2>
         {#if player.track}
@@ -103,11 +104,11 @@
     </div>
     {#snippet action(highlight)}
       {#if player.track}
-        <button class="btn btn-primary absolute bottom-5 left-5 sm:left-[11.5rem]" onclick={() => { highlight(); void player.toggle(); }}>
+        <button class="btn btn-primary mx-5 mb-5 sm:ml-[11.5rem]" onclick={() => { highlight(); void player.toggle(); }}>
           <Icon name={player.isPlaying || player.isLoading ? 'pause' : 'play'} size={16} fill />{player.isPlaying || player.isLoading ? 'Pausar' : 'Continuar'}
         </button>
       {:else if recent.length}
-        <button class="btn btn-primary absolute bottom-5 left-5 sm:left-[11.5rem]" onclick={() => { highlight(); void player.play(recent[0].id, recent.map((t) => t.id)); }}>
+        <button class="btn btn-primary mx-5 mb-5 sm:ml-[11.5rem]" onclick={() => { highlight(); void player.play(recent[0].id, recent.map((t) => t.id)); }}>
           <Icon name="play" size={16} fill />Tocar as recentes
         </button>
       {/if}
@@ -166,26 +167,62 @@
   </DashCard>
 
   <DashCard path={paths.stats} label="Abrir mais tocadas" class="enter">
-    <div class="min-h-56 p-5 sm:p-6">
+    <div class={topTracks.length ? 'p-5 pb-2 sm:p-6 sm:pb-2' : 'min-h-56 p-5 sm:p-6'}>
       <p class="eyebrow !text-fg/70">No seu ritmo</p>
       <h2 class="mb-4 text-2xl font-semibold">Mais tocadas</h2>
-      {#if stats?.topTracks.length}
-        <ol class="space-y-3">
-          {#each stats.topTracks.slice(0, 3) as ranked, i (ranked.track.id)}
-            <li class="enter flex items-center gap-3" style={enterStyle(i)}>
-              <span class="tnum w-4 text-sm text-faint">{i + 1}</span>
-              <Cover path={ranked.track.coverPath} thumb={ranked.track.thumbnailUrl} seed={ranked.track.id} size={40} />
-              <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{ranked.track.title}</span><span class="block truncate text-xs text-muted">{ranked.track.artistName}</span></span>
-              <span class="tnum text-xs text-faint">{ranked.plays}×</span>
-            </li>
-          {/each}
-        </ol>
-      {:else if loading}
+      {#if !stats && loading}
         <div aria-label="Carregando mais tocadas" class="space-y-3">{#each [0, 1, 2] as i (i)}<Skeleton w="100%" h="2.5rem" />{/each}</div>
-      {:else}
+      {:else if !topTracks.length}
         <p class="text-sm text-muted">Ouça suas faixas para descobrir quais tocam mais.</p>
       {/if}
     </div>
+    {#snippet action(highlight)}
+      {#if topTracks.length}
+        <!-- @req RF-14 RF-41 -->
+        <ol class="px-3 pb-3 sm:px-4 sm:pb-4">
+          {#each topTracks as ranked, i (ranked.track.id)}
+            <li class="enter" style={enterStyle(i)}>
+              <button class="flex min-h-12 w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-s2" aria-label={`Tocar ${ranked.track.title}, de ${ranked.track.artistName}`} onclick={() => { highlight(); void player.play(ranked.track.id, topTracks.map((r) => r.track.id)); }}>
+                <span class="tnum w-4 shrink-0 text-sm text-faint">{i + 1}</span>
+                <Cover path={ranked.track.coverPath} thumb={ranked.track.thumbnailUrl} seed={ranked.track.id} size={40} />
+                <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{ranked.track.title}</span><span class="block truncate text-xs text-muted">{ranked.track.artistName}</span></span>
+                <span class="tnum shrink-0 text-xs text-faint">{ranked.plays}×</span>
+              </button>
+            </li>
+          {/each}
+        </ol>
+      {/if}
+    {/snippet}
+  </DashCard>
+</div>
+
+<!-- @req RF-41 -->
+<div class="mt-3">
+  <DashCard path={paths.library} label="Abrir discoteca" class="enter">
+    <div class="p-5 pb-2 sm:p-6 sm:pb-2">
+      <p class="eyebrow !text-fg/70">Na sua discoteca</p>
+      <h2 class="text-2xl font-semibold">Adicionadas recentemente</h2>
+      {#if loading && !recent.length}
+        <div aria-label="Carregando faixas recentes" class="mt-4 grid gap-3 xl:grid-cols-2">{#each [0, 1, 2, 3, 4, 5] as i (i)}<Skeleton w="100%" h="3rem" />{/each}</div>
+      {:else if !recent.length}
+        <p class="mt-4 text-sm text-muted">Adicione músicas para ouvir suas faixas recentes.</p>
+      {/if}
+    </div>
+    {#snippet action(highlight)}
+      {#if recent.length}
+        <!-- @req RF-41 -->
+        <ol class="grid gap-x-3 px-3 pb-3 sm:px-4 sm:pb-4 xl:grid-cols-2">
+          {#each recent as track, i (track.id)}
+            <li class="enter" style={enterStyle(i)}>
+              <button class="flex min-h-12 w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-s2" aria-label={`Tocar ${track.title}, de ${track.artistName}`} onclick={() => { highlight(); void player.play(track.id, recent.map((t) => t.id)); }}>
+                <Cover path={track.coverPath} thumb={track.thumbnailUrl} seed={track.id} size={40} />
+                <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{track.title}</span><span class="block truncate text-xs text-muted">{track.artistName}</span></span>
+              </button>
+            </li>
+          {/each}
+        </ol>
+      {/if}
+    {/snippet}
   </DashCard>
 </div>
 
