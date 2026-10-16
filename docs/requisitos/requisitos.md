@@ -52,6 +52,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-40 | Cores da capa no Tocando | C | O fundo da tela Tocando é um mesh com as cores da capa da faixa atual, com transição ao trocar de faixa; controles seguem o tema. |
 | RF-41 | Início em painel | S | O Início reúne cartões de mesh estático para a playlist ou fila atual, estatísticas da discoteca, playlists, mais tocadas e atalhos. Ao abrir um cartão, ele acende por 1,5 s antes da navegação; com movimento reduzido, abre imediatamente. Ações de reprodução respondem na hora. |
 | RF-42 | Playlist tocando | S | O player sabe de onde veio a fila (playlist, artista, discoteca…); o Início mostra a playlist que está tocando e a tela da playlist troca Tocar por Pausar quando é ela que toca. |
+| RF-43 | Voltar à tela anterior | S | Ao abrir uma tela por link ou atalho, mostrar “← Voltar” no topo para retornar à tela anterior no histórico do app. Não mostrar a seta na abertura do app nem ao navegar pelo menu. Alt+← e o botão lateral de voltar do mouse também retornam quando houver uma tela anterior no histórico do app. |
 
 ## Requisitos não funcionais
 

@@ -49,6 +49,12 @@
 
   let moreOpen = $state(false);
   const isOn = (i: Item) => i.names.includes(router.current.name);
+  // @req RF-43
+  function menuClick(event: MouseEvent, path: string) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    router.menuNavigate(path);
+  }
   $effect(() => { router.current; moreOpen = false; });
 
   // @req RF-33
@@ -109,7 +115,7 @@
 </script>
 
 {#snippet link(i: Item, rail = false)}
-  <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={rail ? (i.path === paths.downloads && downloads.activeCount > 0 ? `${i.label}, ${downloads.activeCount} em andamento` : i.label) : undefined} title={rail ? i.label : undefined}
+  <a href={href(i.path)} onclick={(event) => menuClick(event, i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={rail ? (i.path === paths.downloads && downloads.activeCount > 0 ? `${i.label}, ${downloads.activeCount} em andamento` : i.label) : undefined} title={rail ? i.label : undefined}
      class="relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-muted hover:bg-s2 hover:text-fg aria-[current=page]:bg-s2 aria-[current=page]:text-fg">
     <Icon name={i.icon} size={20} class="shrink-0 {isOn(i) ? 'text-lava-text' : ''}" />
     {#if !rail}<span class="enter flex-1">{i.label}</span>{/if}
@@ -128,7 +134,7 @@
 {#if variant === 'side'}
 <div class="nav-shell relative hidden h-full shrink-0 md:block" class:collapsed>
 <nav id="nav-principal" class="nav-glass flex h-full flex-col gap-1 overflow-x-hidden overflow-y-auto border-r border-line p-3" aria-label="Principal">
-  <a href={href(paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início" title={collapsed ? 'miupy' : undefined}>
+  <a href={href(paths.home)} onclick={(event) => menuClick(event, paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início" title={collapsed ? 'miupy' : undefined}>
     <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name="flame" size={18} fill /></span>
     {#if !collapsed}<span class="enter text-lg font-bold tracking-tight">miupy</span>{/if}
   </a>
@@ -167,7 +173,7 @@
   <ul class="grid h-[var(--nav-h)] grid-cols-5">
     {#each tabs as i}
       <li>
-        <a href={href(i.path)} aria-current={isOn(i) ? 'page' : undefined}
+        <a href={href(i.path)} onclick={(event) => menuClick(event, i.path)} aria-current={isOn(i) ? 'page' : undefined}
            class="flex h-full flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-muted aria-[current=page]:text-lava-text">
           <Icon name={i.icon} size={22} />{i.label}
         </a>
