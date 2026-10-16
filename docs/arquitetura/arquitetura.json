@@ -256,7 +256,7 @@
   "dadosEmDisco": {
     "raiz": "app_data_dir() do Tauri",
     "banco": "miupy.db",
-    "sentinelaGpu": "gpu-startup-pending (temporária, só em Wayland/NVIDIA com modo on salvo)",
+    "sentinelaGpu": "gpu-startup-pending (temporária, em Wayland/NVIDIA com GPU no modo on salvo ou auto)",
     "audio": "audio/<track_id>.m4a",
     "capas": "covers/",
     "binarios": "bin/yt-dlp_linux (yt-dlp oficial) e bin/yt-dlp-status.json",
