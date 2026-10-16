@@ -29,6 +29,6 @@ pub use resolver::{
 };
 pub use suggest::suggest;
 pub use tagger::{AudioInfo, Cover, TagUpdate};
-pub use title::{ParsedTitle, clean_title};
+pub use title::{ParsedTitle, clean_title, clean_title_with_artists};
 pub use ytdlp::{CorrectedTrack, YtDlpResolver, corrected_track, is_song_result};
 pub use ytdlp_manager::{YtDlpManager, YtDlpState, YtDlpStatus, YtDlpStatusFn};

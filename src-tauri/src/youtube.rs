@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use miupy_core::{NewTrack, Track, TrackQuery};
-use miupy_media::{MediaResolver, clean_title};
+use miupy_media::{MediaResolver, clean_title_with_artists};
 
 use crate::db::Db;
 use crate::dto::SearchResult;
@@ -28,18 +28,26 @@ pub struct Youtube {
 /// Título e artista exibidos (e gravados) para um vídeo: título limpo de ruído de vídeo, artista
 /// do título ou, na falta, do canal.
 pub(crate) fn display_fields(r: &miupy_media::SearchResult) -> (String, String) {
-    let parsed = clean_title(&r.title, &r.channel);
+    display_fields_known(r, &[])
+}
+
+// @req RF-09
+fn display_fields_known(
+    r: &miupy_media::SearchResult,
+    known_artists: &[String],
+) -> (String, String) {
+    let parsed = clean_title_with_artists(&r.title, &r.channel, known_artists);
+    let artist = parsed.artist_credit().unwrap_or_else(|| r.channel.clone());
     let title = if parsed.title.trim().is_empty() {
         r.title.clone()
     } else {
         parsed.title
     };
-    let artist = parsed.artist.unwrap_or_else(|| r.channel.clone());
     (title, artist)
 }
 
-fn to_new_track(r: &miupy_media::SearchResult) -> NewTrack {
-    let (title, artist) = display_fields(r);
+fn to_new_track(r: &miupy_media::SearchResult, known_artists: &[String]) -> NewTrack {
+    let (title, artist) = display_fields_known(r, known_artists);
     let artist = (!artist.trim().is_empty()).then_some(artist);
     NewTrack::youtube(
         r.video_id.clone(),
@@ -48,6 +56,24 @@ fn to_new_track(r: &miupy_media::SearchResult) -> NewTrack {
         r.duration_ms.map_or(0, |d| i64::try_from(d).unwrap_or(0)),
         r.thumbnail_url.clone(),
     )
+}
+
+// @req RF-09
+fn artists_from_other_results(
+    results: &[miupy_media::SearchResult],
+    video_id: &str,
+    known_artists: &[String],
+) -> Vec<String> {
+    known_artists
+        .iter()
+        .cloned()
+        .chain(
+            results
+                .iter()
+                .filter(|other| other.video_id != video_id)
+                .map(|other| display_fields(other).1),
+        )
+        .collect()
 }
 
 impl Youtube {
@@ -87,6 +113,12 @@ impl Youtube {
             .db
             .run(move |db| Ok(db.source_favorite_matches(&ids)?))
             .await?;
+        let known_artists: Vec<String> = self
+            .db
+            .with(|db| db.list_artists())?
+            .into_iter()
+            .map(|artist| artist.name)
+            .collect();
         {
             let mut cache = self.cache();
             if cache.len() + raw.len() > CACHE_LIMIT {
@@ -99,7 +131,8 @@ impl Youtube {
         let out = raw
             .iter()
             .map(|r| {
-                let (title, artist) = display_fields(r);
+                let artists = artists_from_other_results(&raw, &r.video_id, &known_artists);
+                let (title, artist) = display_fields_known(r, &artists);
                 SearchResult {
                     source_id: r.video_id.clone(),
                     title,
@@ -145,6 +178,7 @@ impl Youtube {
             let cache = self.cache();
             source_ids.iter().map(|id| cache.get(id).cloned()).collect()
         };
+        let peer_results: Vec<miupy_media::SearchResult> = self.cache().values().cloned().collect();
         let tracks = self
             .db
             .run(move |db| {
@@ -152,11 +186,23 @@ impl Youtube {
                     db.get_playlist(pid)?;
                 }
                 // Resolve tudo antes de gravar qualquer coisa.
+                let known_artists: Vec<String> = db
+                    .list_artists()?
+                    .into_iter()
+                    .map(|artist| artist.name)
+                    .collect();
                 let mut library: Option<Vec<Track>> = None;
                 let mut plan: Vec<Result<NewTrack, Track>> = Vec::new();
                 for (sid, hit) in source_ids.iter().zip(cached) {
                     match hit {
-                        Some(r) => plan.push(Ok(to_new_track(&r))),
+                        Some(r) => {
+                            let artists = artists_from_other_results(
+                                &peer_results,
+                                &r.video_id,
+                                &known_artists,
+                            );
+                            plan.push(Ok(to_new_track(&r, &artists)));
+                        }
                         None => {
                             if library.is_none() {
                                 library = Some(db.list_tracks(&TrackQuery::default())?);
