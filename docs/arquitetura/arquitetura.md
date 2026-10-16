@@ -64,8 +64,7 @@ e na tela de bloqueio.
 ### `crates/miupy-media`
 Tudo que fala com a internet ou mexe no arquivo de mídia:
 - `MediaResolver`: busca no YouTube e download do áudio. Implementação `yt-dlp` (desktop) e, como
-  feature opcional, um extrator em Rust para o Android (o `rustypipe` é GPL-3.0 e não serve com a
-  licença MIT OR Apache-2.0; escolha em aberto).
+  feature opcional, um extrator em Rust para o Android (o `rustypipe`, GPL-3.0 como o projeto).
 - `MetadataProvider`: MusicBrainz, Cover Art Archive e LRCLIB, com limite de requisições.
 - `tagger`: leitura e escrita de tags e capa com `lofty`.
 

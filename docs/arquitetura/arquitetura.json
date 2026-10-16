@@ -25,7 +25,7 @@
     },
     "android": {
       "status": "planejado",
-      "nota": "Sem SDK/NDK/alvos Rust; áudio é o NullBackend (falta plugin Media3); sem extrator do YouTube (yt-dlp não roda; rustypipe é GPL-3.0, incompatível com MIT OR Apache-2.0)."
+      "nota": "Sem SDK/NDK/alvos Rust; áudio é o NullBackend (falta plugin Media3); sem extrator do YouTube (yt-dlp não roda; o rustypipe, GPL-3.0 como o projeto, ainda não entrou)."
     }
   },
   "modulos": [
@@ -139,7 +139,7 @@
       "limitacoes": [
         "Restrição de idade e de região só testada com mensagens sintéticas.",
         "Teste falha_do_processo_vira_erro_tipado_e_limpa: 200/200 em 2026-10-14; a falha antiga não foi explicada.",
-        "Sem extrator para o Android: rustypipe é GPL-3.0 e o projeto é MIT OR Apache-2.0."
+        "Sem extrator para o Android: o rustypipe (GPL-3.0) ainda não entrou."
       ]
     },
     {
@@ -266,7 +266,6 @@
     "capasDePlaylist": "playlists/"
   },
   "decisoesEmAberto": [
-    "Extrator do YouTube no Android (rustypipe é GPL-3.0; a licença é MIT OR Apache-2.0).",
     "Embutir runtime JS para o yt-dlp, se um dia for necessário (hoje não é)."
   ],
   "git": {
@@ -278,6 +277,7 @@
     "2026-10-14: licença MIT OR Apache-2.0.",
     "2026-10-14: yt-dlp baixado e atualizado pelo app.",
     "2026-10-14: foto de artista pelo Wikidata/Commons.",
-    "2026-10-14: tabela tracks mantida."
+    "2026-10-14: tabela tracks mantida.",
+    "2026-10-16: licença trocada para GPL-3.0-or-later, para o rustypipe ser o extrator no Android."
   ]
 }
