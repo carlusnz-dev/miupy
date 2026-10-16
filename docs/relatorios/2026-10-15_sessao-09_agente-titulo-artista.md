@@ -96,3 +96,25 @@ Sem commits nesta frente, conforme o sandbox. Fatias sugeridas, nesta ordem:
 2. `fix(shell): corrige campos invertidos com confirmação forte` — `src-tauri/src/metadata.rs` (implementação e testes locais).
 3. `test(shell): comprova títulos e artista com rede real` — `src-tauri/src/state.rs` (teste ignorado por padrão).
 4. `docs(docs): registra a correção de título e artista` — `docs/relatorios/2026-10-15_sessao-09_agente-titulo-artista.md`.
+
+## Rodada 4: achados do PR #81
+
+- A troca pela discoteca agora exige coincidência inteira do lado direito, rejeita prefixo de artista à esquerda e preserva lados esquerdos com aparência de nome próprio composto. Assim, `Seu Jorge - Michael Jackson` e `Queen Of The Night - Queen` mantêm a ordem usual. Essa guarda é conservadora: alguns títulos capitalizados que realmente venham em ordem invertida permanecerão na ordem usual sem confirmação pelo canal.
+- Prefixo de artista exige duas palavras; `Racionais TV` ainda confirma `Racionais MC's` porque `TV` é sufixo genérico de canal. Um canal de uma palavra, como `Racionais`, sozinho deixa de confirmar o nome mais longo. O reprocessamento pode recuperar a inversão quando o título bruto e uma gravação completa do MusicBrainz a confirmam com score ≥ 90.
+- A busca e a inclusão usam só artistas extraídos dos títulos de pelo menos dois outros resultados do mesmo lote. Cada resultado guarda suas pistas com o cache; resultados de outras buscas e nomes de canal não entram na votação. Um cover isolado acompanhado de um react com canal do artista não troca a ordem.
+- Erro de rede nas consultas extras ao MusicBrainz registra aviso e preserva a primeira resposta; o `video_metadata` é obtido uma vez por faixa e reaproveitado.
+
+### Verificação da Rodada 4
+
+- `integracao_real_titulo_e_artista` (ignorado por padrão, executado com `--ignored --nocapture`): 1 passou, 0 falhou. Busca: `tWSr-NDZI4s` → `Negro drama` / `Racionais Mcs`; `DaCK8snx9ac` → `Negro Drama` / `Racionais MC's`; `vGAoGRq4oVI` → `Negro Drama` / `Racionais Mc's`; `u4lcUooNNLY` → `Negro Drama` / `Racionais`. Reprocessamento: `Racionais` / `Negro Drama` → `Negro Drama` / `Racionais MC's`, álbum `1000 trutas, 1000 tretas`. A composição dos dez resultados do YouTube mudou, mas esses IDs e o reprocessamento mantiveram os resultados anteriores.
+- `cargo fmt --all`: passou. `CARGO_BUILD_JOBS=6 RUST_TEST_THREADS=6 nice -n 10 cargo clippy --workspace --all-targets -- -D warnings`: passou. `CARGO_BUILD_JOBS=6 RUST_TEST_THREADS=6 nice -n 10 cargo test --workspace -q`: passou (132 shell, 35 audio, 103 core, 90 media, 1 doctest; 16 testes ignorados).
+- `npm test`: 23 arquivos, 102 testes passaram. `node scripts/rastreabilidade.mjs --check`: passou, 56 requisitos, nenhum ID desconhecido.
+- `npm run check` e `npm run build`: falharam com `EROFS` na escrita de `node_modules/.vite-temp` por ser link somente leitura do worktree. `npm run build -- --configLoader runner`: passou, 215 módulos.
+
+### Fatias de commit da Rodada 4
+
+Nenhum commit, push ou alteração no PR foi feito. Fatias sugeridas (cada uma com `Refs: RF-09 RF-12` no rodapé):
+
+1. `fix(media): restringe a inversão de título e artista` — `crates/miupy-media/src/title.rs`, `crates/miupy-media/src/ytdlp.rs`.
+2. `fix(shell): isola pistas por busca e exige repetição` — `src-tauri/src/youtube.rs`.
+3. `fix(shell): preserva resposta inicial do musicbrainz` — `src-tauri/src/metadata.rs`, `src-tauri/src/downloads.rs`, `docs/relatorios/2026-10-15_sessao-09_agente-titulo-artista.md`.
