@@ -6,8 +6,9 @@
 
   let { path, label, colors, class: cls = '', children, action }: {
     path: string; label: string; colors?: string[] | null; class?: string;
-    children: Snippet; action?: Snippet<[() => void]>;
+    children?: Snippet; action?: Snippet<[() => void]>;
   } = $props();
+  const OPEN_DELAY_MS = 250;
   let highlighted = $state(false);
   // Timers separados: o destaque de uma ação interna não cancela a navegação pendente.
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -26,7 +27,7 @@
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { navigate(path); return; }
     highlighted = true;
     clearTimeout(timer);
-    timer = setTimeout(() => navigate(path), 1500);
+    timer = setTimeout(() => navigate(path), OPEN_DELAY_MS);
   }
 
   function keydown(event: KeyboardEvent) {
@@ -37,7 +38,7 @@
 <MeshGradient class="dash-card rounded-xl border border-line {cls}" intensity={highlighted ? 0.65 : 0.22} colors={colors ?? undefined}>
   <div class="relative flex h-full flex-col">
     <a class="dash-card-link absolute inset-0 z-10 rounded-xl" href={href(path)} aria-label={label} onclick={open} onkeydown={keydown}></a>
-    <div class="pointer-events-none flex-1">{@render children()}</div>
-    {#if action}<div class="relative z-20 pointer-events-auto">{@render action(highlight)}</div>{/if}
+    {#if children}<div class="pointer-events-none flex-1">{@render children()}</div>{/if}
+    {#if action}<div class="pointer-events-none relative z-20 {children ? '' : 'flex-1'} [&_a]:pointer-events-auto [&_button]:pointer-events-auto">{@render action(highlight)}</div>{/if}
   </div>
 </MeshGradient>
