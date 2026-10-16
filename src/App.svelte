@@ -75,7 +75,7 @@
   // Atalhos (desktop): espaço, setas esquerda/direita (seek 5 s), cima/baixo (volume), M (mudo).
   function onKey(e: KeyboardEvent) {
     // @req RF-43
-    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'ArrowLeft' && router.canGoBack) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.repeat && e.key === 'ArrowLeft' && router.canGoBack && !isTyping(e.target)) {
       e.preventDefault(); router.back(); return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e.target)) return;
@@ -94,7 +94,7 @@
   }
   // @req RF-43
   function onMouseUp(e: MouseEvent) {
-    if (e.button === 3 && router.canGoBack) { e.preventDefault(); router.back(); }
+    if (e.button === 3 && router.canGoBack && performance.now() - router.lastChange > 400) { e.preventDefault(); router.back(); }
   }
   const name = $derived(router.current.name);
 </script>
@@ -111,7 +111,10 @@
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
       {#key `${name}:${router.current.params.id ?? ''}`}
-      {#if router.fromLink}<div class="mx-auto max-w-6xl px-4 pt-4 md:px-8 md:pt-6"><BackButton /></div>{/if}
+      {#if router.fromLink}
+        {#if name === 'now-playing'}<div class="absolute left-4 top-4 z-20 md:left-8 md:top-6"><BackButton /></div>
+        {:else}<div class="mx-auto max-w-6xl px-4 pt-4 md:px-8 md:pt-6"><BackButton /></div>{/if}
+      {/if}
       {#if name === 'now-playing'}
         <div transition:springTransition><NowPlaying /></div>
       {:else}
