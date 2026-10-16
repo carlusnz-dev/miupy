@@ -130,9 +130,15 @@ MIUPY_GPU=on WEBKIT_SHOW_FPS=1 WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9333 npx t
 Resultado na sessão 09 (Hyprland, NVIDIA + Intel híbrido, 144 Hz, escala 1,2): rAF a 144 fps,
 p95 de 8 ms e pior quadro de 11 ms, em repouso e rolando. **Mesmo assim, a tela engasga**: a página
 entrega os quadros, e o problema está no caminho até o compositor (DMABUF, SHM, Intel e NVIDIA
-deram o mesmo resultado). Por isso o modo Automático usa software em Wayland + NVIDIA. O VFR e o
-*direct scanout* do Hyprland já estavam desligados. Ainda falta testar um bisect por versões com
-a GPU ligada.
+deram o mesmo resultado). Esse engasgo ocorreu com o WebKitGTK **2.54.1** do Arch, tanto no
+`tauri dev` quanto no AppImage da `develop`. Já o AppImage oficial da v0.3.1, com WebKitGTK
+**2.50.4** do runner Ubuntu 22.04, ficou fluido com GPU no mesmo ambiente. O VFR e o
+*direct scanout* do Hyprland já estavam desligados.
+
+Em Wayland + NVIDIA, o modo Automático consulta a versão da biblioteca WebKitGTK carregada antes
+de criar a janela: usa GPU com versões anteriores a 2.54 e software a partir de 2.54. Se a
+versão for desconhecida, usa software. A sentinela de queda também protege a tentativa automática
+com GPU. Nas demais combinações de ambiente, a escolha não muda.
 
 ## Tabela para o app real
 

@@ -464,12 +464,13 @@ A troca de `smart` por `surfle` em `ShuffleMode` quebra a compatibilidade com cl
   então a troca só vale na próxima abertura; `GpuStatus.restartRequired` avisa a interface.
 - `MIUPY_GPU=on|off|auto` continua funcionando e, quando definida, manda sobre o modo salvo
   (`envOverride`).
-- `auto` mantém o recuo para software onde a GPU derruba o app (Wayland + NVIDIA). `on` força a
-  GPU mesmo assim. Quando `on` veio das configurações nessa combinação, a casca grava
-  `gpu-startup-pending` no diretório de dados antes da janela. O frontend chama
+- Em Wayland + NVIDIA, `auto` usa GPU com WebKitGTK carregado anterior a 2.54 e software a partir
+  de 2.54 ou quando a versão é desconhecida. Fora dessa combinação, a escolha automática não muda.
+  `on` força a GPU. Quando a GPU é escolhida nessa combinação pelo modo salvo `on` ou por `auto`,
+  a casca grava `gpu-startup-pending` no diretório de dados antes da janela. O frontend chama
   `system_gpu_startup_confirmed` cinco segundos após montar para apagar a sentinela; uma saída
-  normal também a apaga. Se a próxima abertura encontrar a sentinela com modo salvo `on`, a casca
-  abre em software, restaura `auto` no banco e informa o recuo em `GpuStatus.reason`.
+  normal também a apaga. Se a próxima abertura encontrar a sentinela e voltaria a usar GPU, a
+  casca abre em software, restaura `auto` no banco e informa o recuo em `GpuStatus.reason`.
   `MIUPY_GPU` explícita mantém precedência e não arma sentinela. Uma nova escolha na tela de
   Configurações descarta uma sentinela antiga, permitindo outra tentativa voluntária.
 

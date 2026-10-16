@@ -109,7 +109,7 @@ Tudo sob o diretório de dados do app (`app_data_dir()` do Tauri):
 
 ```
 miupy.db          banco SQLite
-gpu-startup-pending  sentinela temporária da abertura com GPU forçada em Wayland/NVIDIA
+gpu-startup-pending  sentinela temporária da abertura com GPU em Wayland/NVIDIA
 bin/              executáveis gerenciados pelo app (yt-dlp)
 audio/            <track_id>.m4a
 covers/           <track_id>.webp, albuns/<chave>.webp, artistas/<artist_id>.webp (RNF-12)
