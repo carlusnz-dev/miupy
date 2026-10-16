@@ -131,7 +131,7 @@ pub fn clean_title_with_artists(
         )
         && channel_artist
             .as_deref()
-            .is_some_and(|ch| artist_matches(parts[0], ch))
+            .is_some_and(|ch| channel_matches(parts[0], ch, channel))
     {
         left = channel_artist.clone();
         right = parts[parts.len() - 1].to_string();
@@ -139,8 +139,8 @@ pub fn clean_title_with_artists(
 
     // "Música - Artista" quando o canal é o lado direito.
     if let (Some(a), Some(ch)) = (&left, &channel_artist)
-        && artist_matches(&right, ch)
-        && !artist_matches(a, ch)
+        && channel_matches(&right, ch, channel)
+        && !channel_matches(a, ch, channel)
     {
         let (a, t) = (a.clone(), right.clone());
         left = Some(t);
@@ -148,14 +148,21 @@ pub fn clean_title_with_artists(
     }
 
     if let Some(a) = &left {
-        let left_known = known_artists.iter().any(|known| artist_matches(a, known));
+        let left_key = artist_key(a);
+        let left_known = known_artists.iter().any(|known| {
+            artist_matches(a, known) || left_key.starts_with(&format!("{} ", artist_key(known)))
+        });
         let right_known = known_artists
             .iter()
-            .any(|known| artist_matches(&right, known));
-        let channel_decides = channel_artist
-            .as_deref()
-            .is_some_and(|ch| artist_matches(a, ch) || artist_matches(&right, ch));
-        if !channel_decides && right_known && !left_known {
+            .any(|known| artist_key(&right) == artist_key(known));
+        let channel_decides = channel_artist.as_deref().is_some_and(|ch| {
+            channel_matches(a, ch, channel) || channel_matches(&right, ch, channel)
+        });
+        let name_like = a.split_whitespace().count() >= 2
+            && a.split_whitespace().all(|word| {
+                word.chars().count() > 1 && word.chars().next().is_some_and(char::is_uppercase)
+            });
+        if !channel_decides && right_known && !left_known && !name_like {
             let old_left = a.clone();
             left = Some(right.clone());
             right = old_left;
@@ -273,11 +280,26 @@ fn artist_key(s: &str) -> String {
 fn artist_matches(a: &str, b: &str) -> bool {
     let a = artist_key(a);
     let b = artist_key(b);
-    !a.is_empty()
-        && !b.is_empty()
-        && (a == b
-            || (a.len() >= 5 && b.starts_with(&format!("{a} ")))
-            || (b.len() >= 5 && a.starts_with(&format!("{b} "))))
+    !a.is_empty() && !b.is_empty() && (a == b || prefix_matches(&a, &b) || prefix_matches(&b, &a))
+}
+
+fn prefix_matches(short: &str, long: &str) -> bool {
+    short.split_whitespace().count() >= 2 && long.starts_with(&format!("{short} "))
+}
+
+fn channel_matches(artist: &str, cleaned: &str, raw: &str) -> bool {
+    if artist_matches(artist, cleaned) {
+        return true;
+    }
+    // @req RF-09 RF-12: sufixos de canal não fazem parte do nome do artista.
+    let raw_key = artist_key(raw);
+    let cleaned_key = artist_key(cleaned);
+    let generic_suffix = [
+        "tv", "music", "official", "records", "channel", "hits", "vevo",
+    ]
+    .iter()
+    .any(|suffix| raw_key == format!("{cleaned_key} {suffix}"));
+    generic_suffix && artist_key(artist).starts_with(&format!("{cleaned_key} "))
 }
 
 fn strip_suffix_ci<'a>(s: &'a str, suffix: &str) -> Option<&'a str> {
@@ -502,7 +524,7 @@ mod tests {
             ),
             (
                 "NEGRO DRAMA - RACIONAIS MC'S",
-                "Racionais",
+                "Racionais TV",
                 "RACIONAIS MC'S",
                 "NEGRO DRAMA",
                 &[][..],
@@ -565,6 +587,31 @@ mod tests {
         let got = clean_title_with_artists("Kenny G - Matue", "Canal de Rap", &known);
         assert_eq!(got.artist.as_deref(), Some("Matue"));
         assert_eq!(got.title, "Kenny G");
+    }
+
+    // @test RF-09 RF-12
+    #[test]
+    fn discoteca_nao_inverte_artista_correto_nem_prefixo_de_faixa() {
+        for (raw, known, title, artist) in [
+            (
+                "Seu Jorge - Michael Jackson",
+                "Michael Jackson",
+                "Michael Jackson",
+                "Seu Jorge",
+            ),
+            (
+                "Queen Of The Night - Queen",
+                "Queen",
+                "Queen",
+                "Queen Of The Night",
+            ),
+        ] {
+            let got = clean_title_with_artists(raw, "Canal de terceiro", &[known.into()]);
+            assert_eq!(
+                (got.title.as_str(), got.artist.as_deref()),
+                (title, Some(artist))
+            );
+        }
     }
 
     // @test RF-09 RF-12

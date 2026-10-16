@@ -964,7 +964,7 @@ mod tests {
     #[test]
     fn campos_yt_dlp_respeitam_ordem_e_artistas_estruturados() {
         let reversed =
-            serde_json::json!({"title":"NEGRO DRAMA - RACIONAIS MC'S", "channel":"Racionais"});
+            serde_json::json!({"title":"NEGRO DRAMA - RACIONAIS MC'S", "channel":"Racionais TV"});
         let got = corrected_track(&reversed);
         assert_eq!(got.title, "NEGRO DRAMA");
         assert_eq!(got.artist, "RACIONAIS MC'S");
