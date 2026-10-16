@@ -21,6 +21,7 @@
   import PinnedToast from './lib/components/PinnedToast.svelte';
   import Dialogs from './lib/components/Dialogs.svelte';
   import State from './lib/components/State.svelte';
+  import BackButton from './lib/components/BackButton.svelte';
   import Home from './routes/Home.svelte';
   import Library from './routes/Library.svelte';
   import Playlists from './routes/Playlists.svelte';
@@ -73,6 +74,10 @@
 
   // Atalhos (desktop): espaço, setas esquerda/direita (seek 5 s), cima/baixo (volume), M (mudo).
   function onKey(e: KeyboardEvent) {
+    // @req RF-43
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'ArrowLeft' && router.canGoBack) {
+      e.preventDefault(); router.back(); return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e.target)) return;
     const el = e.target as HTMLElement;
     const onControl = el.tagName === 'BUTTON' || el.tagName === 'A' || (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range');
@@ -87,10 +92,14 @@
       case 'm': case 'M': void player.toggleMuted(); break;
     }
   }
+  // @req RF-43
+  function onMouseUp(e: MouseEvent) {
+    if (e.button === 3 && router.canGoBack) { e.preventDefault(); router.back(); }
+  }
   const name = $derived(router.current.name);
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onmouseup={onMouseUp} />
 
 <div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)">
   <!-- @req RF-38 RF-39: grade menu | conteúdo | painel da direita -->
@@ -102,6 +111,7 @@
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
       {#key `${name}:${router.current.params.id ?? ''}`}
+      {#if router.fromLink}<div class="mx-auto max-w-6xl px-4 pt-4 md:px-8 md:pt-6"><BackButton /></div>{/if}
       {#if name === 'now-playing'}
         <div transition:springTransition><NowPlaying /></div>
       {:else}
