@@ -76,42 +76,42 @@
 
 <div class="grid gap-3 lg:grid-cols-5">
   <DashCard path={contextPath} label={player.track ? 'Abrir tocando agora' : 'Abrir discoteca'} colors={palette} class="enter lg:col-span-3">
-    <div class="flex min-h-64 flex-col gap-4 p-5 sm:flex-row sm:p-6">
-      {#if currentPlaylist}
-        <PlaylistCover playlist={currentPlaylist} size={144} />
-      {:else if player.track}
-        <Cover path={player.track.coverPath} thumb={player.track.thumbnailUrl} seed={player.track.id} size={144} />
-      {:else if recent.length}
-        <Cover path={recent[0].coverPath} thumb={recent[0].thumbnailUrl} seed={recent[0].id} size={144} />
-      {:else if loading}
-        <Skeleton w="144px" h="144px" />
-      {:else}
-        <span class="grid h-36 w-36 shrink-0 place-items-center rounded-lg bg-s3 text-lava-text"><Icon name="music" size={48} /></span>
-      {/if}
-      <div class="min-w-0 flex-1">
-        <p class="eyebrow !text-fg/70">{player.track ? 'Tocando agora' : 'Para começar'}</p>
-        <h2 class="mt-1 truncate text-2xl font-semibold">{contextName}</h2>
-        {#if player.track}
-          <p class="mt-2 truncate text-sm text-fg/80">{player.track.title} · {player.track.artistName}</p>
-        {:else if recent.length}
-          <p class="mt-2 text-sm text-fg/80">Retome a discoteca pelas faixas adicionadas recentemente.</p>
-        {:else if loading}
-          <Skeleton w="min(18rem, 80%)" h="1.5rem" class="mt-2" />
-        {:else}
-          <p class="mt-2 text-sm text-fg/80">Adicione músicas para começar a ouvir.</p>
-        {/if}
-      </div>
-    </div>
     {#snippet action(highlight)}
-      {#if player.track}
-        <button class="btn btn-primary mx-5 mb-5 sm:ml-[11.5rem]" onclick={() => { highlight(); void player.toggle(); }}>
-          <Icon name={player.isPlaying || player.isLoading ? 'pause' : 'play'} size={16} fill />{player.isPlaying || player.isLoading ? 'Pausar' : 'Continuar'}
-        </button>
-      {:else if recent.length}
-        <button class="btn btn-primary mx-5 mb-5 sm:ml-[11.5rem]" onclick={() => { highlight(); void player.play(recent[0].id, recent.map((t) => t.id)); }}>
-          <Icon name="play" size={16} fill />Tocar as recentes
-        </button>
-      {/if}
+      <div class="flex flex-col gap-4 p-5 sm:flex-row sm:p-6">
+        {#if currentPlaylist}
+          <PlaylistCover playlist={currentPlaylist} size={144} />
+        {:else if player.track}
+          <Cover path={player.track.coverPath} thumb={player.track.thumbnailUrl} seed={player.track.id} size={144} />
+        {:else if recent.length}
+          <Cover path={recent[0].coverPath} thumb={recent[0].thumbnailUrl} seed={recent[0].id} size={144} />
+        {:else if loading}
+          <Skeleton w="144px" h="144px" />
+        {:else}
+          <span class="grid h-36 w-36 shrink-0 place-items-center rounded-lg bg-s3 text-lava-text"><Icon name="music" size={48} /></span>
+        {/if}
+        <div class="min-w-0 flex-1">
+          <p class="eyebrow !text-fg/70">{player.track ? 'Tocando agora' : 'Para começar'}</p>
+          <h2 class="mt-1 truncate text-2xl font-semibold">{contextName}</h2>
+          {#if player.track}
+            <p class="mt-2 truncate text-sm text-fg/80">{player.track.title} · {player.track.artistName}</p>
+          {:else if recent.length}
+            <p class="mt-2 text-sm text-fg/80">Retome a discoteca pelas faixas adicionadas recentemente.</p>
+          {:else if loading}
+            <Skeleton w="min(18rem, 80%)" h="1.5rem" class="mt-2" />
+          {:else}
+            <p class="mt-2 text-sm text-fg/80">Adicione músicas para começar a ouvir.</p>
+          {/if}
+          {#if player.track}
+            <button class="btn btn-primary mt-4" onclick={() => { highlight(); void player.toggle(); }}>
+              <Icon name={player.isPlaying || player.isLoading ? 'pause' : 'play'} size={16} fill />{player.isPlaying || player.isLoading ? 'Pausar' : 'Continuar'}
+            </button>
+          {:else if recent.length}
+            <button class="btn btn-primary mt-4" onclick={() => { highlight(); void player.play(recent[0].id, recent.map((t) => t.id)); }}>
+              <Icon name="play" size={16} fill />Tocar as recentes
+            </button>
+          {/if}
+        </div>
+      </div>
     {/snippet}
   </DashCard>
 
