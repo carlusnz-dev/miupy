@@ -21,7 +21,6 @@
     flash = setTimeout(() => { if (!timer) highlighted = false; }, 1500);
   }
 
-  // Um piscar curto do destaque antes de abrir (o autor achou 1,5 s lento).
   function open(event: MouseEvent | KeyboardEvent) {
     if (event instanceof MouseEvent && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
     event.preventDefault();
@@ -39,7 +38,7 @@
 <MeshGradient class="dash-card rounded-xl border border-line {cls}" intensity={highlighted ? 0.65 : 0.22} colors={colors ?? undefined}>
   <div class="relative flex h-full flex-col">
     <a class="dash-card-link absolute inset-0 z-10 rounded-xl" href={href(path)} aria-label={label} onclick={open} onkeydown={keydown}></a>
-    <div class="pointer-events-none flex-1">{@render children?.()}</div>
-    {#if action}<div class="pointer-events-none relative z-20 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">{@render action(highlight)}</div>{/if}
+    {#if children}<div class="pointer-events-none flex-1">{@render children()}</div>{/if}
+    {#if action}<div class="pointer-events-none relative z-20 {children ? '' : 'flex-1'} [&_a]:pointer-events-auto [&_button]:pointer-events-auto">{@render action(highlight)}</div>{/if}
   </div>
 </MeshGradient>
