@@ -813,6 +813,7 @@ pub mod testing {
         pub lyrics: Mutex<Option<LyricsData>>,
         /// `Some(erro)` faz a próxima chamada de rede falhar.
         pub fail_with: Mutex<Option<MediaError>>,
+        pub fail_on_call: Mutex<Option<u32>>,
         /// release_mbids cuja capa existe; os outros dão `NotFound`.
         pub covers_for: Mutex<Vec<String>>,
         pub cover_attempts: Mutex<Vec<String>>,
@@ -828,6 +829,7 @@ pub mod testing {
                 photo: Mutex::new(None),
                 lyrics: Mutex::new(None),
                 fail_with: Mutex::new(None),
+                fail_on_call: Mutex::new(None),
                 covers_for: Mutex::new(Vec::new()),
                 cover_attempts: Mutex::new(Vec::new()),
                 network_calls: Mutex::new(0),
@@ -838,7 +840,18 @@ pub mod testing {
 
     impl FakeMetadata {
         fn call(&self) -> Result<()> {
-            *self.network_calls.lock().unwrap() += 1;
+            let mut calls = self.network_calls.lock().unwrap();
+            *calls += 1;
+            let number = *calls;
+            drop(calls);
+            if *self.fail_on_call.lock().unwrap() == Some(number)
+                && let Some(error) = self.fail_with.lock().unwrap().take()
+            {
+                return Err(error);
+            }
+            if self.fail_on_call.lock().unwrap().is_some() {
+                return Ok(());
+            }
             match self.fail_with.lock().unwrap().take() {
                 Some(e) => Err(e),
                 None => Ok(()),

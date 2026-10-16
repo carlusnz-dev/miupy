@@ -641,20 +641,37 @@ pub fn corrected_track(v: &Value) -> CorrectedTrack {
     let raw = field("title").unwrap_or("");
     let channel = field("channel").or_else(|| field("uploader")).unwrap_or("");
     let parsed = clean_title(raw, channel);
+    let parsed_artist = parsed.artist_credit();
     let mut album = field("album").map(String::from);
     let parts: Vec<_> = raw.split(" - ").map(str::trim).collect();
     if album.is_none() && parts.len() >= 3 && parts.iter().all(|s| !s.is_empty()) {
         album = Some(parts[1..parts.len() - 1].join(" - "));
-    } else if album.is_none() && parts.len() == 2 && parsed.title.eq_ignore_ascii_case(parts[0]) {
+    } else if album.is_none()
+        && parts.len() == 2
+        && parts[1].split_whitespace().count() >= 6
+        && parsed.title.eq_ignore_ascii_case(parts[0])
+    {
         album = Some(parts[1].to_string());
     }
     let meta = parse_video_metadata(v);
     CorrectedTrack {
         title: field("track").unwrap_or(&parsed.title).to_string(),
         artist: field("artist")
-            .or_else(|| field("creator"))
             .map(String::from)
-            .or(parsed.artist)
+            .or_else(|| {
+                v.get("artists")
+                    .and_then(Value::as_array)
+                    .map(|artists| {
+                        artists
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .filter(|artists| !artists.is_empty())
+            })
+            .or_else(|| field("creator").map(String::from))
+            .or(parsed_artist)
             .unwrap_or_else(|| channel.to_string()),
         album,
         release_year: meta.release_year,
@@ -936,8 +953,27 @@ mod tests {
         .unwrap();
         let track = corrected_track(&known_good);
         assert_eq!(track.title, "Get Lucky");
-        assert_eq!(track.artist, "Daft Punk");
+        assert_eq!(
+            track.artist,
+            "Daft Punk feat. Pharrell Williams, Nile Rodgers"
+        );
         assert_eq!(track.release_year, None);
+    }
+
+    // @test RF-09 RF-12
+    #[test]
+    fn campos_yt_dlp_respeitam_ordem_e_artistas_estruturados() {
+        let reversed =
+            serde_json::json!({"title":"NEGRO DRAMA - RACIONAIS MC'S", "channel":"Racionais TV"});
+        let got = corrected_track(&reversed);
+        assert_eq!(got.title, "NEGRO DRAMA");
+        assert_eq!(got.artist, "RACIONAIS MC'S");
+        assert_eq!(got.album, None);
+
+        let structured = serde_json::json!({"title":"Vídeo", "channel":"Canal", "track":"Música", "artists":["Matuê", "X"]});
+        let got = corrected_track(&structured);
+        assert_eq!(got.title, "Música");
+        assert_eq!(got.artist, "Matuê, X");
     }
 
     // @test RF-09

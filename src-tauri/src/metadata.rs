@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use miupy_core::{ArtistInfo, ArtistPatch, Lyrics, Track, TrackPatch};
-use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, tagger};
+use miupy_media::{MediaError, MediaResolver, MetadataProvider, TagUpdate, clean_title, tagger};
 
 use crate::db::Db;
 use crate::dto::MetadataRefreshStatus;
@@ -153,7 +153,7 @@ impl MetadataService {
                     status.current_track_id = Some(t.id.clone());
                 }
                 let mut failed = false;
-                if let Err(e) = this.refresh_track_inner(&t.id, false).await {
+                if let Err(e) = this.refresh_track_inner(&t.id, false, true).await {
                     log::warn!("reprocessamento de {}: {e}", t.id);
                     failed = true;
                 }
@@ -223,28 +223,155 @@ impl MetadataService {
     /// Aqui a rede é o objetivo: erro de rede volta ao usuário. Sem correspondência, devolve a
     /// faixa como estava.
     pub async fn refresh_track(&self, track_id: &str) -> AppResult<Track> {
-        self.refresh_track_inner(track_id, true).await
+        self.refresh_track_inner(track_id, true, false).await
     }
 
     // @req RF-12 RF-32
-    async fn refresh_track_inner(&self, track_id: &str, fetch_lyrics: bool) -> AppResult<Track> {
+    async fn refresh_track_inner(
+        &self,
+        track_id: &str,
+        fetch_lyrics: bool,
+        allow_inverted: bool,
+    ) -> AppResult<Track> {
         let id = track_id.to_owned();
         let track = self.db.run(move |db| Ok(db.get_track(&id)?)).await?;
         let duration = u64::try_from(track.duration_ms).ok().filter(|d| *d > 0);
 
-        let rec = self
+        let mut rec = self
             .provider
             .find_recording(&track.title, track.artist_name.as_deref(), duration)
             .await?;
+        // @req RF-12: no lote, a ordem salva invertida exige confirmação forte do MusicBrainz.
+        let mut suspected_inversion = false;
+        let mut confirmed_inversion = false;
+        let mut confirmed_video_title = None;
+        let video = if let Some(source_id) = &track.source_id {
+            self.resolver.video_metadata(source_id).await.ok()
+        } else {
+            None
+        };
+        if let Some(video) = &video
+            && let Some(raw) = video.raw_title.as_deref()
+        {
+            let mut parsed = clean_title(raw, video.channel.as_deref().unwrap_or(""));
+            // @req RF-12: o título bruto pode explicitar o artista completo mesmo quando
+            // o canal só contém a primeira palavra; a confirmação ainda vem do MusicBrainz.
+            if allow_inverted
+                && let Some((left, right)) = raw.split_once(" - ")
+                && track
+                    .artist_name
+                    .as_deref()
+                    .is_some_and(|saved| saved.eq_ignore_ascii_case(left))
+                && right
+                    .to_lowercase()
+                    .starts_with(&format!("{} ", track.title.to_lowercase()))
+            {
+                parsed.artist = Some(right.to_string());
+                parsed.title = left.to_string();
+            }
+            if let Some(artist) = parsed.artist.as_deref() {
+                let saved_artist_is_channel = video.channel.as_deref().is_some_and(|channel| {
+                    track
+                        .artist_name
+                        .as_deref()
+                        .is_some_and(|name| name.trim().eq_ignore_ascii_case(channel.trim()))
+                });
+                let artist_lower = artist.to_lowercase();
+                let title_lower = track.title.to_lowercase();
+                suspected_inversion = allow_inverted
+                    && !saved_artist_is_channel
+                    && track
+                        .artist_name
+                        .as_deref()
+                        .is_some_and(|saved| saved.eq_ignore_ascii_case(&parsed.title))
+                    && artist_lower
+                        .strip_prefix(&title_lower)
+                        .is_some_and(|tail| tail.is_empty() || tail.starts_with(' '));
+                if saved_artist_is_channel || suspected_inversion {
+                    let mut queries = vec![
+                        (parsed.title.as_str(), artist),
+                        (artist, parsed.title.as_str()),
+                    ];
+                    if suspected_inversion && let Some(saved_artist) = track.artist_name.as_deref()
+                    {
+                        queries.push((saved_artist, track.title.as_str()));
+                    }
+                    let mut seen = Vec::new();
+                    for (title, artist) in queries {
+                        if title.eq_ignore_ascii_case(&track.title)
+                            && track
+                                .artist_name
+                                .as_deref()
+                                .is_some_and(|saved| saved.eq_ignore_ascii_case(artist))
+                        {
+                            continue;
+                        }
+                        if seen.iter().any(|(seen_title, seen_artist): &(&str, &str)| {
+                            seen_title.eq_ignore_ascii_case(title)
+                                && seen_artist.eq_ignore_ascii_case(artist)
+                        }) {
+                            continue;
+                        }
+                        seen.push((title, artist));
+                        let candidate = match self
+                            .provider
+                            .find_recording(title, Some(artist), duration)
+                            .await
+                        {
+                            Ok(candidate) => candidate,
+                            Err(error) => {
+                                log::warn!(
+                                    "consulta extra ao MusicBrainz para {}: {error}",
+                                    track.id
+                                );
+                                continue;
+                            }
+                        };
+                        if let Some(candidate) = candidate
+                            && !candidate.title_only
+                            && (!suspected_inversion
+                                || (candidate.score >= 90
+                                    && track.artist_name.as_deref().is_some_and(|saved| {
+                                        candidate.title.eq_ignore_ascii_case(saved)
+                                    })
+                                    && {
+                                        let candidate_artist = candidate.artist.to_lowercase();
+                                        let saved_title = track.title.to_lowercase();
+                                        candidate_artist == saved_title
+                                            || (saved_title.split_whitespace().count() >= 2
+                                                && candidate_artist
+                                                    .starts_with(&format!("{saved_title} ")))
+                                            || candidate_artist == artist.to_lowercase()
+                                            || video.channel.as_deref().is_some_and(|channel| {
+                                                channel.to_lowercase().ends_with(" tv")
+                                                    && candidate_artist
+                                                        .starts_with(&format!("{} ", saved_title))
+                                            })
+                                    }))
+                            && rec.as_ref().is_none_or(|current| {
+                                current.title_only
+                                    || candidate.score > current.score
+                                    || (suspected_inversion && candidate.score == current.score)
+                            })
+                        {
+                            confirmed_inversion = suspected_inversion;
+                            if suspected_inversion {
+                                confirmed_video_title = Some(parsed.title.clone());
+                            }
+                            rec = Some(candidate);
+                        }
+                    }
+                }
+            }
+        }
+        if suspected_inversion && !confirmed_inversion {
+            return Ok(track);
+        }
         let Some(rec) = rec else {
             // @req RF-20: sem correspondência no MusicBrainz, usa apenas os campos
             // musicais do vídeo; suas categorias nunca viram gênero.
-            let Some(source_id) = &track.source_id else {
+            let Some(video) = video else {
                 return Ok(track);
-            };
-            let video = match self.resolver.video_metadata(source_id).await {
-                Ok(v) => v,
-                Err(_) => return Ok(track),
             };
             let patch = TrackPatch {
                 title: video.track,
@@ -323,11 +450,6 @@ impl MetadataService {
         };
 
         // @req RF-20: MusicBrainz é a fonte principal; o vídeo só complementa campos ausentes.
-        let video = if let Some(source_id) = &track.source_id {
-            self.resolver.video_metadata(source_id).await.ok()
-        } else {
-            None
-        };
         // @req RF-12: só corrige canal salvo como artista com uma candidata e duração conhecida.
         let correct_artist = rec.title_only
             && rec.title_only_artist_unambiguous
@@ -341,9 +463,14 @@ impl MetadataService {
                         .as_deref()
                         .is_some_and(|name| name.trim().eq_ignore_ascii_case(channel.trim()))
                 });
+        let artist_name = if confirmed_inversion {
+            rec.artist.replace('’', "'")
+        } else {
+            rec.artist.clone()
+        };
         let patch = TrackPatch {
             title: (!rec.title_only)
-                .then(|| rec.title.clone())
+                .then(|| confirmed_video_title.unwrap_or_else(|| rec.title.clone()))
                 .filter(|t| !t.trim().is_empty())
                 .or_else(|| {
                     (!rec.title_only)
@@ -351,7 +478,7 @@ impl MetadataService {
                         .flatten()
                 }),
             artist_name: (correct_artist || !rec.title_only)
-                .then(|| rec.artist.clone())
+                .then(|| artist_name.clone())
                 .filter(|a| !a.trim().is_empty())
                 .or_else(|| {
                     (!rec.title_only)
@@ -390,7 +517,6 @@ impl MetadataService {
             isrc: rec.isrc.clone().map(Some),
         };
         let artist_mbid = rec.artist_mbid.clone();
-        let artist_name = rec.artist.clone();
         let tid = track.id.clone();
         let updated = self
             .db
@@ -724,6 +850,194 @@ mod tests {
             release_year: None,
             isrc: None,
         }
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn reprocessamento_consulta_duas_ordens_so_para_artista_igual_ao_canal() {
+        for (saved_artist, expected_calls) in [("Canal", 3), ("Artista salvo", 1)] {
+            let f = fx();
+            let t =
+                f.db.with(|db| {
+                    db.upsert_track(&NewTrack::youtube(
+                        "vid1",
+                        "Título antigo",
+                        Some(saved_artist.into()),
+                        200_000,
+                        None,
+                    ))
+                })
+                .unwrap()
+                .track;
+            let mut matching = rec();
+            matching.release_mbids.clear();
+            matching.release_mbid = None;
+            *f.fake.recording.lock().unwrap() = Some(matching);
+            *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+                channel: Some("Canal".into()),
+                raw_title: Some("Matuê - Kenny G".into()),
+                ..Default::default()
+            });
+            f.svc.refresh_track_inner(&t.id, false, true).await.unwrap();
+            assert_eq!(*f.fake.network_calls.lock().unwrap(), expected_calls);
+        }
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn erro_na_consulta_extra_preserva_primeira_resposta() {
+        let f = fx();
+        let track =
+            f.db.with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "vid1",
+                    "Título antigo",
+                    Some("Canal".into()),
+                    200_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        let mut matching = rec();
+        matching.release_mbids.clear();
+        matching.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(matching);
+        *f.fake.fail_on_call.lock().unwrap() = Some(2);
+        *f.fake.fail_with.lock().unwrap() = Some(MediaError::Network("sem rede".into()));
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: Some("Canal".into()),
+            raw_title: Some("Matuê - Kenny G".into()),
+            ..Default::default()
+        });
+        let saved = f
+            .svc
+            .refresh_track_inner(&track.id, false, true)
+            .await
+            .unwrap();
+        assert_eq!(saved.title, "Get Lucky");
+        assert_eq!(saved.artist_name.as_deref(), Some("Daft Punk"));
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn reprocessamento_corrige_inversao_so_com_gravacao_forte() {
+        for (channel, score, title_only) in [
+            ("Racionais", Some(100), false),
+            ("Racionais MC's", Some(100), false),
+            ("Racionais", Some(89), false),
+            ("Racionais", Some(100), true),
+            ("Racionais", None, false),
+        ] {
+            let f = fx();
+            let t =
+                f.db.with(|db| {
+                    db.upsert_track(&NewTrack::youtube(
+                        "vid1",
+                        "Racionais",
+                        Some("Negro Drama".into()),
+                        200_000,
+                        None,
+                    ))
+                })
+                .unwrap()
+                .track;
+            *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+                channel: Some(channel.into()),
+                raw_title: Some("NEGRO DRAMA - RACIONAIS MC'S".into()),
+                track: Some("Negro Drama".into()),
+                artist: Some("Racionais MC's".into()),
+                ..Default::default()
+            });
+            if let Some(score) = score {
+                let mut mb = rec();
+                mb.title = "NEGRO DRAMA".into();
+                mb.artist = "RACIONAIS MC'S".into();
+                mb.score = score;
+                mb.title_only = title_only;
+                mb.release_mbids.clear();
+                mb.release_mbid = None;
+                *f.fake.recording.lock().unwrap() = Some(mb);
+            }
+            let saved = f.svc.refresh_track_inner(&t.id, false, true).await.unwrap();
+            if score == Some(100) && !title_only {
+                assert_eq!(saved.title, "NEGRO DRAMA");
+                assert_eq!(saved.artist_name.as_deref(), Some("RACIONAIS MC'S"));
+            } else {
+                assert_eq!(saved.title, t.title);
+                assert_eq!(saved.artist_name, t.artist_name);
+            }
+        }
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn reprocessamento_preserva_grafia_do_video_apos_confirmacao() {
+        let f = fx();
+        let track =
+            f.db.with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "vid1",
+                    "Racionais",
+                    Some("Negro Drama".into()),
+                    200_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: Some("Racionais TV".into()),
+            raw_title: Some("Negro Drama - Nada Como Um Dia Após O Outro Dia (Chora Agora)".into()),
+            ..Default::default()
+        });
+        let mut mb = rec();
+        mb.title = "Negro drama".into();
+        mb.artist = "Racionais MC’s".into();
+        mb.score = 90;
+        mb.release_mbids.clear();
+        mb.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(mb);
+
+        let saved = f
+            .svc
+            .refresh_track_inner(&track.id, false, true)
+            .await
+            .unwrap();
+        assert_eq!(saved.title, "Negro Drama");
+        assert_eq!(saved.artist_name.as_deref(), Some("Racionais MC's"));
+    }
+
+    // @test RF-12
+    #[tokio::test]
+    async fn artista_e_titulo_corretos_permanecem_corretos() {
+        let f = fx();
+        let t =
+            f.db.with(|db| {
+                db.upsert_track(&NewTrack::youtube(
+                    "vid1",
+                    "Negro Drama",
+                    Some("Racionais MC's".into()),
+                    200_000,
+                    None,
+                ))
+            })
+            .unwrap()
+            .track;
+        *f.resolver.video.lock().unwrap() = Some(miupy_media::VideoMetadata {
+            channel: Some("Racionais".into()),
+            raw_title: Some("NEGRO DRAMA - RACIONAIS MC'S".into()),
+            ..Default::default()
+        });
+        let mut mb = rec();
+        mb.title = "Negro Drama".into();
+        mb.artist = "Racionais MC's".into();
+        mb.release_mbids.clear();
+        mb.release_mbid = None;
+        *f.fake.recording.lock().unwrap() = Some(mb);
+        let saved = f.svc.refresh_track_inner(&t.id, false, true).await.unwrap();
+        assert_eq!(saved.title, t.title);
+        assert_eq!(saved.artist_name, t.artist_name);
     }
 
     // @test RF-32
