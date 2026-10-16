@@ -27,11 +27,45 @@ function parse(hash: string): Route {
 
 class Router {
   current = $state<Route>(parse(typeof location !== 'undefined' ? location.hash : ''));
+  // @req RF-43
+  fromLink = $state(false);
+  canGoBack = $state(false);
+  private readonly session = Math.random().toString(36).slice(2);
+  private index = 0;
+  private nextFromLink: boolean | null = null;
   constructor() {
     if (typeof window !== 'undefined') {
-      window.addEventListener('hashchange', () => { this.current = parse(location.hash); });
+      this.saveEntry(false);
+      window.addEventListener('hashchange', () => {
+        const entry = history.state?.miupyNav;
+        if (entry?.session === this.session && entry.hash === location.hash) {
+          this.index = entry.index;
+          this.fromLink = entry.fromLink;
+        } else {
+          this.index++;
+          this.fromLink = this.nextFromLink ?? true;
+          this.saveEntry(this.fromLink);
+        }
+        this.nextFromLink = null;
+        this.canGoBack = this.index > 0;
+        this.current = parse(location.hash);
+      });
     }
   }
+  private saveEntry(fromLink: boolean) {
+    const state = history.state;
+    history.replaceState({ ...(state && typeof state === 'object' ? state : {}), miupyNav: { session: this.session, index: this.index, hash: location.hash, fromLink } }, '');
+  }
+  menuNavigate(path: string) {
+    if (location.hash === href(path) || (!location.hash && path === '/')) {
+      this.fromLink = false;
+      this.saveEntry(false);
+      return;
+    }
+    this.nextFromLink = false;
+    navigate(path);
+  }
+  back() { if (this.canGoBack) history.back(); }
 }
 export const router = new Router();
 
