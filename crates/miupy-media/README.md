@@ -78,8 +78,8 @@ No Android não dá para executar o `yt-dlp`. O plano é uma segunda implementa�
 `MediaResolver` com [`rustypipe`](https://crates.io/crates/rustypipe) (Rust puro), atrás de uma
 feature opcional (por exemplo `rustypipe`) num módulo novo (`rustypipe_resolver.rs`). Essa
 implementação precisa cobrir busca, download, playlist, streaming, relacionadas e metadados do
-vídeo. **A dependência não foi adicionada**: o `rustypipe` é GPL-3.0 e a licença do
-projeto está em aberto. Também ao adicionar, lembre que o `reqwest` com `rustls` usa `aws-lc-rs`
+vídeo. A licença deixou de ser um impedimento: desde a sessão 11 o projeto é
+`GPL-3.0-or-later`. Ao adicionar, lembre que o `reqwest` com `rustls` usa `aws-lc-rs`
 (código C), o que exige atenção na compilação cruzada para Android.
 
 ## Dados de artista

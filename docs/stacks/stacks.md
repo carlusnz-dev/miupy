@@ -14,7 +14,7 @@ Versões conferidas no crates.io / npm em 2026-10-13.
 | Banco | **rusqlite 0.40** (`bundled`) + **rusqlite_migration** | SQLite embutido, sem depender do sistema; migrações versionadas; FTS5 para busca. |
 | Tags | **lofty 0.25** | Leitura/escrita de tags e capa em MP4/M4A, MP3, FLAC, Ogg. |
 | YouTube (desktop) | **yt-dlp** como processo externo | A única ferramenta que acompanha as quebras do YouTube; ver nº 4. |
-| YouTube (Android) | **rustypipe 0.11** (feature opcional) | Rust puro, roda no Android. É GPL-3.0; ver "Decisões em aberto". |
+| YouTube (Android) | **rustypipe 0.11** (feature opcional) | Rust puro, roda no Android. É GPL-3.0, como o próprio miupy. |
 | Metadados | **reqwest** direto em MusicBrainz, Cover Art Archive e LRCLIB | Três endpoints JSON simples; não justifica uma dependência por API. |
 | Assíncrono | runtime do próprio Tauri (`tauri::async_runtime`, tokio) | Evita dois runtimes. |
 | Formato de áudio | **M4A/AAC** (itag 140, ~128 kbps) como padrão | Decodifica em Rust puro e toca nativo no ExoPlayer; ver nº 1. |
@@ -58,11 +58,13 @@ Versões conferidas no crates.io / npm em 2026-10-13.
 O que o rascunho acertou e foi mantido: Tauri 2, SQLite via `rusqlite` bundled, `lofty`,
 MusicBrainz + Cover Art Archive + LRCLIB, e a regra de nunca bloquear o callback de áudio.
 
+## Decisões fechadas
+
+- **Licença (sessão 11).** O projeto passou de MIT/Apache para `GPL-3.0-or-later`, para o
+  `rustypipe` (GPL-3.0) ser o extrator no Android.
+
 ## Decisões em aberto
 
-- **Licença.** `rustypipe` é GPL-3.0: ligá-lo ao binário obriga o miupy a ser GPL-3.0. Por isso ele
-  entra como feature opcional. Se a licença do projeto for GPL, vira o extrator padrão no Android
-  sem problema; se for MIT/Apache, é preciso outra saída para o Android.
 - **Dados de artista.** O MusicBrainz não tem biografia nem foto. As opções são TheAudioDB ou
   Last.fm (ambas pedem chave de API) ou Wikidata/Wikipedia (sem chave).
 - **Distribuição do yt-dlp.** Usar o do sistema ou baixar e atualizar o binário pelo próprio app.
