@@ -73,7 +73,7 @@ class Router {
     navigate(path);
   }
   /** Troca a tela atual sem criar entrada (ex.: sair de uma playlist excluída). */
-  replace(path: string) { this.replacing = true; location.replace(href(path)); }
+  replace(path: string) { if (location.hash === href(path)) return; this.replacing = true; location.replace(href(path)); }
   back() { if (this.canGoBack) history.back(); }
 }
 export const router = new Router();
