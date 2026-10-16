@@ -22,7 +22,7 @@ pub struct Youtube {
     db: Db,
     resolver: Arc<dyn MediaResolver>,
     events: Arc<dyn Events>,
-    cache: Mutex<HashMap<String, miupy_media::SearchResult>>,
+    cache: Mutex<HashMap<String, (miupy_media::SearchResult, Vec<String>)>>,
 }
 
 /// Título e artista exibidos (e gravados) para um vídeo: título limpo de ruído de vídeo, artista
@@ -64,14 +64,20 @@ fn artists_from_other_results(
     video_id: &str,
     known_artists: &[String],
 ) -> Vec<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for other in results.iter().filter(|other| other.video_id != video_id) {
+        // @req RF-09: só o título, repetido em outros vídeos da mesma busca, serve de pista.
+        if let Some(artist) = clean_title_with_artists(&other.title, "", &[]).artist {
+            *counts.entry(artist.to_lowercase()).or_default() += 1;
+        }
+    }
     known_artists
         .iter()
         .cloned()
         .chain(
-            results
-                .iter()
-                .filter(|other| other.video_id != video_id)
-                .map(|other| display_fields(other).1),
+            counts
+                .into_iter()
+                .filter_map(|(artist, count)| (count >= 2).then_some(artist)),
         )
         .collect()
 }
@@ -86,14 +92,16 @@ impl Youtube {
         }
     }
 
-    fn cache(&self) -> std::sync::MutexGuard<'_, HashMap<String, miupy_media::SearchResult>> {
+    fn cache(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, (miupy_media::SearchResult, Vec<String>)>> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn cache_results(&self, results: &[miupy_media::SearchResult]) {
         let mut cache = self.cache();
         for result in results {
-            cache.insert(result.video_id.clone(), result.clone());
+            cache.insert(result.video_id.clone(), (result.clone(), Vec::new()));
         }
     }
 
@@ -125,7 +133,8 @@ impl Youtube {
                 cache.clear();
             }
             for r in &raw {
-                cache.insert(r.video_id.clone(), r.clone());
+                let artists = artists_from_other_results(&raw, &r.video_id, &[]);
+                cache.insert(r.video_id.clone(), (r.clone(), artists));
             }
         }
         let out = raw
@@ -174,11 +183,10 @@ impl Youtube {
         if source_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let cached: Vec<Option<miupy_media::SearchResult>> = {
+        let cached: Vec<Option<(miupy_media::SearchResult, Vec<String>)>> = {
             let cache = self.cache();
             source_ids.iter().map(|id| cache.get(id).cloned()).collect()
         };
-        let peer_results: Vec<miupy_media::SearchResult> = self.cache().values().cloned().collect();
         let tracks = self
             .db
             .run(move |db| {
@@ -195,12 +203,12 @@ impl Youtube {
                 let mut plan: Vec<Result<NewTrack, Track>> = Vec::new();
                 for (sid, hit) in source_ids.iter().zip(cached) {
                     match hit {
-                        Some(r) => {
-                            let artists = artists_from_other_results(
-                                &peer_results,
-                                &r.video_id,
-                                &known_artists,
-                            );
+                        Some((r, peers)) => {
+                            let artists = known_artists
+                                .iter()
+                                .cloned()
+                                .chain(peers)
+                                .collect::<Vec<_>>();
                             plan.push(Ok(to_new_track(&r, &artists)));
                         }
                         None => {
@@ -290,6 +298,51 @@ mod tests {
         // sem artista no título, vale o canal
         assert_eq!(r[1].artist, "Outro Canal");
         assert_eq!(r[2].artist, "Daft Punk");
+    }
+
+    // @test RF-09
+    #[test]
+    fn pista_exige_dois_titulos_do_mesmo_artista_sem_contar_canal() {
+        let results = vec![
+            sr("target", "Negro drama - Racionais Mcs", "Terceiro"),
+            sr("cover", "Racionais MC's - Negro Drama (Cover)", "Outro"),
+            sr("react", "Reaction Negro Drama", "Racionais MC's"),
+        ];
+        let artists = artists_from_other_results(&results, "target", &[]);
+        assert!(artists.is_empty());
+        let (title, artist) = display_fields_known(&results[0], &artists);
+        assert_eq!(
+            (title.as_str(), artist.as_str()),
+            ("Racionais Mcs", "Negro drama")
+        );
+        let mut repeated = results;
+        repeated.push(sr(
+            "live",
+            "Racionais MC's - Negro Drama ao vivo",
+            "Mais um",
+        ));
+        let artists = artists_from_other_results(&repeated, "target", &[]);
+        let (title, artist) = display_fields_known(&repeated[0], &artists);
+        assert_eq!(
+            (title.as_str(), artist.as_str()),
+            ("Negro drama", "Racionais Mcs")
+        );
+    }
+
+    // @test RF-09
+    #[tokio::test]
+    async fn adicionar_usa_pistas_so_do_lote_da_busca() {
+        let (y, resolver, _, _) = svc();
+        resolver.results.lock().unwrap().extend([
+            sr("target", "Negro drama - Racionais Mcs", "Terceiro"),
+            sr("other1", "Racionais MC's - Faixa A", "Canal"),
+            sr("other2", "Racionais MC's - Faixa B", "Canal"),
+        ]);
+        y.search("Negro drama", None).await.unwrap();
+        y.search("Faixa", None).await.unwrap();
+        let saved = y.add_to_library(vec!["target".into()], None).await.unwrap();
+        assert_eq!(saved[0].title, "Racionais Mcs");
+        assert_eq!(saved[0].artist_name.as_deref(), Some("Negro drama"));
     }
 
     // @test RF-09
