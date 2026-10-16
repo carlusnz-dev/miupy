@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.stubGlobal('location', {
     get hash() { return entries[position].hash; },
     set hash(value: string) { visit(value); },
+    replace(url: string) { entries[position] = { hash: url, state: {} }; onHashChange(); },
   });
   back = vi.fn(() => { position--; onHashChange(); });
   vi.stubGlobal('history', {
@@ -76,5 +77,17 @@ describe('voltar à tela anterior', () => {
     expect(router.current.name).toBe('library');
     expect(router.fromLink).toBe(false);
     expect(router.canGoBack).toBe(true);
+  });
+
+  // @test RF-43
+  it('troca a tela sem criar entrada ao sair de uma playlist excluída', async () => {
+    const { router, navigate, paths } = await import('./router.svelte');
+    navigate(paths.playlist('p'));
+    router.replace(paths.playlists);
+    expect(router.current.name).toBe('playlists');
+    expect(entries).toHaveLength(2);
+    router.back();
+    expect(router.current.name).toBe('home');
+    expect(router.canGoBack).toBe(false);
   });
 });

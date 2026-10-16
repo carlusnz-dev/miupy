@@ -33,6 +33,9 @@ class Router {
   private readonly session = Math.random().toString(36).slice(2);
   private index = 0;
   private nextFromLink: boolean | null = null;
+  private replacing = false;
+  /** Instante da última troca de tela: o WebKit pode já ter voltado sozinho com o botão do mouse. */
+  lastChange = 0;
   constructor() {
     if (typeof window !== 'undefined') {
       this.saveEntry(false);
@@ -42,11 +45,15 @@ class Router {
           this.index = entry.index;
           this.fromLink = entry.fromLink;
         } else {
-          this.index++;
-          this.fromLink = this.nextFromLink ?? true;
+          if (!this.replacing) {
+            this.index++;
+            this.fromLink = this.nextFromLink ?? true;
+          }
           this.saveEntry(this.fromLink);
         }
         this.nextFromLink = null;
+        this.replacing = false;
+        this.lastChange = performance.now();
         this.canGoBack = this.index > 0;
         this.current = parse(location.hash);
       });
@@ -65,6 +72,8 @@ class Router {
     this.nextFromLink = false;
     navigate(path);
   }
+  /** Troca a tela atual sem criar entrada (ex.: sair de uma playlist excluída). */
+  replace(path: string) { this.replacing = true; location.replace(href(path)); }
   back() { if (this.canGoBack) history.back(); }
 }
 export const router = new Router();

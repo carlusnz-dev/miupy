@@ -10,7 +10,7 @@
   import { Chunked } from '../lib/util/chunked.svelte';
   import { player } from '../lib/stores/player.svelte';
   import { Selection } from '../lib/stores/selection.svelte';
-  import { navigate, href, paths } from '../lib/stores/router.svelte';
+  import { router, href, paths } from '../lib/stores/router.svelte';
   import { ui } from '../lib/stores/ui.svelte';
   import { notify, notifyError } from '../lib/stores/toast.svelte';
   import { downloadPlaylist, downloadTracks } from '../lib/actions';
@@ -89,7 +89,7 @@
   }
   async function destroy() {
     if (!pl || !(await ui.confirm('Apagar playlist', `"${pl.name}" será apagada. As faixas continuam na discoteca.${pl.isFavorites ? " As favoritas ficarão sem playlist até você marcar outra ou favoritar uma faixa." : ""}`, 'Apagar', true))) return;
-    try { await api.playlistDelete({ playlistId: id }); navigate(paths.playlists); } catch (e) { notifyError(e); }
+    try { await api.playlistDelete({ playlistId: id }); router.replace(paths.playlists); } catch (e) { notifyError(e); }
   }
   // @req RF-31
   async function setAutoDownload(enabled: boolean) {
