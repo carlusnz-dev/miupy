@@ -38,5 +38,6 @@ e direitos autorais; use apenas com conteúdo que você tem direito de baixar.
 
 ## Licença
 
-Distribuído sob a licença MIT ou a Apache 2.0, à sua escolha: [`LICENSE-MIT`](LICENSE-MIT) e
-[`LICENSE-APACHE`](LICENSE-APACHE).
+Distribuído sob a GNU GPL versão 3 ou posterior (`GPL-3.0-or-later`): [`LICENSE`](LICENSE). Até a
+v0.3.1 o projeto era MIT ou Apache 2.0; a troca veio com o `rustypipe` (GPL-3.0), que faz o download
+no Android.
