@@ -4,16 +4,55 @@
   import { springTransition } from '../motion';
   import { player } from '../stores/player.svelte';
   import { navigate, paths } from '../stores/router.svelte';
+  import { beginDrag } from '../util/drag';
   import Cover from './Cover.svelte';
   import Icon from './Icon.svelte';
   const t = $derived(player.track);
+  let button = $state<HTMLButtonElement>();
+  let drag: { pointerId: number; session: ReturnType<typeof beginDrag> } | null = null;
+  let offset = $state(0);
+  let moving = $state(false);
+  let swiped = false;
+  const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // @req RF-46
+  function pointerDown(event: PointerEvent) {
+    if (event.button !== 0) return;
+    drag = { pointerId: event.pointerId, session: beginDrag(event.clientX, event.timeStamp) };
+    moving = true;
+    button?.setPointerCapture(event.pointerId);
+  }
+  function pointerMove(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    const distance = drag.session.move(event.clientX, event.timeStamp);
+    offset = reduced() ? 0 : Math.max(-(button?.clientWidth ?? 0), Math.min(button?.clientWidth ?? 0, distance));
+  }
+  function pointerUp(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    const { session } = drag;
+    const distance = session.move(event.clientX, event.timeStamp);
+    swiped = session.finish(button?.clientWidth ?? 0, distance < 0 ? -1 : 1, 0.35, event.timeStamp);
+    drag = null;
+    moving = false;
+    offset = 0;
+    if (swiped) void (distance < 0 ? player.next() : player.previous());
+  }
+  function pointerCancel(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    drag.session.cancel(); drag = null; moving = false; offset = 0;
+  }
+  function open() {
+    if (swiped) { swiped = false; return; }
+    navigate(paths.nowPlaying);
+  }
 </script>
 
 {#if t}
   <div transition:springTransition class="relative border-t border-line bg-s2" role="region" aria-label="Mini player">
     <div class="absolute inset-x-0 top-0 h-0.5 bg-s3" aria-hidden="true"><div class="h-full" style="width:{player.progress * 100}%;background:var(--grad-lava)"></div></div>
     <div class="flex items-center gap-2 px-3 py-2">
-      <button class="flex min-w-0 flex-1 items-center gap-3 text-left" onclick={() => navigate(paths.nowPlaying)} aria-label="Abrir tocando agora: {t.title}">
+      <button bind:this={button} class="flex min-h-12 min-w-0 flex-1 items-center gap-3 text-left touch-pan-y" style:transform={offset ? `translate3d(${offset}px,0,0)` : undefined} style:transition={moving || reduced() ? 'none' : 'transform var(--dur-base) var(--ease-spring)'}
+        onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerCancel} onlostpointercapture={pointerCancel}
+        onclick={open} aria-label="Abrir tocando agora: {t.title}">
         <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} size={40} rounded="0.375rem" />
         <span class="min-w-0">
           <span class="block truncate text-sm font-medium">{t.title}</span>
