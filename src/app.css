@@ -69,6 +69,8 @@
   --glass-blur-strong: 24px;
   --glass-line: rgb(255 238 228 / 0.16);
   --glass-sheen: inset 0 1px 0 rgb(255 238 228 / 0.14);
+  --cover-blur: 36px;
+  --cover-glow-a: 0.5;
 }
 
 :root[data-lava='purple'], [data-lava-preview='purple'] {
@@ -162,6 +164,15 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
     backdrop-filter: blur(var(--glass-b)) saturate(1.3);
   }
 }
+
+/* @req RF-40 RNF-04: capa desfocada (CoverGlow). Estática: pinta uma vez por faixa, nada anima por quadro. */
+.cover-glow {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+  transform: scale(1.5); opacity: var(--cover-glow-a);
+  filter: blur(var(--cover-blur)) saturate(1.4);
+  animation: glow-in var(--dur-slow) both;
+}
+@keyframes glow-in { from { opacity: 0; } }
 
 /* botões */
 .btn {
