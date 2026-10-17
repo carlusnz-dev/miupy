@@ -64,7 +64,7 @@
   --cover-tint: var(--lava);
   --glass-alpha: 62%;
   --glass-alpha-strong: 84%;
-  --glass-tint-mix: 10%;
+  --glass-tint-mix: 5%;
   --glass-blur: 12px;
   --glass-blur-strong: 24px;
   --glass-line: rgb(255 238 228 / 0.16);
@@ -151,7 +151,7 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
   --glass-a: var(--glass-alpha);
   --glass-b: var(--glass-blur);
   background-color: color-mix(in oklab, color-mix(in oklab, var(--surface-2), var(--tint) var(--glass-tint-mix)) 94%, transparent);
-  background-image: linear-gradient(180deg, color-mix(in oklab, var(--tint) 14%, transparent), transparent 55%);
+  background-image: linear-gradient(180deg, color-mix(in oklab, var(--tint) 9%, transparent), transparent 55%);
   border: 1px solid var(--glass-line);
   box-shadow: var(--glass-sheen);
   transition: --tint var(--dur-slow);
