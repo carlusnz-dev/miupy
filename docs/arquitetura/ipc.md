@@ -69,7 +69,7 @@ interface PlayerState {
   muted: boolean;
   queue: string[];              // ids das faixas
   context: QueueContext | null;  // origem da fila nesta abertura; não é persistida
-  queueIndex: number;           // -1 se vazia
+  queueIndex: number;           // -1 se não há faixa selecionada
   streaming: boolean;           // true quando a faixa atual toca da rede, sem arquivo local (RF-18)
   shuffle: ShuffleMode;         // RF-24
 }
@@ -305,6 +305,9 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 | `player_set_volume` | `{ volume }` | `PlayerState` | RF-02 |
 | `player_set_muted` | `{ muted }` | `PlayerState` | RF-02 |
 | `player_get_queue` | — | `Track[]` | RF-03 |
+| `player_enqueue` | `{ trackIds: string[], next?: boolean }` | `PlayerState` | RF-49 |
+| `player_queue_remove` | `{ index: number }` | `PlayerState` | RF-49 |
+| `player_queue_move` | `{ from: number, to: number }` | `PlayerState` | RF-49 |
 | `player_set_shuffle` | `{ mode: ShuffleMode }` | `PlayerState` | RF-24 |
 | `equalizer_list_presets` | — | `EqPreset[]` | RF-29 |
 | `equalizer_save_preset` | `{ preset: EqPresetInput }` | `EqPreset` | RF-29 |
@@ -413,6 +416,21 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
 - `download_clear_finished` remove os jobs `done` e `error` e devolve quantos removeu. Não apaga
   arquivo nem faixa.
 - `library_list_tracks_by_artist` aceita o mesmo `TrackQuery` de `library_list_tracks`.
+
+### Controle da fila (RF-49)
+
+- Os índices são posições em `PlayerState.queue`, inclusive quando um ID aparece mais de uma vez.
+  Índices negativos ou fora da fila devolvem `invalid_input`. Remover a posição atual também devolve
+  `invalid_input`. Mover usa a posição `to` após remover `from`, como `Array.splice`.
+- `player_enqueue` valida todos os IDs na discoteca antes de mudar a fila; ID ausente devolve
+  `not_found`. Por padrão acrescenta ao fim; `next: true` insere na ordem recebida logo depois da
+  faixa atual. Não toca, pausa nem troca a faixa. Em fila vazia, `queueIndex` fica em `-1` e
+  `player_next` ou `player_resume` inicia a primeira faixa. Os três comandos mantêm o contexto
+  da fila e emitem `player://state`, além de devolver o novo `PlayerState`.
+- A ordem anterior ao aleatório fica em `original_ids`: enfileirar acrescenta nela ao fim ou depois
+  da ocorrência atual; remover tira só a ocorrência escolhida. Mover com modo `off` muda também
+  essa ordem; com `random` ou `surfle`, muda apenas a ordem de reprodução. Voltar a `off` restaura
+  a ordem original das ocorrências restantes após a atual.
 
 ### Aleatório e Surfle (RF-24)
 
