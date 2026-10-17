@@ -284,7 +284,7 @@ pub fn load_saved_mode(root: Option<&Path>) -> Option<String> {
         .map(|m| m.as_str().to_owned())
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

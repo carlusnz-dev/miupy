@@ -22,7 +22,8 @@ class AudioArgs {
     var url: String? = null
     var headers: Map<String, String> = emptyMap()
     var positionMs: Long = 0
-    var volume: Float = 1f
+    var volume: Float? = null
+    var generation: Long = 0
 }
 
 @InvokeArg
@@ -47,7 +48,14 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity) {
             } else {
                 // O startService só cria o serviço depois, no looper: a ação espera o onCreate.
                 PlaybackService.pending.add(action)
-                activity.startService(Intent(activity, PlaybackService::class.java))
+                try {
+                    val context = activity.applicationContext
+                    context.startService(Intent(context, PlaybackService::class.java))
+                } catch (error: IllegalStateException) {
+                    // App em segundo plano no Android 8+: não dá para subir o serviço agora.
+                    PlaybackService.pending.clear()
+                    sendError("Não deu para iniciar o áudio em segundo plano", 0)
+                }
             }
         }
         invoke.resolve()
@@ -55,26 +63,30 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun load(invoke: Invoke) {
-        val path = invoke.parseArgs(AudioArgs::class.java).path ?: return invoke.reject("Caminho ausente")
-        execute(invoke) { it.load(Uri.fromFile(java.io.File(path)), emptyMap(), false) }
+        val args = invoke.parseArgs(AudioArgs::class.java)
+        val path = args.path ?: return invoke.reject("Caminho ausente")
+        execute(invoke) { it.load(Uri.fromFile(java.io.File(path)), emptyMap(), false, args.generation) }
     }
 
     @Command
     fun loadUrl(invoke: Invoke) {
         val args = invoke.parseArgs(AudioArgs::class.java)
         val url = args.url ?: return invoke.reject("URL ausente")
-        execute(invoke) { it.load(Uri.parse(url), args.headers, true) }
+        execute(invoke) { it.load(Uri.parse(url), args.headers, true, args.generation) }
     }
 
     @Command fun play(invoke: Invoke) = execute(invoke) { it.play(); requestNotificationPermission() }
     @Command fun pause(invoke: Invoke) = execute(invoke) { it.pause() }
-    @Command fun stop(invoke: Invoke) = execute(invoke) { it.stopPlayback() }
+    @Command fun stop(invoke: Invoke) {
+        val generation = invoke.parseArgs(AudioArgs::class.java).generation
+        execute(invoke) { it.stopPlayback(generation) }
+    }
     @Command fun seek(invoke: Invoke) {
         val position = invoke.parseArgs(AudioArgs::class.java).positionMs
         execute(invoke) { it.seek(position) }
     }
     @Command fun volume(invoke: Invoke) {
-        val value = invoke.parseArgs(AudioArgs::class.java).volume
+        val value = invoke.parseArgs(AudioArgs::class.java).volume ?: return invoke.reject("Volume ausente")
         execute(invoke) { it.volume(value) }
     }
 
@@ -89,11 +101,14 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity) {
 
     companion object {
         @Volatile private var channel: Channel? = null
+        /** Último volume efetivo pedido; reaplicado se o sistema recriar o serviço. */
+        @Volatile var lastVolume = 1f
         private var permissionRequested = false
 
-        fun sendEvent(kind: String, positionMs: Long, durationMs: Long, status: String? = null) {
+        fun sendEvent(kind: String, positionMs: Long, durationMs: Long, generation: Long, status: String? = null) {
             val data = JSObject().apply {
                 put("kind", kind)
+                put("generation", generation)
                 put("positionMs", positionMs)
                 put("durationMs", durationMs)
                 if (status != null) put("status", status)
@@ -101,9 +116,10 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity) {
             channel?.send(data)
         }
 
-        fun sendError(message: String) {
+        fun sendError(message: String, generation: Long) {
             channel?.send(JSObject().apply {
                 put("kind", "error")
+                put("generation", generation)
                 put("message", message)
             })
         }

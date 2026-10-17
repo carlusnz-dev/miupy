@@ -72,10 +72,14 @@ mod mobile {
         duration_ms: u64,
         #[serde(default)]
         message: Option<String>,
+        #[serde(default)]
+        generation: u64,
     }
 
     struct Inner {
         state: PlaybackState,
+        /// Sobe a cada load/stop; eventos de outra geração são da faixa anterior e são descartados.
+        generation: u64,
         gain_db: f32,
         #[allow(dead_code)] // reservado para o audiofx.Equalizer da segunda metade
         eq_gains_db: [f32; 8],
@@ -95,6 +99,7 @@ mod mobile {
             let (sender, receiver) = unbounded();
             let inner = Arc::new(Mutex::new(Inner {
                 state: PlaybackState::default(),
+                generation: 0,
                 gain_db: 0.0,
                 eq_gains_db: [0.0; 8],
             }));
@@ -121,6 +126,13 @@ mod mobile {
             })
         }
 
+        /// Abre uma geração nova (load/stop) e devolve o número para o plugin carimbar os eventos.
+        fn next_generation(&self) -> u64 {
+            let mut inner = self.inner.lock().unwrap();
+            inner.generation += 1;
+            inner.generation
+        }
+
         fn call(&self, name: &str, args: serde_json::Value) -> miupy_audio::Result<()> {
             self.plugin
                 .run_mobile_plugin::<()>(name, args)
@@ -144,6 +156,13 @@ mod mobile {
     }
 
     fn handle_mobile_event(inner: &Mutex<Inner>, sender: &Sender<AudioEvent>, event: MobileEvent) {
+        let current = inner.lock().unwrap().generation;
+        // Erro com geração 0 vem do plugin (serviço que não subiu) e vale sempre.
+        let stale =
+            event.generation != current && !(event.kind == "error" && event.generation == 0);
+        if stale {
+            return;
+        }
         match event.kind.as_str() {
             "state" => {
                 let mut guard = inner.lock().unwrap();
@@ -200,7 +219,11 @@ mod mobile {
                     source: std::io::Error::from(std::io::ErrorKind::NotFound),
                 });
             }
-            self.call("load", json!({ "path": path.to_string_lossy() }))?;
+            let generation = self.next_generation();
+            self.call(
+                "load",
+                json!({ "path": path.to_string_lossy(), "generation": generation }),
+            )?;
             self.update(|g| {
                 g.state.path = Some(path.to_owned());
                 g.state.url = None;
@@ -212,7 +235,11 @@ mod mobile {
         }
         fn load_url(&self, url: &str, options: StreamOptions) -> miupy_audio::Result<()> {
             let headers: std::collections::HashMap<_, _> = options.headers.into_iter().collect();
-            self.call("loadUrl", json!({ "url": url, "headers": headers }))?;
+            let generation = self.next_generation();
+            self.call(
+                "loadUrl",
+                json!({ "url": url, "headers": headers, "generation": generation }),
+            )?;
             self.update(|g| {
                 g.state.path = None;
                 g.state.url = Some(url.into());
@@ -226,16 +253,30 @@ mod mobile {
             if self.state().path.is_none() && self.state().url.is_none() {
                 return Err(AudioError::NothingLoaded);
             }
-            self.call("play", json!({}))
+            self.call("play", json!({}))?;
+            // Otimista: o player lê o estado logo depois; o evento do Kotlin confirma.
+            self.update(|g| {
+                if g.state.status != PlaybackStatus::Loading {
+                    g.state.status = PlaybackStatus::Playing;
+                }
+            });
+            Ok(())
         }
         fn pause(&self) -> miupy_audio::Result<()> {
-            self.call("pause", json!({}))
+            self.call("pause", json!({}))?;
+            self.update(|g| {
+                if g.state.status == PlaybackStatus::Playing {
+                    g.state.status = PlaybackStatus::Paused;
+                }
+            });
+            Ok(())
         }
         fn resume(&self) -> miupy_audio::Result<()> {
             self.play()
         }
         fn stop(&self) -> miupy_audio::Result<()> {
-            self.call("stop", json!({}))?;
+            let generation = self.next_generation();
+            self.call("stop", json!({ "generation": generation }))?;
             self.update(|g| {
                 g.state.status = PlaybackStatus::Stopped;
                 g.state.path = None;

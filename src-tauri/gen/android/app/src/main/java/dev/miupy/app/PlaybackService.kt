@@ -16,11 +16,13 @@ class PlaybackService : MediaSessionService() {
     private lateinit var session: MediaSession
     private val handler = Handler(Looper.getMainLooper())
     private var loading = false
-    private var explicitStop = false
+    /** Geração do último load/stop vinda do Rust; carimba os eventos para o Rust descartar os atrasados. */
+    var generation = 0L
+        private set
     private val progress = object : Runnable {
         override fun run() {
             if (player.isPlaying) {
-                AudioPlugin.sendEvent("progress", player.currentPosition.coerceAtLeast(0), duration())
+                AudioPlugin.sendEvent("progress", player.currentPosition.coerceAtLeast(0), duration(), generation)
             }
             handler.postDelayed(this, 500)
         }
@@ -29,13 +31,20 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         player = ExoPlayer.Builder(this).build().apply {
-            setAudioAttributes(AudioAttributes.DEFAULT, true)
+            setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
+                true,
+            )
             setHandleAudioBecomingNoisy(true)
+            // Tela apagada: mantém CPU e Wi-Fi acordados enquanto toca (local e streaming).
+            setWakeMode(C.WAKE_MODE_NETWORK)
+            // Serviço recriado (o sistema o matou): volta com o último volume pedido pelo Rust.
+            volume = AudioPlugin.lastVolume
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) loading = false
-                    if (state == Player.STATE_ENDED && !explicitStop) {
-                        AudioPlugin.sendEvent("ended", currentPosition.coerceAtLeast(0), duration())
+                    if (state == Player.STATE_ENDED) {
+                        AudioPlugin.sendEvent("ended", currentPosition.coerceAtLeast(0), duration(), generation)
                     } else {
                         publishState()
                     }
@@ -45,7 +54,7 @@ class PlaybackService : MediaSessionService() {
                 }
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     loading = false
-                    AudioPlugin.sendError(error.message ?: "Falha ao reproduzir áudio")
+                    AudioPlugin.sendError(error.message ?: "Falha ao reproduzir áudio", generation)
                 }
             })
         }
@@ -58,10 +67,11 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
 
-    fun load(uri: android.net.Uri, headers: Map<String, String>, stream: Boolean) {
-        explicitStop = true
+    fun load(uri: android.net.Uri, headers: Map<String, String>, stream: Boolean, generation: Long) {
+        this.generation = generation
         player.stop()
-        explicitStop = false
+        // O stop() não zera playWhenReady: sem isto a faixa nova tocaria sozinha (o contrato é pausada).
+        player.playWhenReady = false
         val item = androidx.media3.common.MediaItem.fromUri(uri)
         if (stream) {
             val factory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
@@ -77,15 +87,14 @@ class PlaybackService : MediaSessionService() {
 
     fun play() { player.play(); publishState() }
     fun pause() { player.pause(); publishState() }
-    fun stopPlayback() {
-        explicitStop = true
+    fun stopPlayback(generation: Long) {
+        this.generation = generation
         player.stop()
         player.clearMediaItems()
-        explicitStop = false
         publishState()
     }
     fun seek(positionMs: Long) { player.seekTo(positionMs); publishState() }
-    fun volume(value: Float) { player.volume = value }
+    fun volume(value: Float) { AudioPlugin.lastVolume = value; player.volume = value }
 
     private fun duration(): Long = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0L
     private fun publishState() {
@@ -95,7 +104,7 @@ class PlaybackService : MediaSessionService() {
             player.isPlaying -> "playing"
             else -> "paused"
         }
-        AudioPlugin.sendEvent("state", player.currentPosition.coerceAtLeast(0), duration(), status)
+        AudioPlugin.sendEvent("state", player.currentPosition.coerceAtLeast(0), duration(), generation, status)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -120,7 +129,7 @@ class PlaybackService : MediaSessionService() {
             try {
                 action(service)
             } catch (error: Exception) {
-                AudioPlugin.sendError(error.message ?: "Falha no serviço de áudio")
+                AudioPlugin.sendError(error.message ?: "Falha no serviço de áudio", service.generation)
             }
         }
     }
