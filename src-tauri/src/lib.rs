@@ -82,14 +82,18 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
     let resolver = Arc::new(YtDlpResolver::with_binary(
         miupy_media::YtDlpManager::new(dirs.root.join("bin"))?.binary_path(),
     ));
+    // @req RF-44: próxima/anterior do sistema chegam pelo backend e andam a fila do player.
+    #[cfg(target_os = "android")]
+    let android_backend = Arc::new(android_audio::AndroidAudioBackend::new(
+        app.state::<AndroidAudioPlugin>().0.clone(),
+    )?);
     let state = AppState::new(Parts {
         dirs,
         events: Arc::new(TauriEvents(app.clone())),
         backend: {
             #[cfg(target_os = "android")]
             {
-                let plugin = app.state::<AndroidAudioPlugin>().0.clone();
-                Arc::new(android_audio::AndroidAudioBackend::new(plugin)?)
+                android_backend.clone()
             }
             #[cfg(not(target_os = "android"))]
             {
@@ -99,6 +103,25 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
         resolver,
         provider,
     })?;
+    #[cfg(target_os = "android")]
+    {
+        let player = Arc::downgrade(&state.player);
+        android_backend.on_remote(move |action| {
+            let Some(player) = player.upgrade() else {
+                return;
+            };
+            // Fora da thread do canal: o player chama o backend, que fala com o plugin.
+            std::thread::spawn(move || {
+                let result = match action {
+                    android_audio::Remote::Next => player.next(),
+                    android_audio::Remote::Previous => player.previous(),
+                };
+                if let Err(e) = result {
+                    log::warn!("controle de mídia do sistema: {e}");
+                }
+            });
+        });
+    }
     Ok(state)
 }
 

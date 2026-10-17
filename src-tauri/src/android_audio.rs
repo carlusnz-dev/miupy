@@ -76,6 +76,15 @@ mod mobile {
         generation: u64,
     }
 
+    /// Próxima/anterior pedidos pelo sistema (notificação, tela de bloqueio, fone).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Remote {
+        Next,
+        Previous,
+    }
+
+    type RemoteHandler = Arc<Mutex<Option<Box<dyn Fn(Remote) + Send>>>>;
+
     struct Inner {
         state: PlaybackState,
         /// Sobe a cada load/stop; eventos de outra geração são da faixa anterior e são descartados.
@@ -91,6 +100,7 @@ mod mobile {
         inner: Arc<Mutex<Inner>>,
         sender: Sender<AudioEvent>,
         receiver: Receiver<AudioEvent>,
+        remote: RemoteHandler,
         _channel: Channel<serde_json::Value>,
     }
 
@@ -103,12 +113,16 @@ mod mobile {
                 gain_db: 0.0,
                 eq_gains_db: [0.0; 8],
             }));
+            let remote: RemoteHandler = Arc::new(Mutex::new(None));
             let event_inner = inner.clone();
             let event_sender = sender.clone();
+            let event_remote = remote.clone();
             let channel = Channel::new(move |body| {
                 if let InvokeResponseBody::Json(raw) = body {
                     match serde_json::from_str::<MobileEvent>(&raw) {
-                        Ok(event) => handle_mobile_event(&event_inner, &event_sender, event),
+                        Ok(event) => {
+                            handle_mobile_event(&event_inner, &event_sender, &event_remote, event)
+                        }
                         Err(error) => log::warn!("evento de áudio Android inválido: {error}"),
                     }
                 }
@@ -122,8 +136,14 @@ mod mobile {
                 inner,
                 sender,
                 receiver,
+                remote,
                 _channel: channel,
             })
+        }
+
+        /// Quem atende próxima/anterior do sistema (a fila do player da casca).
+        pub fn on_remote(&self, handler: impl Fn(Remote) + Send + 'static) {
+            *self.remote.lock().unwrap() = Some(Box::new(handler));
         }
 
         /// Abre uma geração nova (load/stop) e devolve o número para o plugin carimbar os eventos.
@@ -155,7 +175,12 @@ mod mobile {
         }
     }
 
-    fn handle_mobile_event(inner: &Mutex<Inner>, sender: &Sender<AudioEvent>, event: MobileEvent) {
+    fn handle_mobile_event(
+        inner: &Mutex<Inner>,
+        sender: &Sender<AudioEvent>,
+        remote: &RemoteHandler,
+        event: MobileEvent,
+    ) {
         let current = inner.lock().unwrap().generation;
         // Erro com geração 0 vem do plugin (serviço que não subiu) e vale sempre.
         let stale =
@@ -206,6 +231,16 @@ mod mobile {
                         .message
                         .unwrap_or_else(|| "Falha ao reproduzir áudio".into()),
                 });
+            }
+            "next" | "previous" => {
+                let action = if event.kind == "next" {
+                    Remote::Next
+                } else {
+                    Remote::Previous
+                };
+                if let Some(handler) = remote.lock().unwrap().as_ref() {
+                    handler(action);
+                }
             }
             _ => log::warn!("evento de áudio Android desconhecido: {}", event.kind),
         }
@@ -329,7 +364,7 @@ mod mobile {
 }
 
 #[cfg(target_os = "android")]
-pub use mobile::AndroidAudioBackend;
+pub use mobile::{AndroidAudioBackend, Remote};
 
 #[cfg(test)]
 mod tests {

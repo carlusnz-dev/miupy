@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -58,7 +59,28 @@ class PlaybackService : MediaSessionService() {
                 }
             })
         }
-        session = MediaSession.Builder(this, player).build()
+        val openApp = android.app.PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        // A fila mora no Rust: o ExoPlayer só tem a faixa atual. Próxima/anterior da notificação,
+        // da tela de bloqueio e do fone viram eventos para a casca avançar a fila dela.
+        val remote = object : ForwardingPlayer(player) {
+            override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands().buildUpon()
+                .addAll(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                .build()
+            override fun isCommandAvailable(command: Int) = availableCommands.contains(command)
+            override fun seekToNext() = remote("next")
+            override fun seekToNextMediaItem() = remote("next")
+            override fun seekToPrevious() = remote("previous")
+            override fun seekToPreviousMediaItem() = remote("previous")
+        }
+        session = MediaSession.Builder(this, remote).setSessionActivity(openApp).build()
+        // Sem MediaController conectado, a sessão só ganha notificação (e primeiro plano) se for
+        // registrada no serviço: o plugin fala direto com o serviço.
+        addSession(session)
         instance = this
         pending.forEach { run(this, it) }
         pending.clear()
@@ -85,6 +107,9 @@ class PlaybackService : MediaSessionService() {
         player.prepare()
         publishState()
     }
+
+    private fun remote(kind: String) =
+        AudioPlugin.sendEvent(kind, player.currentPosition.coerceAtLeast(0), duration(), generation)
 
     fun play() { player.play(); publishState() }
     fun pause() { player.pause(); publishState() }
