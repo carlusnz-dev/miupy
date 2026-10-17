@@ -145,9 +145,66 @@ jobs:
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
 
+  # APK assinado só para aarch64 (celulares de 64 bits).
+  android:
+    name: construir (android)
+    needs: preparar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write # anexa o APK à release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: npm ci
+      - name: Keystore
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE" || { echo "::error::Falta o segredo ANDROID_KEYSTORE."; exit 1; }
+          echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/miupy-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/miupy-release.jks"
+            echo "password=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+      - name: APK
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          npx tauri android build --apk --target aarch64
+      - name: Anexa o APK
+        run: |
+          apk=src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify "$apk"
+          versao="${TAG#v}"
+          cp "$apk" "miupy_${versao}_android-arm64.apk"
+          gh release upload "$TAG" "miupy_${versao}_android-arm64.apk" --clobber
+
   publicar:
     name: publicar
-    needs: [preparar, construir]
+    needs: [preparar, construir, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -159,7 +216,7 @@ jobs:
       - name: Confere os instaladores
         run: |
           gh release view "$TAG" --json assets --jq '.assets[].name' | tee assets.txt
-          for padrao in '\.AppImage$' '\.deb$' '\.exe$' '\.msi$' '\.dmg$'; do
+          for padrao in '\.AppImage$' '\.deb$' '\.exe$' '\.msi$' '\.dmg$' '\.apk$'; do
             grep -Eq "$padrao" assets.txt || { echo "::error::Falta instalador $padrao na release."; exit 1; }
           done
       - name: Publica como última versão
