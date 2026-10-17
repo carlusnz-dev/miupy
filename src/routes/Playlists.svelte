@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Lista de playlists: criar, renomear, apagar. @req RF-06 RNF-11
+  // Lista de playlists: criar, editar detalhes, apagar. @req RF-06 RNF-11
   import { api, type Playlist } from '../lib/ipc';
   import { library } from '../lib/stores/library.svelte';
   import { href, paths } from '../lib/stores/router.svelte';
@@ -51,7 +51,7 @@
           {#if p.description}<span class="mt-1 line-clamp-2 block text-xs text-faint">{p.description}</span>{/if}
         </a>
         <div class="mt-2 flex justify-end gap-1">
-          <button class="icon-btn" aria-label="Renomear {p.name}" onclick={() => (form = { playlist: p })}><Icon name="edit" size={16} /></button>
+          <button class="icon-btn" aria-label="Editar detalhes de {p.name}" onclick={() => (form = { playlist: p })}><Icon name="edit" size={16} /></button>
           <button class="icon-btn" aria-label="Apagar {p.name}" onclick={() => remove(p)}><Icon name="trash" size={16} /></button>
         </div>
       </li>
