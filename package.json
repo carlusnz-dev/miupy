@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
+    "android:dev": "tauri android dev",
+    "android:apk": "tauri android build --apk --target aarch64 --debug",
     "docs:matriz": "node scripts/rastreabilidade.mjs",
     "test": "vitest run"
   },
