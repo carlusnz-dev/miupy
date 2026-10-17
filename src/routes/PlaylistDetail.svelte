@@ -14,17 +14,18 @@
   import { ui } from '../lib/stores/ui.svelte';
   import { notify, notifyError } from '../lib/stores/toast.svelte';
   import { downloadPlaylist, downloadTracks } from '../lib/actions';
+  import { downloads } from '../lib/stores/downloads.svelte';
   import { fmtDuration } from '../lib/util/format';
   import TrackToolbar from '../lib/components/TrackToolbar.svelte';
   import TrackRow from '../lib/components/TrackRow.svelte';
   import PlaylistForm from '../lib/components/PlaylistForm.svelte';
   import PlaylistCover from '../lib/components/PlaylistCover.svelte';
-  import { readImageUpload } from '../lib/util/imageUpload';
   import State from '../lib/components/State.svelte';
   import Skeleton from '../lib/components/Skeleton.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
   import Recommendations from '../lib/components/Recommendations.svelte';
   import Icon from '../lib/components/Icon.svelte';
+  import Menu, { type MenuItem } from '../lib/components/Menu.svelte';
   import MeshGradient from '../lib/components/MeshGradient.svelte';
 
   let { id }: { id: string } = $props();
@@ -55,6 +56,18 @@
   const chunk = new Chunked();
   $effect(() => chunk.advance(tracks.length));
   const rows = $derived(tracks.slice(0, chunk.shown));
+  const queued = $derived.by(() => {
+    const ids = new Set(queue);
+    return downloads.active.filter((j) => ids.has(j.trackId)).length;
+  });
+  const playLabel = $derived(isPlayingPlaylist ? 'Pausar' : isCurrentPlaylist ? 'Continuar' : 'Tocar playlist');
+  const edit = () => { editing = { playlist: pl ?? null }; };
+  const menuItems = $derived<MenuItem[]>([
+    { label: 'Editar detalhes', icon: 'edit', onselect: edit },
+    { label: 'Baixar automaticamente', checked: autoDownloadChecked, onselect: () => setAutoDownload(!autoDownloadChecked) }, // @req RF-31
+    ...(pl && !pl.isFavorites ? [{ label: 'Marcar como favoritas', icon: 'heart', onselect: markFavorites }] : []),
+    { label: 'Apagar playlist', icon: 'trash', danger: true, separated: true, onselect: destroy },
+  ]);
 
   $effect(() => {
     sortBy; sortDir; favoritesOnly;
@@ -106,20 +119,18 @@
   }
 
   // arrastar e soltar (desktop; no toque, use os botões subir/descer)
-  let coverInput = $state<HTMLInputElement>();
-  async function setCover(file: File | null) { // @req RF-22
-    try { await api.playlistSetCover({ playlistId: id, image: file ? await readImageUpload(file) : null }); await library.reloadPlaylists(); notify(file ? 'Capa atualizada.' : 'Capa removida.'); }
-    catch (e) { notifyError(e); }
-  }
   let dragId = $state<string | null>(null);
 </script>
 
 {#if !pl && error}
   <State kind="error" title="Playlist não encontrada" text={error} />
 {:else}
+  <a class="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg" href={href(paths.playlists)}><Icon name="left" size={16} />Playlists</a>
   <MeshGradient class="mb-5 rounded-2xl border border-line" intensity={0.8}>
     <div class="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-end md:p-6">
-      {#if pl}<PlaylistCover playlist={pl} size={144} />{:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
+      {#if pl}
+        <button type="button" class="shrink-0 rounded-lg" aria-label="Editar detalhes da playlist" title="Editar detalhes" onclick={edit}><PlaylistCover playlist={pl} size={144} /></button>
+      {:else}<Skeleton w="144px" h="144px" rounded="0.75rem" />{/if}
       <div class="min-w-0 flex-1">
         <p class="eyebrow !text-fg/70">{pl?.isFavorites ? "Playlist de favoritas" : "Playlist"}</p>
         {#if pl}
@@ -133,22 +144,13 @@
     </div>
   </MeshGradient>
 
-  <div class="mb-4 flex flex-wrap items-center gap-2">
+  <div class="mb-4 flex items-center gap-2 [&_.icon-btn]:!h-12 [&_.icon-btn]:!w-12 md:[&_.icon-btn]:!h-10 md:[&_.icon-btn]:!w-10">
     <!-- @req RF-42 -->
-    <button class="btn btn-primary" disabled={!tracks.length} onclick={() => isPlayingPlaylist ? player.pause() : isCurrentPlaylist ? player.resume() : player.play(tracks[0].id, queue, context)}><Icon name={isPlayingPlaylist ? 'pause' : 'play'} size={16} fill />{isPlayingPlaylist ? 'Pausar' : isCurrentPlaylist ? 'Continuar' : 'Tocar'}</button>
-    <button class="btn" disabled={!tracks.length} onclick={() => downloadPlaylist(id)}><Icon name="download" size={16} />Baixar playlist</button>
-    <!-- @req RF-31 -->
-    <label class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg">
-      <input type="checkbox" checked={autoDownloadChecked} disabled={!pl} onchange={(e) => setAutoDownload(e.currentTarget.checked)} />
-      Baixar automaticamente
-    </label>
-    <button class="btn" onclick={() => (editing = { playlist: pl ?? null })} disabled={!pl}><Icon name="edit" size={16} />Renomear</button>
-    <input bind:this={coverInput} type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Escolher capa" onchange={(e) => { const file = e.currentTarget.files?.[0]; if (file) void setCover(file); e.currentTarget.value = ''; }} />
-    <button class="btn" disabled={!pl} onclick={() => coverInput?.click()}>Escolher capa</button>
-    {#if pl?.coverPath}<button class="btn" onclick={() => setCover(null)}>Remover capa</button>{/if}
-    {#if pl && !pl.isFavorites}<button class="btn" onclick={markFavorites}><Icon name="heart" size={16} />Marcar como favoritas</button>{/if}
-    <button class="btn btn-danger" onclick={destroy} disabled={!pl}><Icon name="trash" size={16} />Apagar</button>
-    <a class="btn ml-auto" href={href(paths.playlists)}><Icon name="left" size={16} />Playlists</a>
+    <button class="btn btn-primary !min-h-12 !w-12 !p-0" disabled={!tracks.length} aria-label={playLabel} title={playLabel} onclick={() => isPlayingPlaylist ? player.pause() : isCurrentPlaylist ? player.resume() : player.play(tracks[0].id, queue, context)}><Icon name={isPlayingPlaylist ? 'pause' : 'play'} size={22} fill /></button>
+    <!-- @req RF-24 -->
+    <button class="icon-btn" disabled={!tracks.length} aria-label="Tocar em ordem aleatória" title="Tocar em ordem aleatória" onclick={() => player.playShuffled(queue, context)}><Icon name="shuffle" size={20} /></button>
+    <button class="icon-btn {queued ? 'on' : ''}" disabled={!tracks.length} aria-label={queued ? `Baixando ${queued} ${queued === 1 ? 'faixa' : 'faixas'}` : 'Baixar playlist'} title={queued ? `Baixando ${queued} ${queued === 1 ? 'faixa' : 'faixas'}` : 'Baixar playlist'} onclick={() => downloadPlaylist(id)}><Icon name="download" size={20} /></button>
+    <Menu items={menuItems} label="Mais opções" disabled={!pl} />
   </div>
 
   <TrackToolbar bind:search bind:sortBy bind:sortDir bind:favoritesOnly allowPosition placeholder="Buscar nesta playlist" />
