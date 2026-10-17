@@ -18,6 +18,7 @@
   import Seek from '../lib/components/Seek.svelte';
   import Volume from '../lib/components/Volume.svelte';
   import ShuffleButton from '../lib/components/ShuffleButton.svelte';
+  import BottomSheet from '../lib/components/BottomSheet.svelte';
   import { scores, fmtScore, scoreTooltip } from '../lib/stores/scores.svelte';
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
@@ -29,6 +30,8 @@
 
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
+  let sheetOpen = $state(false);
+  function showQueue() { tab = 'queue'; if (mobile) sheetOpen = true; }
   let eqOpen = $state(false);
   let eqButton = $state<HTMLButtonElement>();
   let eqPresets = $state<EqPreset[]>([]);
@@ -103,6 +106,51 @@
   });
 </script>
 
+{#snippet queuePanel()}
+        <div class="enter mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" style="--enter-delay:120ms" role="tablist">
+          <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm min-h-12 flex-1 !border-0 md:min-h-8 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
+          <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm min-h-12 flex-1 !border-0 md:min-h-8 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
+        </div>
+
+        <div class="enter card bg-s1/90 p-2 md:max-h-[60vh] md:overflow-y-auto" style="--enter-delay:200ms" bind:this={lyricBox} role="tabpanel">
+          {#if tab === 'queue'}
+            {#if player.queueTracks.length === 0}
+              <State kind="empty" title="Fila vazia" />
+            {:else}
+              <ol>
+                {#each player.queueTracks as q, i (q.id + i)}
+                  <li>
+                    <button class="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-s2 {i === player.state.queueIndex ? 'bg-s2' : ''}" aria-current={i === player.state.queueIndex ? 'true' : undefined} onclick={() => player.play(q.id, player.state.queue)}>
+                      <span class="tnum w-5 text-right text-xs text-faint">{i === player.state.queueIndex ? '♪' : i + 1}</span>
+                      <Cover path={q.coverPath} seed={q.id} size={36} rounded="0.25rem" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm {i === player.state.queueIndex ? 'text-lava-text' : ''}">{q.title}</span>
+                        <span class="block truncate text-xs text-muted">{q.artistName}</span>
+                      </span>
+                      <span class="tnum text-xs text-muted">{fmtTime(q.durationMs)}</span>
+                    </button>
+                  </li>
+                {/each}
+              </ol>
+            {/if}
+          {:else if lyricsLoading}
+            <SkeletonList variant="lines" label="Buscando letra" />
+          {:else if lyricsErr}
+            <State kind="error" title="Não deu para buscar a letra" text="A letra vem de um serviço online; sem rede ela não aparece." />
+          {:else if lines.length}
+            <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
+              {#each lines as l, i}
+                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
+              {/each}
+            </div>
+          {:else if lyrics?.plain}
+            <p class="whitespace-pre-line p-4 text-center leading-relaxed text-muted">{lyrics.plain}</p>
+          {:else}
+            <State kind="empty" icon="mic" title="Sem letra para esta faixa" text="Não encontramos letra no serviço de metadados." />
+          {/if}
+        </div>
+{/snippet}
+
 {#if !t}
   {#if mobile}<button type="button" class="icon-btn m-3 !h-12 !w-12" aria-label="Recolher Tocando" onclick={onclose}><Icon name="down" size={24} /></button>{/if}
   <State kind="empty" icon="music" title="Nada tocando" text="Escolha uma faixa na discoteca ou numa playlist para começar.">
@@ -118,8 +166,8 @@
         <button type="button" class="absolute right-3 top-1 icon-btn !h-12 !w-12" aria-label="Recolher Tocando" onclick={onclose}><Icon name="down" size={24} /></button>
       </div>
     {/if}
-    <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
-      <section class="order-1 flex flex-col gap-5" aria-label="Faixa atual">
+    <div class="mx-auto grid max-w-5xl gap-6 p-4 pb-20 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8 md:pb-8">
+      <section class="flex flex-col gap-5" aria-label="Faixa atual">
         <div data-drag-handle={mobile ? '' : undefined} class="enter flex w-full max-w-[22rem] self-center" class:touch-none={mobile}>
           <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full" rounded="0.75rem" label="Capa de {t.title}" />
         </div>
@@ -164,65 +212,31 @@
         </div>
       </section>
 
-      <section class="order-3 min-w-0 md:order-2" aria-label="Fila e letra">
-        <div class="enter mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" style="--enter-delay:120ms" role="tablist">
-          <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm flex-1 !border-0 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
-          <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm flex-1 !border-0 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
-        </div>
-
-        <div class="enter card max-h-[60vh] overflow-y-auto bg-s1/90 p-2" style="--enter-delay:200ms" bind:this={lyricBox} role="tabpanel">
-          {#if tab === 'queue'}
-            {#if player.queueTracks.length === 0}
-              <State kind="empty" title="Fila vazia" />
-            {:else}
-              <ol>
-                {#each player.queueTracks as q, i (q.id + i)}
-                  <li>
-                    <button class="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-s2 {i === player.state.queueIndex ? 'bg-s2' : ''}" aria-current={i === player.state.queueIndex ? 'true' : undefined} onclick={() => player.play(q.id, player.state.queue)}>
-                      <span class="tnum w-5 text-right text-xs text-faint">{i === player.state.queueIndex ? '♪' : i + 1}</span>
-                      <Cover path={q.coverPath} seed={q.id} size={36} rounded="0.25rem" />
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm {i === player.state.queueIndex ? 'text-lava-text' : ''}">{q.title}</span>
-                        <span class="block truncate text-xs text-muted">{q.artistName}</span>
-                      </span>
-                      <span class="tnum text-xs text-muted">{fmtTime(q.durationMs)}</span>
-                    </button>
-                  </li>
-                {/each}
-              </ol>
-            {/if}
-          {:else if lyricsLoading}
-            <SkeletonList variant="lines" label="Buscando letra" />
-          {:else if lyricsErr}
-            <State kind="error" title="Não deu para buscar a letra" text="A letra vem de um serviço online; sem rede ela não aparece." />
-          {:else if lines.length}
-            <div class="flex flex-col gap-2 py-8 text-center text-lg font-semibold">
-              {#each lines as l, i}
-                <button data-i={i} class="lyric-line border-0 bg-transparent px-2 {i === activeLine ? 'lyric-on text-lava-text' : 'text-faint hover:text-muted'}" aria-current={i === activeLine ? 'true' : undefined} onclick={() => player.seek(l.timeMs)}><span data-text={l.text || '♪'}>{l.text || '♪'}</span></button>
-              {/each}
-            </div>
-          {:else if lyrics?.plain}
-            <p class="whitespace-pre-line p-4 text-center leading-relaxed text-muted">{lyrics.plain}</p>
-          {:else}
-            <State kind="empty" icon="mic" title="Sem letra para esta faixa" text="Não encontramos letra no serviço de metadados." />
-          {/if}
-        </div>
-      </section>
-
-      <section class="enter order-2 mx-auto flex w-full max-w-3xl flex-col gap-3 md:order-3 md:col-span-2" style="--enter-delay:320ms" aria-label="Controles">
+      <section class="enter mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2 md:row-start-2" style="--enter-delay:320ms" aria-label="Controles">
         <Seek />
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
-          <div class="flex justify-end md:justify-start"><ShuffleButton /></div>
+          <div class="flex justify-end md:justify-start"><span class="[&>button]:!h-12 [&>button]:!w-12 md:[&>button]:!h-9 md:[&>button]:!w-9"><ShuffleButton /></span></div>
           <Transport big />
           <div class="flex items-center justify-end gap-1">
-            <button class="icon-btn motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
+            <button class="icon-btn !h-12 !w-12 md:!h-9 md:!w-9 motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
               <Icon name="heart" size={20} fill={favorites.is(t)} />
             </button>
-            <button class="icon-btn {tab === 'queue' ? 'on' : ''}" aria-pressed={tab === 'queue'} aria-label="Mostrar a fila" onclick={() => (tab = 'queue')}><Icon name="queue" size={20} /></button>
+            <button class="icon-btn !h-12 !w-12 md:!h-9 md:!w-9 {tab === 'queue' ? 'on' : ''}" aria-pressed={mobile ? undefined : tab === 'queue'} aria-expanded={mobile ? sheetOpen : undefined} aria-label="Mostrar a fila" onclick={showQueue}><Icon name="queue" size={20} /></button>
             <span class="hidden md:inline-flex"><Volume /></span>
           </div>
         </div>
       </section>
+      {#if !mobile}
+        <section class="min-w-0 md:col-start-2 md:row-start-1" aria-label="Fila e letra">
+          {@render queuePanel()}
+        </section>
+      {/if}
     </div>
   </MeshGradient>
+  {#if mobile}
+    <!-- @req RF-47: a folha vem depois do transporte na ordem de foco. -->
+    <BottomSheet title={tab === 'queue' ? `Fila · ${player.state.queue.length}` : 'Letra'} bind:open={sheetOpen}>
+      {@render queuePanel()}
+    </BottomSheet>
+  {/if}
 {/if}
