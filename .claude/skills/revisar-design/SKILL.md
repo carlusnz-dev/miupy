@@ -17,6 +17,9 @@ git diff develop...HEAD --stat -- src && git diff develop...HEAD -- src
 1. **Tokens:** nenhuma cor/raio/sombra literal nova (`#`, `rgb(`, `box-shadow`) fora de
    `src/app.css`; usa `var(--…)` do magma ou as classes Tailwind ligadas a ele (`bg-s1`,
    `text-lava-text`…). Sobreposição `bg-black/50` em cima de capa é aceita (já é o padrão).
+   Vidro (RNF-04) só por `.glass`/`.glass-strong`, nunca `backdrop-filter` solto, e só em superfície
+   que flutua (player, menu lateral, modal, menu/popover, toast, folha, barra `sticky`); vidro em
+   linha de lista ou cartão é achado.
 2. **Componentes do app:** nenhum `<select>`, checkbox ou botão cru onde existe componente do
    tema; componente novo vai para `src/lib/components/` e é reaproveitado.
 3. **Estados:** carregando (esqueleto no formato), vazio (convida a agir), erro (diz o que fazer)
