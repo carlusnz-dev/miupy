@@ -189,7 +189,7 @@
             Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
           </button>
           {#if eqOpen}
-            <div class="card absolute z-20 mt-1 max-h-72 min-w-44 overflow-auto p-1" aria-label="Perfis do equalizador">
+            <div class="glass-strong absolute z-20 mt-1 max-h-72 min-w-44 overflow-auto rounded-[var(--radius)] p-1" aria-label="Perfis do equalizador">
               {#each eqPresets as preset}
                 <button
                   type="button" class="block w-full rounded px-3 py-2 text-left text-sm hover:bg-surface"

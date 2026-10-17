@@ -167,7 +167,7 @@
 {:else}
 <nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Abas principais">
   {#if moreOpen}
-    <div class="absolute bottom-full right-2 mb-2 w-60 rounded-xl border border-line-strong bg-s2 p-1.5">
+    <div class="glass-strong absolute bottom-full right-2 mb-2 w-60 rounded-xl p-1.5">
       {#each moreItems as i}{@render link(i)}{/each}
     </div>
   {/if}

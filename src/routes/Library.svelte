@@ -80,7 +80,7 @@
 <TrackToolbar bind:search bind:sortBy bind:sortDir bind:favoritesOnly />
 
 {#if sel.count > 0}
-  <div class="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-s2 px-3 py-2" role="toolbar" aria-label="Ações para as faixas selecionadas">
+  <div class="glass sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2" role="toolbar" aria-label="Ações para as faixas selecionadas">
     <span class="mr-auto text-sm font-medium">{sel.count} {sel.count === 1 ? 'selecionada' : 'selecionadas'}</span>
     <button class="btn btn-sm" onclick={async () => { await downloadTracks(sel.ids); sel.clear(); }}><Icon name="download" size={16} />Baixar</button>
     <button class="btn btn-sm" onclick={() => { ui.pickPlaylist([...sel.ids]); }}><Icon name="playlist" size={16} />Adicionar à playlist</button>
