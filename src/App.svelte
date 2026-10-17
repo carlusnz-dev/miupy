@@ -12,6 +12,7 @@
   import { downloads } from './lib/stores/downloads.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { profile } from './lib/stores/profile.svelte';
+  import { cover } from './lib/stores/cover.svelte';
   import { isTyping } from './lib/util/typing';
   import { beginDrag } from './lib/util/drag';
   import Nav from './lib/components/Nav.svelte';
@@ -46,6 +47,7 @@
     void settings.init();
     void profile.load();
     void player.start();
+    cover.start();
     void library.start();
     void downloads.start();
     let alive = true;

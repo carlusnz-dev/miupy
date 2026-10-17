@@ -23,8 +23,7 @@
   import State from '../lib/components/State.svelte';
   import SkeletonList from '../lib/components/SkeletonList.svelte';
   import { dismissable } from '../lib/util/dismiss';
-  import { assetCrossOrigin } from '../lib/util/asset';
-  import { coverPalette } from '../lib/util/palette';
+  import { cover } from '../lib/stores/cover.svelte';
 
   let { mobile = false, onclose = () => {} }: { mobile?: boolean; onclose?: () => void } = $props();
 
@@ -62,16 +61,6 @@
       notifyError(error);
     }
   }
-
-  // Cores da capa para o mesh; sem capa ou com canvas "tainted" fica `undefined` e vale o tema.
-  let meshColors = $state<string[] | undefined>();
-  $effect(() => {
-    const src = api.resolveAsset(t?.coverPath ?? null) ?? t?.thumbnailUrl;
-    if (!src) { meshColors = undefined; return; }
-    let cancelled = false;
-    void coverPalette(src, assetCrossOrigin(src)).then((colors) => { if (!cancelled) meshColors = colors?.length ? [colors[0], colors[1] ?? colors[0], colors[2] ?? colors[1] ?? colors[0]] : undefined; });
-    return () => { cancelled = true; };
-  });
 
   let lyrics = $state<Lyrics | null>(null);
   let lyricsLoading = $state(false);
@@ -160,7 +149,7 @@
   </State>
 {:else}
   <!-- @req RF-40 RNF-05 RNF-13 -->
-  <MeshGradient class="min-h-full" colors={meshColors} animated={router.current.name === 'now-playing'}>
+  <MeshGradient class="min-h-full" colors={cover.colors} animated={router.current.name === 'now-playing'}>
     {#if mobile}
       <!-- @req RF-46: a alça inteira aceita o arrasto; o botão também funciona por teclado. -->
       <div data-drag-handle class="relative flex min-h-14 items-center justify-center touch-none">

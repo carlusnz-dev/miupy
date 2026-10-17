@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dominantColors } from './palette';
+import { dominantColors, meshTriple } from './palette';
 
 const px = (r: number, g: number, b: number, n: number, a = 255) => Array.from({ length: n }, () => [r, g, b, a]).flat();
 
@@ -33,5 +33,15 @@ describe('dominantColors', () => {
     const [hex] = dominantColors(px(255, 255, 40, 20));
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
     expect(0.299 * r + 0.587 * g + 0.114 * b).toBeLessThanOrEqual(141);
+  });
+});
+
+describe('meshTriple', () => {
+  // @test RF-40
+  it('completa com a cor anterior e devolve undefined sem paleta', () => {
+    expect(meshTriple(['#111111'])).toEqual(['#111111', '#111111', '#111111']);
+    expect(meshTriple(['#111111', '#222222'])).toEqual(['#111111', '#222222', '#222222']);
+    expect(meshTriple([])).toBeUndefined();
+    expect(meshTriple(null)).toBeUndefined();
   });
 });
