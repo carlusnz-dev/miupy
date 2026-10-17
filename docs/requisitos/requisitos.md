@@ -53,6 +53,7 @@ Prioridade: **M** (must, base do produto), **S** (should), **C** (could).
 | RF-41 | Início em painel | S | O Início reúne cartões de mesh estático para a playlist ou fila atual, estatísticas da discoteca, playlists, mais tocadas e atalhos. Ao abrir um cartão, ele acende por um instante (250 ms) antes da navegação; com movimento reduzido, abre imediatamente. Ações de reprodução respondem na hora. |
 | RF-42 | Playlist tocando | S | O player sabe de onde veio a fila (playlist, artista, discoteca…); o Início mostra a playlist que está tocando e a tela da playlist troca Tocar por Pausar quando é ela que toca. |
 | RF-43 | Voltar à tela anterior | S | Ao abrir uma tela por link ou atalho, mostrar “← Voltar” no topo para retornar à tela anterior no histórico do app. Não mostrar a seta na abertura do app nem ao navegar pelo menu. Alt+← e o botão lateral de voltar do mouse também retornam quando houver uma tela anterior no histórico do app. |
+| RF-46 | Player no celular | S | Abaixo de 768 px, mostrar abas fixas embaixo (Início, Busca, Discoteca, Playlists e Mais) com áreas de toque de pelo menos 48 px e respeito à área segura. O mini player fica acima delas; um toque abre Tocando em tela cheia sobre a interface, com capa, dados, seek, transporte, fila e letra em coluna. Recolher ou arrastar a capa/topo para baixo fecha e volta à tela anterior. Deslizar o mini player para os lados troca de faixa. Gestos respeitam movimento reduzido. |
 
 ## Requisitos não funcionais
 
