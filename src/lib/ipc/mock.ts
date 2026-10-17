@@ -209,6 +209,7 @@ export function createMockApi(): MiupyApi {
 
   // --- Player simulado ---
   let player: PlayerState = { status: 'stopped', track: null, positionMs: 0, durationMs: 0, volume: settings.volume, muted: false, queue: [], context: null, queueIndex: -1, streaming: false, shuffle: 'off' };
+  let originalQueue: string[] = [];
   let timer: ReturnType<typeof setInterval> | null = null;
   const snap = (): PlayerState => ({ ...player, queue: [...player.queue], context: player.context && { ...player.context } });
   const pushState = () => { emit('player://state', snap()); return snap(); };
@@ -304,12 +305,13 @@ export function createMockApi(): MiupyApi {
       const inCurrentQueue = player.queue.includes(trackId);
       const q = queue !== undefined ? queue : inCurrentQueue ? player.queue : [trackId];
       player.queue = q.includes(trackId) ? [...q] : [trackId, ...q];
+      if (queue !== undefined || !inCurrentQueue) originalQueue = [...player.queue];
       if (queue !== undefined || !inCurrentQueue) player.context = queue !== undefined ? context ?? null : null;
       loadAt(player.queue.indexOf(trackId));
       return snap();
     },
     async playerPause() { if (player.status === 'playing') { player.status = 'paused'; } return pushState(); },
-    async playerResume() { if (player.track && player.status === 'paused') { player.status = 'playing'; startTimer(); } return pushState(); },
+    async playerResume() { if (!player.track && player.queue.length) loadAt(0); else if (player.track && player.status === 'paused') { player.status = 'playing'; startTimer(); } return pushState(); },
     async playerStop() { player.status = 'stopped'; player.positionMs = 0; player.context = null; stopTimer(); return pushState(); },
     async playerSeek({ positionMs }) {
       player.positionMs = Math.max(0, Math.min(player.durationMs, positionMs));
@@ -324,8 +326,50 @@ export function createMockApi(): MiupyApi {
     },
     async playerSetVolume({ volume }) { player.volume = Math.max(0, Math.min(1, volume)); settings.volume = player.volume; return pushState(); },
     async playerSetMuted({ muted }) { player.muted = muted; return pushState(); },
-    async playerSetShuffle({ mode }) { player.shuffle = mode; return pushState(); }, // @req RF-24: aceita off, random e surfle
+    async playerSetShuffle({ mode }) {
+      if (mode === 'off' && player.shuffle !== 'off' && player.queueIndex >= 0) {
+        const prefix = player.queue.slice(0, player.queueIndex + 1);
+        const remaining = player.queue.slice(player.queueIndex + 1);
+        const original = [...originalQueue];
+        for (const id of prefix) { const i = original.indexOf(id); if (i >= 0) original.splice(i, 1); }
+        const ordered: string[] = [];
+        for (const id of original) { const i = remaining.indexOf(id); if (i >= 0) { ordered.push(id); remaining.splice(i, 1); } }
+        player.queue = [...prefix, ...ordered, ...remaining];
+      }
+      player.shuffle = mode;
+      return pushState();
+    }, // @req RF-24 RF-49
     async playerGetQueue() { return player.queue.map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t).map((t) => ({ ...t })); },
+    // @req RF-49
+    async playerEnqueue({ trackIds, next = false }) {
+      trackIds.forEach(byId);
+      const at = next && player.queueIndex >= 0 ? player.queueIndex + 1 : player.queue.length;
+      player.queue.splice(at, 0, ...trackIds);
+      originalQueue.splice(next && player.queueIndex >= 0 ? Math.min(at, originalQueue.length) : originalQueue.length, 0, ...trackIds);
+      return pushState();
+    },
+    // @req RF-49
+    async playerQueueRemove({ index }) {
+      if (!Number.isInteger(index) || index < 0 || index >= player.queue.length || index === player.queueIndex) err('invalid_input', 'Posição inválida ou faixa atual.');
+      const [id] = player.queue.splice(index, 1);
+      const occurrence = player.queue.slice(0, index).filter((item) => item === id).length;
+      const original = originalQueue.map((item, i) => item === id ? i : -1).filter((i) => i >= 0)[occurrence] ?? -1;
+      if (original >= 0) originalQueue.splice(original, 1);
+      if (index < player.queueIndex) player.queueIndex--;
+      if (!player.queue.length) player.context = null;
+      return pushState();
+    },
+    // @req RF-49
+    async playerQueueMove({ from, to }) {
+      if (![from, to].every((i) => Number.isInteger(i) && i >= 0 && i < player.queue.length)) err('invalid_input', 'Posição inválida.');
+      const [id] = player.queue.splice(from, 1);
+      player.queue.splice(to, 0, id);
+      if (player.shuffle === 'off') { const [item] = originalQueue.splice(from, 1); originalQueue.splice(to, 0, item); }
+      if (player.queueIndex === from) player.queueIndex = to;
+      else if (from < player.queueIndex && to >= player.queueIndex) player.queueIndex--;
+      else if (from > player.queueIndex && to <= player.queueIndex && player.queueIndex >= 0) player.queueIndex++;
+      return pushState();
+    },
 
     async libraryListTracks(a) { await wait(); return applyQuery(tracks, a?.query).map((t) => ({ ...t })); },
     async libraryGetTrack({ trackId }) { return { ...byId(trackId) }; },

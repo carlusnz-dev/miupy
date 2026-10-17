@@ -3,6 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriApi } from './tauri';
 
+// @test RF-49
+describe('comandos de controle da fila', () => {
+  it('encaminha nomes e argumentos ao Tauri', async () => {
+    const api = createTauriApi();
+    await api.playerEnqueue({ trackIds: ['a'], next: true });
+    await api.playerQueueRemove({ index: 1 });
+    await api.playerQueueMove({ from: 2, to: 0 });
+    expect(invoke).toHaveBeenCalledWith('player_enqueue', { trackIds: ['a'], next: true });
+    expect(invoke).toHaveBeenCalledWith('player_queue_remove', { index: 1 });
+    expect(invoke).toHaveBeenCalledWith('player_queue_move', { from: 2, to: 0 });
+  });
+});
+
 const convertFileSrc = vi.hoisted(() => vi.fn((path: string) =>
   `asset://localhost/${encodeURIComponent(path)}`));
 

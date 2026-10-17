@@ -20,6 +20,9 @@ export interface MiupyApi {
   playerSetMuted(a: { muted: boolean }): Promise<PlayerState>;
   playerSetShuffle(a: { mode: ShuffleMode }): Promise<PlayerState>; // @req RF-24
   playerGetQueue(): Promise<Track[]>; // @req RF-03
+  playerEnqueue(a: { trackIds: string[]; next?: boolean }): Promise<PlayerState>; // @req RF-49
+  playerQueueRemove(a: { index: number }): Promise<PlayerState>; // @req RF-49
+  playerQueueMove(a: { from: number; to: number }): Promise<PlayerState>; // @req RF-49
 
   libraryListTracks(a?: { query?: TrackQuery }): Promise<Track[]>;
   libraryGetTrack(a: { trackId: string }): Promise<Track>;
