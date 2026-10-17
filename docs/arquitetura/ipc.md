@@ -786,5 +786,5 @@ da faixa anterior não vira `TrackEnded` da nova). O `load` deixa o ExoPlayer co
 até o ExoPlayer apurá-la. `volume` aplica a curva perceptual `volume²` e a normalização somente
 atenuante: `volume² × min(1, 10^(ganho_dB/20))`; mudo produz zero. Os oito ganhos de EQ ficam
 guardados no backend nesta etapa; a aplicação pelo efeito nativo fica para a segunda metade.
-A sessão Media3 fornece tocar/pausar na notificação e na tela bloqueada. Metadados, capa e
-próxima/anterior da sessão entram na segunda metade.
+A sessão Media3 fica registrada no serviço (`addSession`), que publica a notificação em primeiro plano. Um `ForwardingPlayer` anuncia próxima e anterior: na notificação, na tela de bloqueio e no fone, elas viram eventos `next`/`previous` com a geração atual, e a casca avança a fila com `Player::next`/`previous`. Tocar no cartão abre o app. Título, artista e capa vêm das tags do arquivo, lidas pelo
+ExoPlayer; a capa enviada pela casca e o equalizador nativo entram na segunda metade.

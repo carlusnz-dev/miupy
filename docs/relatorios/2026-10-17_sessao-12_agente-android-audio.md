@@ -53,7 +53,18 @@
   do `gpu.rs` só no Linux.
 - Se o serviço não sobe (app em segundo plano com o serviço morto), o erro de geração 0 faz o
   `player.rs` descartar a faixa e avançar; com falhas seguidas, a fila inteira passa. Raro.
-- Fica para a metade 2: `setSessionActivity` (tocar na notificação abre o app); erro de
+- **Prova no celular real** (realme RMX3930, Android 14, adb por Wi-Fi; discoteca copiada do desktop
+  com os caminhos trocados): tocar, pausar, buscar, volume e troca de faixa ok, e o som continua
+  com a tela apagada. Faltava a notificação: sem `MediaController` conectado, o
+  `MediaSessionService` não publicava a sessão. Corrigido com `addSession(session)`. Depois disso,
+  a notificação e a tela de bloqueio mostraram anterior, pausar e próxima, e o autor confirmou
+  que os três funcionam. Próxima e anterior passam por um `ForwardingPlayer` que manda os
+  eventos `next`/`previous` ao Rust, e a casca chama `Player::next`/`previous`, então a interface
+  acompanha. Tocar no cartão abre o app (`setSessionActivity`).
+- **Defeito aberto:** fechar o app pelos recentes encerra o processo inteiro (o lado Rust sai com
+  código 0 e há `pthread_mutex_lock called on a destroyed mutex` no log), e a música para. Um
+  player nativo continuaria tocando.
+- Fica para a metade 2: `setSessionActivity` (feito na prova acima) (tocar na notificação abre o app); erro de
   reprodução exige novo `prepare()` antes de tocar; serviço recriado pelo sistema não avisa o Rust
   (o espelho segue com a faixa até o próximo `load`).
 
