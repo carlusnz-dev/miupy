@@ -64,7 +64,7 @@
 - **Defeito aberto:** fechar o app pelos recentes encerra o processo inteiro (o lado Rust sai com
   código 0 e há `pthread_mutex_lock called on a destroyed mutex` no log), e a música para. Um
   player nativo continuaria tocando.
-- Fica para a metade 2: `setSessionActivity` (feito na prova acima) (tocar na notificação abre o app); erro de
+- Fica para a metade 2 (o `setSessionActivity` já entrou na prova acima): erro de
   reprodução exige novo `prepare()` antes de tocar; serviço recriado pelo sistema não avisa o Rust
   (o espelho segue com a faixa até o próximo `load`).
 
