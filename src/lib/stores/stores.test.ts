@@ -75,6 +75,34 @@ describe('player', () => {
   });
 });
 
+describe('tocar a playlist em ordem aleatória', () => {
+  const ctx = { kind: 'playlist' as const, id: 'pl-1', label: 'Lista' };
+  // @test RF-24 RF-42
+  it('liga o aleatório antes de tocar e começa por uma faixa da fila', async () => {
+    fake.playerSetShuffle = vi.fn(async ({ mode }) => ({ ...state, shuffle: mode }));
+    const { player } = await import('./player.svelte');
+    await player.start();
+    await player.playShuffled(['a', 'b', 'c'], ctx);
+    expect(fake.playerSetShuffle).toHaveBeenCalledExactlyOnceWith({ mode: 'random' });
+    const call = vi.mocked(fake.playerPlay).mock.calls[0][0];
+    expect(call.queue).toEqual(['a', 'b', 'c']);
+    expect(call.context).toEqual(ctx);
+    expect(['a', 'b', 'c']).toContain(call.trackId);
+  });
+  // @test RF-24
+  it('mantém o Surfle quando já está ligado e ignora fila vazia', async () => {
+    fake.playerGetState = vi.fn(async () => ({ ...state, shuffle: 'surfle' as const }));
+    fake.playerSetShuffle = vi.fn(async ({ mode }) => ({ ...state, shuffle: mode }));
+    const { player } = await import('./player.svelte');
+    await player.start();
+    await player.playShuffled(['a'], ctx);
+    expect(fake.playerSetShuffle).not.toHaveBeenCalled();
+    expect(fake.playerPlay).toHaveBeenCalledOnce();
+    await player.playShuffled([], ctx);
+    expect(fake.playerPlay).toHaveBeenCalledOnce();
+  });
+});
+
 describe('player e library://changed', () => {
   // @test RNF-13
   it('só relê a faixa atual quando o motivo pode mudá-la', async () => {
