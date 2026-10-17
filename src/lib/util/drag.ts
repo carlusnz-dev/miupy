@@ -1,4 +1,6 @@
 // @req RF-46 RNF-08
+const MIN_FLICK = 24;
+
 export function beginDrag(start: number, time: number) {
   let last = start;
   let lastTime = time;
@@ -17,8 +19,10 @@ export function beginDrag(start: number, time: number) {
       return distance;
     },
     finish(size: number, direction: -1 | 1, fraction: number, now = lastTime) {
-      return !cancelled && size > 0 && distance * direction > 0 &&
-        (distance * direction >= size * fraction || (now - lastTime <= 80 && velocity * direction >= 0.65));
+      const along = distance * direction;
+      // O gesto rápido também pede um mínimo, para um toque que escorrega não contar como arrasto.
+      return !cancelled && size > 0 && along >= MIN_FLICK &&
+        (along >= size * fraction || (now - lastTime <= 80 && velocity * direction >= 0.65));
     },
     cancel() { cancelled = true; distance = 0; velocity = 0; },
   };
