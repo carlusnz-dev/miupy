@@ -62,7 +62,7 @@
 <section bind:this={sheet} class="fixed inset-x-0 bottom-0 z-10 flex h-[85dvh] flex-col rounded-t-2xl border-t border-line bg-s1 pb-[var(--safe-b)]"
   style:transform={open ? `translate3d(0,${offset}px,0)` : `translate3d(0,calc(100% - 3.5rem - var(--safe-b) + ${offset}px),0)`}
   style:transition={moving || reduced() ? 'none' : `transform var(--dur-base) ${easing}`}
-  aria-label={title}>
+  aria-label="Folha: {title}">
   <div class="flex h-14 shrink-0 items-center gap-2 px-3">
     <button bind:this={header} type="button" class="flex h-14 min-w-0 flex-1 flex-col items-center justify-center touch-none rounded-lg focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--lava-text)]"
       aria-expanded={open} aria-controls={contentId} onclick={toggle}
@@ -72,7 +72,7 @@
     </button>
     {#if open}<button type="button" class="btn !h-12" onclick={() => { open = false; header.focus(); }}>Fechar</button>{/if}
   </div>
-  <div id={contentId} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3" inert={!open}>
+  <div id={contentId} data-sheet-body class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3" inert={!open}>
     {@render children()}
   </div>
 </section>

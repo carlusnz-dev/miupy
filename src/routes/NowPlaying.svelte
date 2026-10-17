@@ -102,14 +102,16 @@
     const i = activeLine;
     if (tab !== 'lyrics' || i < 0 || !lyricBox) return;
     const el = lyricBox.querySelector<HTMLElement>(`[data-i="${i}"]`);
-    if (el) lyricBox.scrollTo({ top: el.offsetTop - lyricBox.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
+    // No celular quem rola é o corpo da folha, não a caixa da letra.
+    const box = (mobile && lyricBox.closest<HTMLElement>('[data-sheet-body]')) || lyricBox;
+    if (el) box.scrollTo({ top: box.scrollTop + el.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
   });
 </script>
 
 {#snippet queuePanel()}
         <div class="enter mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" style="--enter-delay:120ms" role="tablist">
-          <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm min-h-12 flex-1 !border-0 md:min-h-8 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
-          <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm min-h-12 flex-1 !border-0 md:min-h-8 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
+          <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm !min-h-12 flex-1 !border-0 md:!min-h-8 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
+          <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm !min-h-12 flex-1 !border-0 md:!min-h-8 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
         </div>
 
         <div class="enter card bg-s1/90 p-2 md:max-h-[60vh] md:overflow-y-auto" style="--enter-delay:200ms" bind:this={lyricBox} role="tabpanel">
@@ -212,7 +214,12 @@
         </div>
       </section>
 
-      <section class="enter mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2 md:row-start-2" style="--enter-delay:320ms" aria-label="Controles">
+      {#if !mobile}
+        <section class="min-w-0" aria-label="Fila e letra">
+          {@render queuePanel()}
+        </section>
+      {/if}
+      <section class="enter mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" style="--enter-delay:320ms" aria-label="Controles">
         <Seek />
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
           <div class="flex justify-end md:justify-start"><span class="[&>button]:!h-12 [&>button]:!w-12 md:[&>button]:!h-9 md:[&>button]:!w-9"><ShuffleButton /></span></div>
@@ -221,16 +228,11 @@
             <button class="icon-btn !h-12 !w-12 md:!h-9 md:!w-9 motion-bounce {favorites.is(t) ? 'on' : ''}" aria-pressed={favorites.is(t)} aria-label={favorites.is(t) ? 'Remover das favoritas' : 'Favoritar'} onclick={() => toggleFavorite(t)}>
               <Icon name="heart" size={20} fill={favorites.is(t)} />
             </button>
-            <button class="icon-btn !h-12 !w-12 md:!h-9 md:!w-9 {tab === 'queue' ? 'on' : ''}" aria-pressed={mobile ? undefined : tab === 'queue'} aria-expanded={mobile ? sheetOpen : undefined} aria-label="Mostrar a fila" onclick={showQueue}><Icon name="queue" size={20} /></button>
+            <button class="icon-btn !h-12 !w-12 md:!h-9 md:!w-9 {(mobile ? sheetOpen : tab === 'queue') ? 'on' : ''}" aria-pressed={mobile ? undefined : tab === 'queue'} aria-expanded={mobile ? sheetOpen : undefined} aria-label="Mostrar a fila" onclick={showQueue}><Icon name="queue" size={20} /></button>
             <span class="hidden md:inline-flex"><Volume /></span>
           </div>
         </div>
       </section>
-      {#if !mobile}
-        <section class="min-w-0 md:col-start-2 md:row-start-1" aria-label="Fila e letra">
-          {@render queuePanel()}
-        </section>
-      {/if}
     </div>
   </MeshGradient>
   {#if mobile}
