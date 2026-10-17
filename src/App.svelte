@@ -6,13 +6,14 @@
   import { springTransition } from './lib/motion';
   import { api, isMock, type MetadataRefreshStatus } from './lib/ipc';
   import { notifyError, toasts } from './lib/stores/toast.svelte';
-  import { router } from './lib/stores/router.svelte';
+  import { router, navigate, paths, type Route } from './lib/stores/router.svelte';
   import { player } from './lib/stores/player.svelte';
   import { library } from './lib/stores/library.svelte';
   import { downloads } from './lib/stores/downloads.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { profile } from './lib/stores/profile.svelte';
   import { isTyping } from './lib/util/typing';
+  import { beginDrag } from './lib/util/drag';
   import Nav from './lib/components/Nav.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
   import RightPanel from './lib/components/RightPanel.svelte';
@@ -70,7 +71,7 @@
   });
 
   let main: HTMLElement;
-  $effect(() => { router.current; main?.scrollTo({ top: 0 }); });
+  $effect(() => { if (router.current.name !== 'now-playing') main?.scrollTo({ top: 0 }); });
 
   // Atalhos (desktop): espaço, setas esquerda/direita (seek 5 s), cima/baixo (volume), M (mudo).
   function onKey(e: KeyboardEvent) {
@@ -97,11 +98,63 @@
     if (e.button === 3 && router.canGoBack && performance.now() - router.lastChange > 400) { e.preventDefault(); router.back(); }
   }
   const name = $derived(router.current.name);
+  // @req RF-46 RNF-08
+  let mobile = $state(typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  let lastRoute = $state<Route>(router.current.name === 'now-playing' ? { name: 'home', params: {} } : router.current);
+  $effect(() => { if (router.current.name !== 'now-playing') lastRoute = router.current; });
+  const view = $derived(mobile && name === 'now-playing' ? lastRoute : router.current);
+  const viewName = $derived(view.name);
+  let overlay = $state<HTMLElement>();
+  let drag: { pointerId: number; session: ReturnType<typeof beginDrag> } | null = null;
+  let dragOffset = $state(0);
+  let dragging = $state(false);
+  let restoreFocus = $state(false);
+  const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $effect(() => {
+    if (mobile && name === 'now-playing') overlay?.focus();
+    else if (restoreFocus) {
+      restoreFocus = false;
+      (document.querySelector<HTMLButtonElement>('[aria-label^="Abrir tocando agora:"]') ?? main)?.focus();
+    }
+  });
+  onMount(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const sync = () => { mobile = query.matches; };
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
+  function closeNowPlaying() {
+    restoreFocus = true;
+    if (router.canGoBack) router.back();
+    else navigate(paths.home);
+  }
+  function dragStart(event: PointerEvent) {
+    if (event.button !== 0 || !(event.target as Element).closest('[data-drag-handle]') || (event.target as Element).closest('button')) return;
+    drag = { pointerId: event.pointerId, session: beginDrag(event.clientY, event.timeStamp) };
+    dragging = true;
+    overlay?.setPointerCapture(event.pointerId);
+  }
+  function dragMove(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    dragOffset = reduced() ? 0 : Math.max(0, drag.session.move(event.clientY, event.timeStamp));
+  }
+  function dragEnd(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    const session = drag.session;
+    session.move(event.clientY, event.timeStamp);
+    const close = session.finish(overlay?.clientHeight ?? 0, 1, 0.3, event.timeStamp);
+    drag = null; dragging = false; dragOffset = 0;
+    if (close) closeNowPlaying();
+  }
+  function dragCancel(event: PointerEvent) {
+    if (drag?.pointerId !== event.pointerId) return;
+    drag.session.cancel(); drag = null; dragging = false; dragOffset = 0;
+  }
 </script>
 
 <svelte:window onkeydown={onKey} onmouseup={onMouseUp} />
 
-<div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)">
+<div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)" inert={mobile && name === 'now-playing'}>
   <!-- @req RF-38 RF-39: grade menu | conteúdo | painel da direita -->
   <div class="relative grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto]">
     <Nav variant="side" />
@@ -110,30 +163,30 @@
       {#if isMock}
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
-      {#key `${name}:${router.current.params.id ?? ''}`}
-      {#if router.fromLink}
-        {#if name === 'now-playing'}<div class="absolute left-4 top-4 z-20 md:left-8 md:top-6"><BackButton /></div>
+      {#key `${viewName}:${view.params.id ?? ''}`}
+      {#if router.fromLink && name !== 'now-playing'}
+        {#if viewName === 'now-playing'}<div class="absolute left-4 top-4 z-20 md:left-8 md:top-6"><BackButton /></div>
         {:else}<div class="mx-auto max-w-6xl px-4 pt-4 md:px-8 md:pt-6"><BackButton /></div>{/if}
       {/if}
-      {#if name === 'now-playing'}
+      {#if viewName === 'now-playing' && !mobile}
         <div transition:springTransition><NowPlaying /></div>
       {:else}
-        <div class="mx-auto max-w-6xl p-4 md:p-8" transition:springTransition>
-          {#if name === 'home'}<Home />
-          {:else if name === 'library'}<Library />
-          {:else if name === 'playlists'}<Playlists />
-          {:else if name === 'playlist'}{#key router.current.params.id}<PlaylistDetail id={router.current.params.id} />{/key}
-          {:else if name === 'youtube'}<YouTube />
-          {:else if name === 'downloads'}<Downloads />
-          {:else if name === 'artist'}{#key router.current.params.id}<Artist id={router.current.params.id} />{/key}
-          {:else if name === 'stats'}<Stats />
-          {:else if name === 'dna'}<Dna />
-          {:else if name === 'wrapped'}<Wrapped />
-          {:else if name === 'profile'}<Profile />
-          {:else if name === 'settings'}<SettingsPage />
+        {#if viewName !== 'now-playing'}<div class="mx-auto max-w-6xl p-4 md:p-8" transition:springTransition>
+          {#if viewName === 'home'}<Home />
+          {:else if viewName === 'library'}<Library />
+          {:else if viewName === 'playlists'}<Playlists />
+          {:else if viewName === 'playlist'}{#key view.params.id}<PlaylistDetail id={view.params.id} />{/key}
+          {:else if viewName === 'youtube'}<YouTube />
+          {:else if viewName === 'downloads'}<Downloads />
+          {:else if viewName === 'artist'}{#key view.params.id}<Artist id={view.params.id} />{/key}
+          {:else if viewName === 'stats'}<Stats />
+          {:else if viewName === 'dna'}<Dna />
+          {:else if viewName === 'wrapped'}<Wrapped />
+          {:else if viewName === 'profile'}<Profile />
+          {:else if viewName === 'settings'}<SettingsPage />
           {:else}<State kind="empty" icon="alert" title="Página não encontrada" />
           {/if}
-        </div>
+        </div>{/if}
       {/if}
       {/key}
     </main>
@@ -147,10 +200,21 @@
   </div>
 
   <div class="md:hidden">
-    <MiniPlayer />
+    {#if name !== 'now-playing'}<MiniPlayer />{/if}
     <Nav variant="bottom" />
   </div>
 </div>
+
+{#if mobile && name === 'now-playing'}
+  <!-- @req RF-46: a tela cobre inclusive as abas e o mini player. -->
+  <div bind:this={overlay} class="fixed inset-0 z-[60] overflow-y-auto" style="background:var(--bg);padding-top:var(--safe-t);padding-bottom:var(--safe-b);transform:translate3d(0,{dragOffset}px,0);transition:{dragging || reduced() ? 'none' : 'transform var(--dur-base) var(--ease-spring)'}"
+    role="dialog" aria-modal="true" aria-label="Tocando agora" tabindex="-1"
+    transition:springTransition={{ y: typeof window !== 'undefined' ? window.innerHeight : 800, duration: 420, reducedDuration: 0 }}
+    onpointerdown={dragStart} onpointermove={dragMove} onpointerup={dragEnd} onpointercancel={dragCancel} onlostpointercapture={dragCancel}
+    onkeydown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeNowPlaying(); } }}>
+    <NowPlaying mobile onclose={closeNowPlaying} />
+  </div>
+{/if}
 
 <Toasts />
 {#if metadata?.running && hiddenBatch !== metadata.startedAt}

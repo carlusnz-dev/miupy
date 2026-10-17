@@ -25,6 +25,8 @@
   import { assetCrossOrigin } from '../lib/util/asset';
   import { coverPalette } from '../lib/util/palette';
 
+  let { mobile = false, onclose = () => {} }: { mobile?: boolean; onclose?: () => void } = $props();
+
   const t = $derived(player.track);
   let tab = $state<'queue' | 'lyrics'>('queue');
   let eqOpen = $state(false);
@@ -102,15 +104,23 @@
 </script>
 
 {#if !t}
+  {#if mobile}<button type="button" class="icon-btn m-3 !h-12 !w-12" aria-label="Recolher Tocando" onclick={onclose}><Icon name="down" size={24} /></button>{/if}
   <State kind="empty" icon="music" title="Nada tocando" text="Escolha uma faixa na discoteca ou numa playlist para começar.">
     <a class="btn btn-primary" href={href(paths.library)}>Ir para a discoteca</a>
   </State>
 {:else}
   <!-- @req RF-40 RNF-05 RNF-13 -->
   <MeshGradient class="min-h-full" colors={meshColors} animated={router.current.name === 'now-playing'}>
+    {#if mobile}
+      <!-- @req RF-46: a alça inteira aceita o arrasto; o botão também funciona por teclado. -->
+      <div data-drag-handle class="relative flex min-h-14 items-center justify-center touch-none">
+        <span class="h-1.5 w-10 rounded-full bg-s3" aria-hidden="true"></span>
+        <button type="button" class="absolute right-3 top-1 icon-btn !h-12 !w-12" aria-label="Recolher Tocando" onclick={onclose}><Icon name="down" size={24} /></button>
+      </div>
+    {/if}
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
-      <section class="flex flex-col gap-5" aria-label="Faixa atual">
-        <div class="enter flex w-full max-w-[22rem] self-center">
+      <section class="order-1 flex flex-col gap-5" aria-label="Faixa atual">
+        <div data-drag-handle={mobile ? '' : undefined} class="enter flex w-full max-w-[22rem] self-center touch-none">
           <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full" rounded="0.75rem" label="Capa de {t.title}" />
         </div>
         <div class="flex items-start justify-between gap-3">
@@ -124,7 +134,7 @@
               {/if}
               {#if t.album}<span class="text-faint"> · {t.album}</span>{/if}
             </p>
-            <p class="enter mt-2 flex flex-wrap gap-1.5" style="--enter-delay:200ms">
+            <p class="enter mt-2 hidden flex-wrap gap-1.5 md:flex" style="--enter-delay:200ms">
               {#if t.codec}<span class="chip">{t.codec.toUpperCase()}{t.bitrate ? ` ${t.bitrate} kbps` : ''}</span>{/if}
               {#if player.state.streaming}<span class="chip text-lava-text">{player.isLoading ? 'Conectando…' : 'Streaming'}</span>{/if}
               {#if t.releaseYear}<span class="chip">{t.releaseYear}</span>{/if}
@@ -135,7 +145,7 @@
             </p>
           </div>
         </div>
-        <div class="enter relative self-start" style="--enter-delay:260ms" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
+        <div class="enter relative hidden self-start md:block" style="--enter-delay:260ms" use:dismissable={(reason) => { if (eqOpen) closeEq(reason === 'escape'); }}>
           <button type="button" class="btn text-sm" aria-expanded={eqOpen} bind:this={eqButton} onclick={openEq}>
             Equalizador · {eqPresets.find((p) => p.id === settings.eqPresetId)?.name ?? 'Plano'}
           </button>
@@ -154,7 +164,7 @@
         </div>
       </section>
 
-      <section class="min-w-0" aria-label="Fila e letra">
+      <section class="order-3 min-w-0 md:order-2" aria-label="Fila e letra">
         <div class="enter mb-3 flex gap-1 rounded-full border border-line bg-s1 p-1" style="--enter-delay:120ms" role="tablist">
           <button role="tab" aria-selected={tab === 'queue'} class="btn btn-sm flex-1 !border-0 {tab === 'queue' ? '!bg-s3' : ''}" onclick={() => (tab = 'queue')}><Icon name="queue" size={16} />Fila ({player.state.queue.length})</button>
           <button role="tab" aria-selected={tab === 'lyrics'} class="btn btn-sm flex-1 !border-0 {tab === 'lyrics' ? '!bg-s3' : ''}" onclick={() => (tab = 'lyrics')}><Icon name="mic" size={16} />Letra</button>
@@ -199,7 +209,7 @@
         </div>
       </section>
 
-      <section class="enter mx-auto flex w-full max-w-3xl flex-col gap-3 md:col-span-2" style="--enter-delay:320ms" aria-label="Controles">
+      <section class="enter order-2 mx-auto flex w-full max-w-3xl flex-col gap-3 md:order-3 md:col-span-2" style="--enter-delay:320ms" aria-label="Controles">
         <Seek />
         <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr]">
           <div class="flex justify-end md:justify-start"><ShuffleButton /></div>
@@ -209,7 +219,7 @@
               <Icon name="heart" size={20} fill={favorites.is(t)} />
             </button>
             <button class="icon-btn {tab === 'queue' ? 'on' : ''}" aria-pressed={tab === 'queue'} aria-label="Mostrar a fila" onclick={() => (tab = 'queue')}><Icon name="queue" size={20} /></button>
-            <Volume />
+            <span class="hidden md:inline-flex"><Volume /></span>
           </div>
         </div>
       </section>
