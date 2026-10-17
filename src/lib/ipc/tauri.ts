@@ -32,6 +32,9 @@ export function createTauriApi(): MiupyApi {
     playerSetVolume: (a) => call('player_set_volume', a),
     playerSetMuted: (a) => call('player_set_muted', a),
     playerGetQueue: () => call('player_get_queue'),
+    playerEnqueue: (a) => call('player_enqueue', a), // @req RF-49
+    playerQueueRemove: (a) => call('player_queue_remove', a), // @req RF-49
+    playerQueueMove: (a) => call('player_queue_move', a), // @req RF-49
     playerSetShuffle: (a) => call('player_set_shuffle', a), // @req RF-24
 
     libraryListTracks: (a) => call('library_list_tracks', a ?? {}),

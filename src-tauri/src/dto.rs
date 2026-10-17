@@ -56,7 +56,7 @@ pub struct PlayerState {
     pub queue: Vec<String>,
     // @req RF-03 RF-42
     pub context: Option<QueueContext>,
-    /// -1 se a fila está vazia.
+    /// -1 se não há faixa selecionada, inclusive numa fila recém-enfileirada.
     pub queue_index: i64,
     // @req RF-18
     pub streaming: bool,

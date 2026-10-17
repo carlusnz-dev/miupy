@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { createMockApi } from './mock';
 
+// @test RF-49
+describe('controle da fila no mock', () => {
+  it('valida, enfileira, move e remove ocorrências sem trocar a atual', async () => {
+    const api = createMockApi();
+    const tracks = await api.libraryListTracks();
+    const [a, b, c] = tracks.filter((t) => t.source !== 'local' || t.filePath).slice(0, 3);
+    expect((await api.playerEnqueue({ trackIds: [a.id, b.id] })).queueIndex).toBe(-1);
+    await expect(api.playerEnqueue({ trackIds: [c.id, 'ausente'] })).rejects.toMatchObject({ code: 'not_found' });
+    expect((await api.playerGetState()).queue).toEqual([a.id, b.id]);
+    await api.playerNext();
+    const added = await api.playerEnqueue({ trackIds: [c.id, c.id], next: true });
+    expect(added.queue).toEqual([a.id, c.id, c.id, b.id]);
+    expect(added.track?.id).toBe(a.id);
+    expect((await api.playerQueueMove({ from: 0, to: 2 })).queueIndex).toBe(2);
+    await expect(api.playerQueueRemove({ index: 2 })).rejects.toMatchObject({ code: 'invalid_input' });
+    expect((await api.playerQueueRemove({ index: 0 })).queue).toEqual([c.id, a.id, b.id]);
+    await api.playerSetShuffle({ mode: 'random' });
+    await api.playerQueueMove({ from: 2, to: 0 });
+    expect((await api.playerSetShuffle({ mode: 'off' })).queue).toEqual([b.id, c.id, a.id]);
+  });
+});
+
 // @test RF-03 RF-42
 describe('contexto da fila no mock', () => {
   it('acompanha a fila, atualiza a playlist e zera ao parar ou esvaziar', async () => {
