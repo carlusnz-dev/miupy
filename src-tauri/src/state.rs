@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use miupy_audio::{AudioBackend, AudioError, AudioEvent, NullBackend, PlaybackState};
+use miupy_audio::AudioBackend;
+#[cfg(any(not(target_os = "android"), test))]
+use miupy_audio::{AudioError, AudioEvent, NullBackend, PlaybackState};
 use miupy_core::Database;
 use miupy_media::YtDlpManager;
 use miupy_media::{MediaResolver, MetadataProvider};
@@ -174,11 +176,13 @@ fn measure_pending_loudness(
 
 /// Backend usado quando o motor de áudio não abre (sem dispositivo, por exemplo): o app abre
 /// e navega normalmente; tocar devolve o erro explicando o motivo.
+#[cfg(any(not(target_os = "android"), test))]
 pub struct UnavailableBackend {
     reason: String,
     fallback: NullBackend,
 }
 
+#[cfg(any(not(target_os = "android"), test))]
 impl UnavailableBackend {
     pub fn new(reason: impl Into<String>) -> Self {
         UnavailableBackend {
@@ -192,6 +196,7 @@ impl UnavailableBackend {
     }
 }
 
+#[cfg(any(not(target_os = "android"), test))]
 impl AudioBackend for UnavailableBackend {
     fn load(&self, _path: &std::path::Path) -> miupy_audio::Result<()> {
         Err(self.err())
@@ -240,6 +245,7 @@ impl AudioBackend for UnavailableBackend {
 }
 
 /// Backend de áudio do sistema; se não abrir, devolve o [`UnavailableBackend`] e registra o motivo.
+#[cfg(not(target_os = "android"))]
 pub fn default_backend() -> Arc<dyn AudioBackend> {
     match miupy_audio::create_default_backend() {
         Ok(b) => Arc::from(b),

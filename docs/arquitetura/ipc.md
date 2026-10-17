@@ -768,3 +768,23 @@ discoteca (hoje é preciso adicionar primeiro).
 
 O registro de atividade (RF-13) não tem comando próprio: o backend grava os eventos de reprodução
 sozinho, a partir do estado do player.
+
+## Áudio no Android (RF-44)
+
+O contrato frontend ⇄ Rust do player permanece igual. Na casca Android, `AudioBackend`
+encaminha comandos ao plugin `miupy-audio` por `run_mobile_plugin`; o plugin Kotlin controla
+um ExoPlayer mantido por `MediaSessionService`. Um `Channel` Tauri devolve `state`, `progress`
+(a cada 500 ms enquanto toca), `ended` (somente fim natural) e `error`. A casca traduz essas
+mensagens para `AudioEvent`; `state()` consulta um espelho em memória, sem bloquear a Activity.
+Cada `load`, `loadUrl` e `stop` leva um número de geração crescente, e o plugin carimba os
+eventos com ele: a casca descarta o que vier de outra geração (um `progress` ou `ended` atrasado
+da faixa anterior não vira `TrackEnded` da nova). O `load` deixa o ExoPlayer com
+`playWhenReady = false`, como no desktop (pausado na posição 0).
+
+`load` recebe o caminho absoluto do arquivo privado e o serviço monta um URI `file://`.
+`loadUrl` recebe URL e cabeçalhos HTTP do `StreamOptions`; a duração conhecida fica no espelho
+até o ExoPlayer apurá-la. `volume` aplica a curva perceptual `volume²` e a normalização somente
+atenuante: `volume² × min(1, 10^(ganho_dB/20))`; mudo produz zero. Os oito ganhos de EQ ficam
+guardados no backend nesta etapa; a aplicação pelo efeito nativo fica para a segunda metade.
+A sessão Media3 fica registrada no serviço (`addSession`), que publica a notificação em primeiro plano. Um `ForwardingPlayer` anuncia próxima e anterior: na notificação, na tela de bloqueio e no fone, elas viram eventos `next`/`previous` com a geração atual, e a casca avança a fila com `Player::next`/`previous`. Tocar no cartão abre o app. Título, artista e capa vêm das tags do arquivo, lidas pelo
+ExoPlayer; a capa enviada pela casca e o equalizador nativo entram na segunda metade.

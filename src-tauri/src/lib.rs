@@ -2,6 +2,7 @@
 //! `miupy-core` (banco), `miupy-audio` (motor de reprodução) e `miupy-media` (YouTube,
 //! metadados e tags). É a única parte do projeto que conhece o Tauri.
 
+mod android_audio;
 #[cfg(target_os = "linux")]
 mod asset_webkit;
 mod auto_download;
@@ -35,7 +36,12 @@ use commands::{
     stats, youtube as yt,
 };
 use events::TauriEvents;
-use state::{AppState, Parts, default_backend};
+#[cfg(not(target_os = "android"))]
+use state::default_backend;
+use state::{AppState, Parts};
+
+#[cfg(target_os = "android")]
+struct AndroidAudioPlugin(tauri::plugin::PluginHandle<tauri::Wry>);
 
 /// Contato do User-Agent exigido pelo MusicBrainz: `MIUPY_CONTACT`, senão o e-mail do perfil,
 /// senão um texto genérico.
@@ -76,13 +82,46 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
     let resolver = Arc::new(YtDlpResolver::with_binary(
         miupy_media::YtDlpManager::new(dirs.root.join("bin"))?.binary_path(),
     ));
+    // @req RF-44: próxima/anterior do sistema chegam pelo backend e andam a fila do player.
+    #[cfg(target_os = "android")]
+    let android_backend = Arc::new(android_audio::AndroidAudioBackend::new(
+        app.state::<AndroidAudioPlugin>().0.clone(),
+    )?);
     let state = AppState::new(Parts {
         dirs,
         events: Arc::new(TauriEvents(app.clone())),
-        backend: default_backend(),
+        backend: {
+            #[cfg(target_os = "android")]
+            {
+                android_backend.clone()
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                default_backend()
+            }
+        },
         resolver,
         provider,
     })?;
+    #[cfg(target_os = "android")]
+    {
+        let player = Arc::downgrade(&state.player);
+        android_backend.on_remote(move |action| {
+            let Some(player) = player.upgrade() else {
+                return;
+            };
+            // Fora da thread do canal: o player chama o backend, que fala com o plugin.
+            std::thread::spawn(move || {
+                let result = match action {
+                    android_audio::Remote::Next => player.next(),
+                    android_audio::Remote::Previous => player.previous(),
+                };
+                if let Err(e) = result {
+                    log::warn!("controle de mídia do sistema: {e}");
+                }
+            });
+        });
+    }
     Ok(state)
 }
 
@@ -97,6 +136,19 @@ pub fn run() {
     let gpu_decision = gpu::configure_mode(saved_gpu_mode.as_deref(), gpu_root.as_deref());
 
     let app = tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("miupy-audio")
+                .setup(|app, api| {
+                    #[cfg(target_os = "android")]
+                    app.manage(AndroidAudioPlugin(
+                        api.register_android_plugin("dev.miupy.app", "AudioPlugin")?,
+                    ));
+                    #[cfg(not(target_os = "android"))]
+                    let _ = (app, api);
+                    Ok(())
+                })
+                .build(),
+        )
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
