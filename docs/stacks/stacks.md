@@ -75,4 +75,5 @@ MusicBrainz + Cover Art Archive + LRCLIB, e a regra de nunca bloquear o callback
   do Arch em `/usr/bin` também existe e não deve ser usado). Compilação com sccache e clang + mold:
   ver [`compilacao.md`](../contribuicao/compilacao.md).
 - Node 26 + npm. CLI do Tauri via `@tauri-apps/cli` (devDependency), não `cargo-tauri`.
-- Android: **SDK, NDK e targets Rust ainda não instalados** nesta máquina.
+- Android: SDK em `~/Android/Sdk`, NDK 29, JDK 21 e os quatro alvos Rust (ver "Android" em
+  [`compilacao.md`](../contribuicao/compilacao.md)).

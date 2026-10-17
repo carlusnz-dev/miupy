@@ -113,3 +113,32 @@ Para descobrir por que algo recompilou: `cargo build -v 2>&1 | grep Dirty`.
   aplicado; decisão do autor).
 - Rust-analyzer no editor: use um `target/` próprio dele (`"rust-analyzer.cargo.targetDir": true`)
   para não disputar o lock do cargo com o terminal. Ele também precisa achar o `cargo` do rustup.
+
+## Android
+
+Ambiente desta máquina (sessão 11), tudo sem sudo:
+
+- SDK em `~/Android/Sdk` (cmdline-tools, `platform-tools`, `build-tools;36.0.0`, NDK
+  `29.0.14206865`). O Gradle instala sozinho a plataforma que o `compileSdk` pede (hoje a 37).
+- `~/.zshenv`: `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`, `ANDROID_HOME`, `NDK_HOME` e o
+  `platform-tools` no `PATH` (para o `adb`).
+- Alvos Rust do rustup: `aarch64`, `armv7`, `i686` e `x86_64-linux-android`.
+
+O projeto Android gerado pelo `tauri android init` fica versionado em `src-tauri/gen/android/`
+(o `build/`, os `jniLibs` e o `local.properties` ficam de fora pelo `.gitignore` dele). Não rode o
+`init` de novo sem conferir o diff: ele sobrescreve o que for ajustado à mão.
+
+```sh
+CARGO_BUILD_JOBS=6 nice -n 10 npm run android:apk   # APK debug só para aarch64
+adb devices                                          # o celular com depuração USB
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+npm run android:dev                                  # app no celular com o Vite ao vivo
+```
+
+- O APK debug tem ~74 MB (biblioteca Rust sem otimização e com símbolos). O `target/` ganha
+  `aarch64-linux-android/` ao lado do de desktop; a primeira compilação de um worktree semeado leva
+  alguns minutos, as seguintes, segundos.
+- Inspetor: com o app aberto, `chrome://inspect` no Chrome do computador mostra o WebView.
+- **Agentes Codex:** o sandbox não escreve em `~/.gradle` nem em `~/.cargo/registry`. Rode um build
+  Android pela orquestração antes (aquece o Gradle) e `cargo fetch` depois de todo `cargo add`.
+- Logs de build longo vão em `~/orca/workspaces/miupy/.log-*`, não no scratchpad.
