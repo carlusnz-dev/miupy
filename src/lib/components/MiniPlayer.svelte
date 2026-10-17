@@ -62,6 +62,8 @@
           <span class="block truncate text-xs text-muted">{t.artistName ?? 'Artista desconhecido'}{player.state.streaming ? ` · ${player.isLoading ? 'Conectando…' : 'Streaming'}` : ''}</span>
         </span>
       </button>
+      <!-- @req RF-47: os três controles de transporte têm alvo de 48 px. -->
+      <button class="icon-btn !h-12 !w-12" aria-label="Faixa anterior" disabled={!player.active} onclick={() => player.previous()}><Icon name="prev" size={22} /></button>
       <button class="icon-btn !h-12 !w-12" aria-label={player.isPlaying ? 'Pausar' : 'Tocar'} onclick={() => player.toggle()}>
         <Icon name={player.isPlaying ? 'pause' : 'play'} size={24} fill />
       </button>
