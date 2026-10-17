@@ -17,6 +17,7 @@
   // @req RF-46
   function pointerDown(event: PointerEvent) {
     if (event.button !== 0) return;
+    swiped = false;
     drag = { pointerId: event.pointerId, session: beginDrag(event.clientX, event.timeStamp) };
     moving = true;
     button?.setPointerCapture(event.pointerId);
@@ -30,11 +31,13 @@
     if (drag?.pointerId !== event.pointerId) return;
     const { session } = drag;
     const distance = session.move(event.clientX, event.timeStamp);
-    swiped = session.finish(button?.clientWidth ?? 0, distance < 0 ? -1 : 1, 0.35, event.timeStamp);
+    const passed = session.finish(button?.clientWidth ?? 0, distance < 0 ? -1 : 1, 0.35, event.timeStamp);
+    // Arrasto que não chegou ao limiar também não vira toque (não abre o Tocando).
+    swiped = passed || Math.abs(distance) > 10;
     drag = null;
     moving = false;
     offset = 0;
-    if (swiped) void (distance < 0 ? player.next() : player.previous());
+    if (passed) void (distance < 0 ? player.next() : player.previous());
   }
   function pointerCancel(event: PointerEvent) {
     if (drag?.pointerId !== event.pointerId) return;
@@ -59,10 +62,10 @@
           <span class="block truncate text-xs text-muted">{t.artistName ?? 'Artista desconhecido'}{player.state.streaming ? ` · ${player.isLoading ? 'Conectando…' : 'Streaming'}` : ''}</span>
         </span>
       </button>
-      <button class="icon-btn" aria-label={player.isPlaying ? 'Pausar' : 'Tocar'} onclick={() => player.toggle()}>
+      <button class="icon-btn !h-12 !w-12" aria-label={player.isPlaying ? 'Pausar' : 'Tocar'} onclick={() => player.toggle()}>
         <Icon name={player.isPlaying ? 'pause' : 'play'} size={24} fill />
       </button>
-      <button class="icon-btn" aria-label="Próxima faixa" disabled={!player.hasNext} onclick={() => player.next()}><Icon name="next" size={22} /></button>
+      <button class="icon-btn !h-12 !w-12" aria-label="Próxima faixa" disabled={!player.hasNext} onclick={() => player.next()}><Icon name="next" size={22} /></button>
     </div>
   </div>
 {/if}

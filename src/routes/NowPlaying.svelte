@@ -120,7 +120,7 @@
     {/if}
     <div class="mx-auto grid max-w-5xl gap-6 p-4 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-10 md:p-8">
       <section class="order-1 flex flex-col gap-5" aria-label="Faixa atual">
-        <div data-drag-handle={mobile ? '' : undefined} class="enter flex w-full max-w-[22rem] self-center touch-none">
+        <div data-drag-handle={mobile ? '' : undefined} class="enter flex w-full max-w-[22rem] self-center" class:touch-none={mobile}>
           <Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} class="w-full" rounded="0.75rem" label="Capa de {t.title}" />
         </div>
         <div class="flex items-start justify-between gap-3">

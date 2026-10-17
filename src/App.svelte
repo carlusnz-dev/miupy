@@ -2,7 +2,7 @@
   // @req RNF-08
   // Casca da aplicação: layout responsivo, inicialização das stores, atalhos de teclado.
   // @req RNF-03 RNF-04
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { springTransition } from './lib/motion';
   import { api, isMock, type MetadataRefreshStatus } from './lib/ipc';
   import { notifyError, toasts } from './lib/stores/toast.svelte';
@@ -71,7 +71,14 @@
   });
 
   let main: HTMLElement;
-  $effect(() => { if (router.current.name !== 'now-playing') main?.scrollTo({ top: 0 }); });
+  // No celular, abrir e fechar o Tocando (sobreposição) não mexe na rolagem da tela de baixo.
+  let prevName = router.current.name;
+  $effect(() => {
+    const next = router.current.name;
+    const overlayChange = untrack(() => mobile) && (next === 'now-playing' || prevName === 'now-playing');
+    prevName = next;
+    if (!overlayChange) main?.scrollTo({ top: 0 });
+  });
 
   // Atalhos (desktop): espaço, setas esquerda/direita (seek 5 s), cima/baixo (volume), M (mudo).
   function onKey(e: KeyboardEvent) {
@@ -164,7 +171,7 @@
         <div class="border-b border-line bg-s1 px-4 py-1 text-center text-xs text-faint">Modo demonstração: dados fictícios em memória (fora do Tauri).</div>
       {/if}
       {#key `${viewName}:${view.params.id ?? ''}`}
-      {#if router.fromLink && name !== 'now-playing'}
+      {#if router.fromLink && !(mobile && name === 'now-playing')}
         {#if viewName === 'now-playing'}<div class="absolute left-4 top-4 z-20 md:left-8 md:top-6"><BackButton /></div>
         {:else}<div class="mx-auto max-w-6xl px-4 pt-4 md:px-8 md:pt-6"><BackButton /></div>{/if}
       {/if}
