@@ -173,12 +173,32 @@ O job `docs` cobra a matriz em dia só no PR e no push para a `main`.
    ```
 4. O `release.yml` confere que a tag é anotada, está na `main` e bate com as versões; cria a release
    em rascunho com as notas da tag (ou reaproveita uma release que já exista); constrói Linux
-   (AppImage e .deb), Windows (NSIS e MSI) e macOS (.dmg universal); confere que os cinco tipos de
-   instalador estão anexados e então publica a release como última versão (`latest`).
+   (AppImage e .deb), Windows (NSIS e MSI), macOS (.dmg universal) e o APK do Android
+   (`miupy_X.Y.Z_android-arm64.apk`, assinado); confere que os seis tipos estão anexados e então publica a release como última versão (`latest`).
 5. Para refazer: Actions > Release > Run workflow, informando a tag existente.
 
 Pendências conhecidas: os instaladores não são assinados (sem certificado de código no Windows nem
-notarização no macOS; o sistema avisa na instalação) e o Android não é construído.
+notarização no macOS; o sistema avisa na instalação). O APK sai só para `aarch64`.
+
+### APK do Android
+
+O job `construir (android)` do `release.yml` monta o APK de release com o JDK 21 e o SDK/NDK que
+já vêm no `ubuntu-24.04`, e o assina pelo `keystore.properties` que ele escreve a partir de quatro
+segredos do repositório (o `build.gradle.kts` do app só assina quando o arquivo existe; ele está no
+`.gitignore`):
+
+| Segredo | Conteúdo |
+|---|---|
+| `ANDROID_KEYSTORE` | o keystore PKCS12 em base64 (`base64 -w0 miupy-release.jks`) |
+| `ANDROID_KEYSTORE_PASSWORD` | senha do keystore |
+| `ANDROID_KEY_ALIAS` | `miupy` |
+| `ANDROID_KEY_PASSWORD` | senha da chave (no PKCS12, a mesma do keystore) |
+
+O keystore original fica com o autor, fora do repositório (`~/.android-keys/`), com cópia de
+segurança. **Perder o keystore impede atualizar o app já instalado**: um APK assinado com outra
+chave não instala por cima. Para assinar um APK localmente, escreva o mesmo
+`src-tauri/gen/android/keystore.properties` (`storeFile`, `password`, `keyAlias`, `keyPassword`) e
+rode `npx tauri android build --apk --target aarch64`.
 
 ### Proteção de branches
 
