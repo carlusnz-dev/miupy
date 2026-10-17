@@ -25,7 +25,7 @@
     },
     "android": {
       "status": "parcial",
-      "nota": "Backend Media3 via MediaSessionService implementado; compilação e teste em aparelho registrados no relatório da sessão 12. Metadados, navegação da sessão e audiofx.Equalizer ficam para a segunda metade."
+      "nota": "Backend Media3 via MediaSessionService implementado; compilado e testado no desktop; a prova no aparelho fica registrada no relatório da sessão 12. Metadados, navegação da sessão e audiofx.Equalizer ficam para a segunda metade."
     }
   },
   "modulos": [

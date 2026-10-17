@@ -45,6 +45,15 @@
   O erro de link do sandbox era real: a `webkit2gtk-4.1` tinha saído do sistema junto com outro
   pacote; o autor a reinstalou.
 - `npm run check` 0 erros; `npm test` 107; rastreabilidade ok; `npm run android:apk` ok.
+- Revisão do #89 (corrigido): `load` com `playWhenReady = false` (a faixa nova não toca
+  sozinha); `setWakeMode(WAKE_MODE_NETWORK)` para a tela apagada; o serviço recriado volta com o
+  último volume; `startService` pelo `applicationContext`, com `try/catch` para o app em segundo
+  plano; geração nos `load`/`stop` para descartar eventos atrasados (o `explicitStop` era código
+  morto); estado otimista em tocar/pausar; atributos de música; volume ausente é rejeitado; testes
+  do `gpu.rs` só no Linux.
+- Fica para a metade 2: `setSessionActivity` (tocar na notificação abre o app); erro de
+  reprodução exige novo `prepare()` antes de tocar; serviço recriado pelo sistema não avisa o Rust
+  (o espelho segue com a faixa até o próximo `load`).
 
 ## Pendências e problemas conhecidos
 

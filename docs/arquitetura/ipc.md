@@ -776,6 +776,10 @@ encaminha comandos ao plugin `miupy-audio` por `run_mobile_plugin`; o plugin Kot
 um ExoPlayer mantido por `MediaSessionService`. Um `Channel` Tauri devolve `state`, `progress`
 (a cada 500 ms enquanto toca), `ended` (somente fim natural) e `error`. A casca traduz essas
 mensagens para `AudioEvent`; `state()` consulta um espelho em memória, sem bloquear a Activity.
+Cada `load`, `loadUrl` e `stop` leva um número de geração crescente, e o plugin carimba os
+eventos com ele: a casca descarta o que vier de outra geração (um `progress` ou `ended` atrasado
+da faixa anterior não vira `TrackEnded` da nova). O `load` deixa o ExoPlayer com
+`playWhenReady = false`, como no desktop (pausado na posição 0).
 
 `load` recebe o caminho absoluto do arquivo privado e o serviço monta um URI `file://`.
 `loadUrl` recebe URL e cabeçalhos HTTP do `StreamOptions`; a duração conhecida fica no espelho
