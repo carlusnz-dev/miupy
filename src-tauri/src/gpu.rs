@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 const MARKER: &str = "gpu-startup-pending";
+#[cfg(target_os = "linux")]
 const CRASH_REASON: &str = "GPU desativada: a última abertura com aceleração caiu";
 
 struct Applied {
@@ -13,6 +14,7 @@ struct Applied {
 }
 static APPLIED: OnceLock<Applied> = OnceLock::new();
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, PartialEq)]
 pub struct Decision {
     renderer: &'static str,
@@ -24,6 +26,7 @@ pub struct Decision {
 
 /// Decide sem acessar ambiente, banco ou janela. A origem do modo faz parte da decisão.
 // @req RNF-09
+#[cfg(target_os = "linux")]
 pub fn decision(
     saved: Option<&str>,
     environment: Option<&str>,
@@ -123,6 +126,7 @@ pub fn decision(
 
 /// Persiste o recuo e arma a sentinela antes da janela. Falhas impedem a tentativa arriscada.
 // @req RNF-09
+#[cfg(target_os = "linux")]
 fn prepare_startup(
     root: &Path,
     decision: &Decision,
