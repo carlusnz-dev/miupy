@@ -95,6 +95,12 @@ class PlayerStore {
     }
   }
 
+  /** Liga o aleatório (se estava desligado) e toca a fila a partir de uma faixa sorteada. @req RF-24 RF-42 */
+  async playShuffled(queue: string[], context?: QueueContext) {
+    if (!queue.length) return;
+    if (this.state.shuffle === 'off') await this.run(api.playerSetShuffle({ mode: 'random' }));
+    await this.play(queue[Math.floor(Math.random() * queue.length)], queue, context);
+  }
   cycleShuffle() { return this.run(api.playerSetShuffle({ mode: nextShuffle(this.state.shuffle) })); } // @req RF-24
   // @req RF-03 RF-42
   play(trackId: string, queue?: string[], context?: QueueContext) { return this.run(api.playerPlay({ trackId, queue, context })); }

@@ -1,5 +1,5 @@
 <script module lang="ts">
-  export type MenuItem = { label: string; icon?: string; danger?: boolean; separated?: boolean; onselect: () => void };
+  export type MenuItem = { label: string; icon?: string; danger?: boolean; separated?: boolean; checked?: boolean; onselect: () => void };
 </script>
 
 <script lang="ts">
@@ -78,12 +78,14 @@
         {#if item.separated}<div class="my-1 border-t border-line" role="separator"></div>{/if}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
-          id={itemId(i)} role="menuitem" tabindex="-1"
+          id={itemId(i)} role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked} tabindex="-1"
           class="flex min-h-12 cursor-pointer items-center gap-3 whitespace-nowrap rounded-md px-3 text-sm md:min-h-8
             {i === active ? 'bg-s3' : ''} {item.danger ? 'text-danger' : ''}"
           onmousedown={(e) => e.preventDefault()} onmouseenter={() => (active = i)} onclick={() => commit(i)}
         >
           {#if item.icon}<Icon name={item.icon} size={16} />{/if}{item.label}
+          {#if item.checked}<Icon name="check" size={14} class="ml-auto text-lava-text" />{/if}
+          {#if item.checked}<Icon name="check" size={14} class="ml-auto text-lava-text" />{/if}
         </div>
       {/each}
     </div>
