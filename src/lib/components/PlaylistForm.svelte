@@ -36,8 +36,8 @@
         ? await api.playlistUpdate({ playlistId: st.playlist.id, name, description })
         : await api.playlistCreate({ name, description: description || undefined });
       if (st?.playlist && cover !== undefined) {
-        p = await api.playlistSetCover({ playlistId: p.id, image: cover });
-        await library.reloadPlaylists();
+        // O nome já foi salvo: recarrega mesmo se a capa falhar, para o cabeçalho não ficar com o nome antigo.
+        try { p = await api.playlistSetCover({ playlistId: p.id, image: cover }); } finally { await library.reloadPlaylists(); }
       }
       notify(st?.playlist ? 'Playlist atualizada.' : 'Playlist criada.');
       ondone?.(p);

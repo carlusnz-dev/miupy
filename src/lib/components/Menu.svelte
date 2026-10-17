@@ -85,7 +85,6 @@
         >
           {#if item.icon}<Icon name={item.icon} size={16} />{/if}{item.label}
           {#if item.checked}<Icon name="check" size={14} class="ml-auto text-lava-text" />{/if}
-          {#if item.checked}<Icon name="check" size={14} class="ml-auto text-lava-text" />{/if}
         </div>
       {/each}
     </div>
