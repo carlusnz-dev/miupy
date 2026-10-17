@@ -29,7 +29,7 @@ Rodado pela orquestração no worktree em 2026-10-17:
 | Comando | Resultado |
 |---|---|
 | `npm run check` | 419 arquivos, 0 erros, 0 avisos (antes da correção: 1 aviso) |
-| `npm test` | 24 arquivos, 105 testes passando |
+| `npm test` | 24 arquivos, 107 testes passando (105 antes das correções da revisão) |
 | `npm run build` | ok (`index` JS 237 kB, 75,9 kB gzip) |
 | `node scripts/rastreabilidade.mjs --check` | ok: 57 requisitos, nenhum ID desconhecido |
 
@@ -38,6 +38,8 @@ Cargo não rodado: não há Rust no diff. Não rodados: `revisar-playwright` em 
 ## Pendências e problemas conhecidos
 
 - Gestos não provados com dedo de verdade: precisam do APK (`feat/android-base`) e do inspetor remoto.
+- Revisão do #86 (corrigido): "← Voltar" no Tocando do desktop, rolagem preservada ao abrir e fechar a sobreposição, mínimo de 24 px no gesto rápido, toque depois de um deslize curto, `touch-none` só no celular e botões de 48 px no mini player.
+- Revisão do #86 (fica para RF-47/RF-48): no celular, a ordem de foco põe a fila antes dos controles; favorito e fila em Tocando têm 36 px; o foco não volta ao mini player quando o Tocando fecha pelo voltar do sistema; não há "Anterior" no mini player (o deslizar para a direita não tem botão equivalente; decisão do autor).
 - `vite.worktree.config.ts` foi só para o cache do Vite no sandbox e não entra no commit.
 
 ## Fatias de commit

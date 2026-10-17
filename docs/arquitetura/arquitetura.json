@@ -213,7 +213,7 @@
       ],
       "status": "parcial",
       "testes": {
-        "passando": 105,
+        "passando": 107,
         "falhando": 0,
         "nota": "Vitest com cliente falso; validado na versão web por agente Sonnet + Playwright (12 itens, transições medidas)."
       },
