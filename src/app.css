@@ -173,6 +173,13 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
   animation: glow-in var(--dur-slow) both;
 }
 @keyframes glow-in { from { opacity: 0; } }
+/* Brilho ambiente do desktop: a cor da capa (ou a lava) no canto, mais a capa bem suave por cima. */
+.ambient {
+  --tint: var(--cover-tint); --cover-blur: 64px; --cover-glow-a: 0.18;
+  background: radial-gradient(70% 55% at 12% 0%, color-mix(in oklab, var(--tint) 14%, transparent), transparent 70%);
+  transition: --tint var(--dur-slow);
+}
+.ambient .cover-glow { filter: blur(var(--cover-blur)) saturate(1.4) brightness(0.8); }
 
 /* botões */
 .btn {
