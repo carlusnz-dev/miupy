@@ -768,3 +768,19 @@ discoteca (hoje é preciso adicionar primeiro).
 
 O registro de atividade (RF-13) não tem comando próprio: o backend grava os eventos de reprodução
 sozinho, a partir do estado do player.
+
+## Áudio no Android (RF-44)
+
+O contrato frontend ⇄ Rust do player permanece igual. Na casca Android, `AudioBackend`
+encaminha comandos ao plugin `miupy-audio` por `run_mobile_plugin`; o plugin Kotlin controla
+um ExoPlayer mantido por `MediaSessionService`. Um `Channel` Tauri devolve `state`, `progress`
+(a cada 500 ms enquanto toca), `ended` (somente fim natural) e `error`. A casca traduz essas
+mensagens para `AudioEvent`; `state()` consulta um espelho em memória, sem bloquear a Activity.
+
+`load` recebe o caminho absoluto do arquivo privado e o serviço monta um URI `file://`.
+`loadUrl` recebe URL e cabeçalhos HTTP do `StreamOptions`; a duração conhecida fica no espelho
+até o ExoPlayer apurá-la. `volume` aplica a curva perceptual `volume²` e a normalização somente
+atenuante: `volume² × min(1, 10^(ganho_dB/20))`; mudo produz zero. Os oito ganhos de EQ ficam
+guardados no backend nesta etapa; a aplicação pelo efeito nativo fica para a segunda metade.
+A sessão Media3 fornece tocar/pausar na notificação e na tela bloqueada. Metadados, capa e
+próxima/anterior da sessão entram na segunda metade.

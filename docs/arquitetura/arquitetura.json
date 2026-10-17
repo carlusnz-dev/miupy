@@ -1,8 +1,8 @@
 {
   "projeto": "miupy",
   "versao": "0.2.1",
-  "atualizadoEm": "2026-10-15",
-  "sessao": "2026-10-15_sessao-07",
+  "atualizadoEm": "2026-10-17",
+  "sessao": "2026-10-17_sessao-12",
   "descricao": "Player de música offline em Rust + Tauri 2 para desktop e Android.",
   "statusPossiveis": [
     "planejado",
@@ -24,8 +24,8 @@
       "nota": "Não compilado."
     },
     "android": {
-      "status": "planejado",
-      "nota": "Sem SDK/NDK/alvos Rust; áudio é o NullBackend (falta plugin Media3); sem extrator do YouTube (yt-dlp não roda; o rustypipe, GPL-3.0 como o projeto, ainda não entrou)."
+      "status": "parcial",
+      "nota": "Backend Media3 via MediaSessionService implementado; compilação e teste em aparelho registrados no relatório da sessão 12. Metadados, navegação da sessão e audiofx.Equalizer ficam para a segunda metade."
     }
   },
   "modulos": [
@@ -75,7 +75,7 @@
       "id": "miupy-audio",
       "caminho": "crates/miupy-audio",
       "tipo": "crate-rust",
-      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop, arquivo local e streaming HTTP) e NullBackend (testes e Android). Medição EBU R128 sem dispositivo e cadeia DSP de normalização, equalizador de oito bandas com biquads e cruzamento entre perfis, volume e limitador.",
+      "papel": "Trait AudioBackend e implementações: RodioBackend (desktop, arquivo local e streaming HTTP) e NullBackend (testes). Medição EBU R128 sem dispositivo e cadeia DSP de normalização, equalizador de oito bandas com biquads e cruzamento entre perfis, volume e limitador.",
       "dependeDe": [],
       "tecnologias": [
         "rodio 0.23",
@@ -146,7 +146,7 @@
       "id": "src-tauri",
       "caminho": "src-tauri",
       "tipo": "app-tauri",
-      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura, com parada após a faixa atual. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita. Módulo auto_download liga playlists à fila única e retenta falhas de rede.",
+      "papel": "Casca do app: estado, comandos IPC, eventos, fila de reprodução, streaming de faixas não baixadas, registro de atividade, downloads com metadados, recomendações e escolha do renderizador (GPU), com sentinela de recuperação de queda em Wayland/NVIDIA. Configura o CORS do protocolo asset no WebKitGTK. Normalização no download, processamento de faixas antigas e aplicação do ganho. Codificação WebP com perda e migração de imagens antigas em segundo plano. Comandos e aplicação imediata do equalizador. Estado em memória do reprocessamento de metadados por lote nesta abertura, com parada após a faixa atual. Comando para marcar a playlist de favoritas e busca do YouTube com estado de favorita. Módulo auto_download liga playlists à fila única e retenta falhas de rede. No Android, implementa AudioBackend por plugin Tauri Kotlin com Media3 e espelho de estado por Channel.",
       "dependeDe": [
         "miupy-core",
         "miupy-audio",
@@ -187,7 +187,8 @@
         "RF-29",
         "RF-33",
         "RF-32",
-        "RF-31"
+        "RF-31",
+        "RF-44"
       ],
       "limitacoes": [
         "Pausar durante a resolução do streaming não impede a faixa de tocar quando a URL chega.",

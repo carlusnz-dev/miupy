@@ -121,3 +121,12 @@ playlists/        capas de playlists enviadas pelo usuário em WebP
 Reprodução em segundo plano, permissões de notificação e armazenamento, e a escolha do extrator do
 YouTube são as três diferenças em relação ao desktop. O resto (banco, domínio, frontend, IPC) é o
 mesmo código.
+
+### Áudio Android (RF-44)
+
+`src-tauri/src/android_audio.rs` implementa `AudioBackend` sobre um plugin Tauri do próprio app.
+`AudioPlugin.kt` executa comandos no looper principal e devolve mudanças por `Channel`;
+`PlaybackService.kt` mantém o ExoPlayer e a MediaSession em primeiro plano durante a reprodução.
+O Media3 gerencia a notificação de mídia, foco de áudio e pausa ao desconectar o fone. O Android
+usa volume e normalização atenuante; os ganhos de EQ são preservados para a integração com
+`audiofx.Equalizer` na segunda metade.
