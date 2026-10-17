@@ -68,8 +68,9 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
 
     fun load(uri: android.net.Uri, headers: Map<String, String>, stream: Boolean, generation: Long) {
-        this.generation = generation
+        // A geração muda depois do stop(): o estado que ele publica é da faixa anterior.
         player.stop()
+        this.generation = generation
         // O stop() não zera playWhenReady: sem isto a faixa nova tocaria sozinha (o contrato é pausada).
         player.playWhenReady = false
         val item = androidx.media3.common.MediaItem.fromUri(uri)

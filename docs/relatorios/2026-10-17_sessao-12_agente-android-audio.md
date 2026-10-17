@@ -51,6 +51,8 @@
   plano; geração nos `load`/`stop` para descartar eventos atrasados (o `explicitStop` era código
   morto); estado otimista em tocar/pausar; atributos de música; volume ausente é rejeitado; testes
   do `gpu.rs` só no Linux.
+- Se o serviço não sobe (app em segundo plano com o serviço morto), o erro de geração 0 faz o
+  `player.rs` descartar a faixa e avançar; com falhas seguidas, a fila inteira passa. Raro.
 - Fica para a metade 2: `setSessionActivity` (tocar na notificação abre o app); erro de
   reprodução exige novo `prepare()` antes de tocar; serviço recriado pelo sistema não avisa o Rust
   (o espelho segue com a faixa até o próximo `load`).
