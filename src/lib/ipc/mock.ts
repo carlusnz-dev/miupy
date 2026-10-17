@@ -344,8 +344,12 @@ export function createMockApi(): MiupyApi {
     async playerEnqueue({ trackIds, next = false }) {
       trackIds.forEach(byId);
       const at = next && player.queueIndex >= 0 ? player.queueIndex + 1 : player.queue.length;
+      // Como no Rust: com `next`, entra na ordem original logo depois da ocorrência atual.
+      const cur = player.queue[player.queueIndex];
+      const occurrence = player.queue.slice(0, player.queueIndex).filter((item) => item === cur).length;
+      const original = originalQueue.map((item, i) => item === cur ? i : -1).filter((i) => i >= 0)[occurrence];
       player.queue.splice(at, 0, ...trackIds);
-      originalQueue.splice(next && player.queueIndex >= 0 ? Math.min(at, originalQueue.length) : originalQueue.length, 0, ...trackIds);
+      originalQueue.splice(next && original !== undefined ? original + 1 : originalQueue.length, 0, ...trackIds);
       return pushState();
     },
     // @req RF-49
@@ -364,7 +368,7 @@ export function createMockApi(): MiupyApi {
       if (![from, to].every((i) => Number.isInteger(i) && i >= 0 && i < player.queue.length)) err('invalid_input', 'Posição inválida.');
       const [id] = player.queue.splice(from, 1);
       player.queue.splice(to, 0, id);
-      if (player.shuffle === 'off') { const [item] = originalQueue.splice(from, 1); originalQueue.splice(to, 0, item); }
+      if (player.shuffle === 'off') originalQueue.splice(0, originalQueue.length, ...player.queue);
       if (player.queueIndex === from) player.queueIndex = to;
       else if (from < player.queueIndex && to >= player.queueIndex) player.queueIndex--;
       else if (from > player.queueIndex && to <= player.queueIndex && player.queueIndex >= 0) player.queueIndex++;

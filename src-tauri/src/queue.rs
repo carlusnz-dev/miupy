@@ -106,14 +106,13 @@ impl PlayQueue {
         if from == to {
             return true;
         }
-        if shuffle_off {
-            let original_from = self.original_position(from);
-            // Em modo off, a ordem original segue a ordem de reprodução.
-            let id = self.original_ids.remove(original_from);
-            self.original_ids.insert(to, id);
-        }
         let id = self.ids.remove(from);
         self.ids.insert(to, id);
+        if shuffle_off {
+            // Em modo off, a ordem original passa a ser a de reprodução: depois de um ciclo de
+            // aleatório, as duas podem ter divergido no prefixo já tocado.
+            self.original_ids = self.ids.clone();
+        }
         if let Some(current) = self.index {
             self.index = Some(if current == from {
                 to
@@ -394,5 +393,19 @@ mod tests {
         assert!(queue.move_at(2, 1, false));
         let restored = queue.original_order_of(&queue.ids()[..1], &queue.ids()[1..]);
         assert_eq!(restored, ["b", "d", "c"]);
+    }
+
+    // @test RF-49 RF-24
+    #[test]
+    fn mover_em_off_depois_do_aleatorio_segue_a_ordem_visivel() {
+        let mut queue = PlayQueue::default();
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        queue.replace(ids(&["a", "b", "c", "d", "e"]), "a");
+        // Depois de um ciclo de aleatório e da volta para off, com d tocando.
+        queue.set_ids(ids(&["a", "d", "b", "c", "e"]), 1);
+        assert!(queue.move_at(4, 2, true));
+        assert_eq!(queue.ids, ids(&["a", "d", "e", "b", "c"]));
+        assert_eq!(queue.original_ids, queue.ids);
+        assert_eq!(queue.index(), Some(1));
     }
 }

@@ -428,9 +428,12 @@ interface LogQuery { kinds?: LogKind[]; level?: LogLevel; beforeId?: number; lim
   `player_next` ou `player_resume` inicia a primeira faixa. Os três comandos mantêm o contexto
   da fila e emitem `player://state`, além de devolver o novo `PlayerState`.
 - A ordem anterior ao aleatório fica em `original_ids`: enfileirar acrescenta nela ao fim ou depois
-  da ocorrência atual; remover tira só a ocorrência escolhida. Mover com modo `off` muda também
-  essa ordem; com `random` ou `surfle`, muda apenas a ordem de reprodução. Voltar a `off` restaura
-  a ordem original das ocorrências restantes após a atual.
+  da ocorrência atual; remover tira só a ocorrência escolhida. Mover com modo `off` faz a ordem
+  original virar a ordem de reprodução; com `random` ou `surfle`, muda apenas a ordem de
+  reprodução. Voltar a `off` restaura a ordem original das ocorrências restantes após a atual.
+- Fila sem posição atual (`queueIndex = -1`, seja recém-enfileirada, seja porque a faixa atual foi
+  apagada da discoteca): `player_next` e `player_resume` começam pela primeira faixa, na ordem em
+  que estiver, sem sortear mesmo com aleatório ligado.
 
 ### Aleatório e Surfle (RF-24)
 
