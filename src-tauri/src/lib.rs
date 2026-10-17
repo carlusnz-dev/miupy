@@ -169,6 +169,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pl::player_get_state,
             pl::player_get_queue,
+            pl::player_enqueue,
+            pl::player_queue_remove,
+            pl::player_queue_move,
             pl::player_play,
             pl::player_pause,
             pl::player_resume,
