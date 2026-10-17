@@ -117,6 +117,12 @@
   let dragging = $state(false);
   let restoreFocus = $state(false);
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // @req RF-47: o voltar do sistema e o histórico também precisam devolver o foco ao mini player.
+  let previousName: Route['name'] = router.current.name;
+  $effect(() => {
+    if (mobile && previousName === 'now-playing' && name !== 'now-playing') restoreFocus = true;
+    previousName = name;
+  });
   $effect(() => {
     if (mobile && name === 'now-playing') overlay?.focus();
     else if (restoreFocus) {
@@ -213,8 +219,11 @@
 </div>
 
 {#if mobile && name === 'now-playing'}
-  <!-- @req RF-46: a tela cobre inclusive as abas e o mini player. -->
-  <div bind:this={overlay} class="fixed inset-0 z-[60] overflow-y-auto" style="background:var(--bg);padding-top:var(--safe-t);padding-bottom:var(--safe-b);transform:translate3d(0,{dragOffset}px,0);transition:{dragging || reduced() ? 'none' : 'transform var(--dur-base) var(--ease-spring)'}"
+  <!-- @req RF-46: a tela cobre inclusive as abas e o mini player. Sem transform fora do arrasto:
+       com ele, a folha da fila (position: fixed) rolaria junto com a sobreposição. -->
+  <div bind:this={overlay} class="fixed inset-0 z-[60] overflow-y-auto" style="background:var(--bg);padding-top:var(--safe-t);padding-bottom:var(--safe-b)"
+    style:transform={dragOffset ? `translate3d(0,${dragOffset}px,0)` : undefined}
+    style:transition={dragging || reduced() ? 'none' : 'transform var(--dur-base) var(--ease-spring)'}
     role="dialog" aria-modal="true" aria-label="Tocando agora" tabindex="-1"
     transition:springTransition={{ y: typeof window !== 'undefined' ? window.innerHeight : 800, duration: 420, reducedDuration: 0 }}
     onpointerdown={dragStart} onpointermove={dragMove} onpointerup={dragEnd} onpointercancel={dragCancel} onlostpointercapture={dragCancel}

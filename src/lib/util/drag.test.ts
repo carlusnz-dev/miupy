@@ -35,4 +35,16 @@ describe('gestos do player no celular', () => {
     expect(drag.finish(100, -1, 0.35)).toBe(true);
     expect(drag.finish(100, 1, 0.35)).toBe(false);
   });
+  // @test RF-47
+  it('abre e recolhe a folha com o mesmo limiar nos dois sentidos', () => {
+    const opening = beginDrag(300, 0);
+    opening.move(220, 200);
+    expect(opening.finish(300, -1, 0.3)).toBe(false);
+    opening.move(210, 300);
+    expect(opening.finish(300, -1, 0.3)).toBe(true);
+
+    const closing = beginDrag(100, 0);
+    closing.move(130, 30);
+    expect(closing.finish(300, 1, 0.3)).toBe(true);
+  });
 });
