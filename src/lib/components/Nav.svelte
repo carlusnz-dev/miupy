@@ -29,11 +29,12 @@
     { label: 'Perfil', icon: 'user', path: paths.profile, names: ['profile'] },
     { label: 'Configurações', icon: 'settings', path: paths.settings, names: ['settings'] },
   ];
+  // @req RF-46
   const tabs: Item[] = [
     { label: 'Início', icon: 'home', path: paths.home, names: ['home'] },
+    { label: 'Busca', icon: 'search', path: paths.youtube, names: ['youtube'] },
     { label: 'Discoteca', icon: 'library', path: paths.library, names: ['library', 'artist'] },
     { label: 'Playlists', icon: 'playlist', path: paths.playlists, names: ['playlists', 'playlist'] },
-    { label: 'Buscar', icon: 'search', path: paths.youtube, names: ['youtube'] },
   ];
   const moreNames: RouteName[] = ['downloads', 'stats', 'dna', 'wrapped', 'profile', 'settings'];
   const moreItems = [main[4], ...insights, ...account];
@@ -164,7 +165,7 @@
 {/if}
 </div>
 {:else}
-<nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Principal">
+<nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Abas principais">
   {#if moreOpen}
     <div class="absolute bottom-full right-2 mb-2 w-60 rounded-xl border border-line-strong bg-s2 p-1.5">
       {#each moreItems as i}{@render link(i)}{/each}
@@ -173,7 +174,7 @@
   <ul class="grid h-[var(--nav-h)] grid-cols-5">
     {#each tabs as i}
       <li>
-        <a href={href(i.path)} onclick={(event) => menuClick(event, i.path)} aria-current={isOn(i) ? 'page' : undefined}
+        <a href={href(i.path)} onclick={(event) => menuClick(event, i.path)} aria-current={isOn(i) ? 'page' : undefined} aria-label={i.path === paths.youtube ? 'Busca no YouTube' : i.label}
            class="flex h-full flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-muted aria-[current=page]:text-lava-text">
           <Icon name={i.icon} size={22} />{i.label}
         </a>

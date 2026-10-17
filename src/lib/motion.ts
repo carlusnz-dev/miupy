@@ -24,11 +24,11 @@ export function enterStyle(index: number, step?: number, limit?: number): string
 }
 
 /** Entrada/saída de páginas, toasts e menus: fade + deslocamento em Y na mola suave. */
-export function springTransition(_node: Element, { y = 8, delay = 0, duration = 360 }: { y?: number; delay?: number; duration?: number } = {}): TransitionConfig {
+export function springTransition(_node: Element, { y = 8, delay = 0, duration = 360, reducedDuration = 90 }: { y?: number; delay?: number; duration?: number; reducedDuration?: number } = {}): TransitionConfig {
   const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   return {
     delay: reduced ? 0 : delay,
-    duration: reduced ? 90 : duration,
+    duration: reduced ? reducedDuration : duration,
     css: (t) => {
       if (reduced) return `opacity:${t}`;
       return `opacity:${Math.min(1, t * 1.6)};transform:translate3d(0,${(1 - spring(t)) * y}px,0)`;
