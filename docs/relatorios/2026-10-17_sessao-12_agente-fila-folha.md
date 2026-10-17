@@ -39,7 +39,18 @@ Correções da orquestração (2026-10-17), conferidas com `npm run check` (0 er
   conteúdo. Agora o `transform` só existe durante o arrasto.
 - "Mostrar a fila" voltou a ter `aria-pressed` no desktop (o `aria-expanded` vale só no celular).
 
+Correções da revisão do #88: abas Fila/Letra com 48 px de verdade (`!min-h-12`, porque o
+`.btn-sm` sem camada vencia o utilitário); no desktop a fila voltou para antes dos controles no
+DOM (ordem de foco igual à visual, sem `row-start`); a letra sincronizada rola o corpo da folha no
+celular; "Mostrar a fila" só acende com a folha aberta; rótulo da folha sem repetir o do botão.
+
 ## Pendências e problemas conhecidos
+
+- Durante o arrasto de fechar o Tocando (só nele), se a sobreposição estiver rolada, a folha
+  acompanha o `scrollTop` até o fim do gesto: o `transform` do arrasto vira o bloco de contenção
+  do `fixed`.
+- Com a folha aberta, os controles cobertos continuam focáveis (sem `inert` nem fundo para tocar
+  e fechar). Fica para o RF-48.
 
 - A interação por toque e o layout em aparelhos pequenos não foram conferidos visualmente no WebView.
 
