@@ -52,6 +52,81 @@ impl PlayQueue {
         self.index = Some(pos);
     }
 
+    // @req RF-49
+    pub fn enqueue(&mut self, ids: Vec<String>, next: bool) {
+        let at = if next {
+            self.index.map_or(self.ids.len(), |i| i + 1)
+        } else {
+            self.ids.len()
+        };
+        let original_at = if next {
+            self.index
+                .map_or(self.original_ids.len(), |i| self.original_position(i) + 1)
+        } else {
+            self.original_ids.len()
+        };
+        self.original_ids
+            .splice(original_at..original_at, ids.iter().cloned());
+        self.ids.splice(at..at, ids);
+    }
+
+    // Identifica uma ocorrência repetida pela posição ordinal desse ID na fila visível.
+    fn original_position(&self, index: usize) -> usize {
+        let id = &self.ids[index];
+        let ordinal = self.ids[..=index].iter().filter(|item| *item == id).count();
+        self.original_ids
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| *item == id)
+            .nth(ordinal - 1)
+            .map_or(0, |(i, _)| i)
+    }
+
+    // @req RF-49
+    pub fn remove_at(&mut self, index: usize) -> bool {
+        if index >= self.ids.len() || self.index == Some(index) {
+            return false;
+        }
+        let original = self.original_position(index);
+        self.ids.remove(index);
+        self.original_ids.remove(original);
+        if let Some(current) = self.index
+            && index < current
+        {
+            self.index = Some(current - 1);
+        }
+        true
+    }
+
+    // @req RF-49
+    pub fn move_at(&mut self, from: usize, to: usize, shuffle_off: bool) -> bool {
+        if from >= self.ids.len() || to >= self.ids.len() {
+            return false;
+        }
+        if from == to {
+            return true;
+        }
+        let id = self.ids.remove(from);
+        self.ids.insert(to, id);
+        if shuffle_off {
+            // Em modo off, a ordem original passa a ser a de reprodução: depois de um ciclo de
+            // aleatório, as duas podem ter divergido no prefixo já tocado.
+            self.original_ids = self.ids.clone();
+        }
+        if let Some(current) = self.index {
+            self.index = Some(if current == from {
+                to
+            } else if from < current && to >= current {
+                current - 1
+            } else if from > current && to <= current {
+                current + 1
+            } else {
+                current
+            });
+        }
+        true
+    }
+
     // @req RF-24
     /// Troca a ordem sem perder a posição da ocorrência atual, mesmo com IDs repetidos.
     pub fn set_ids(&mut self, ids: Vec<String>, index: usize) {
@@ -244,5 +319,93 @@ mod tests {
         assert_eq!(queue.ids(), ["a", "b"]);
         assert_eq!(queue.current(), Some("b"));
         assert_eq!(queue.original_ids, ["a", "b"]);
+    }
+
+    // @test RF-49
+    #[test]
+    fn enfileirar_no_fim_e_depois_da_atual_preserva_a_atual() {
+        let mut queue = q(&["a", "b", "c"], "b");
+        queue.enqueue(vec!["d".into(), "e".into()], false);
+        queue.enqueue(vec!["x".into(), "y".into()], true);
+        assert_eq!(queue.ids(), ["a", "b", "x", "y", "c", "d", "e"]);
+        assert_eq!(queue.original_ids, queue.ids);
+        assert_eq!(queue.current(), Some("b"));
+    }
+
+    // @test RF-49
+    #[test]
+    fn enfileirar_em_fila_vazia_nao_seleciona_faixa() {
+        let mut queue = PlayQueue::default();
+        queue.enqueue(vec!["a".into(), "b".into()], true);
+        assert_eq!(queue.ids(), ["a", "b"]);
+        assert_eq!(queue.index_i64(), -1);
+    }
+
+    // @test RF-49
+    #[test]
+    fn remover_ocorrencia_antes_e_depois_da_atual() {
+        let mut queue = q(&["a", "x", "b", "x", "c"], "b");
+        assert!(queue.remove_at(1));
+        assert_eq!(queue.index(), Some(1));
+        assert!(queue.remove_at(2));
+        assert_eq!(queue.ids(), ["a", "b", "c"]);
+        assert_eq!(queue.original_ids, ["a", "b", "c"]);
+    }
+
+    // @test RF-49
+    #[test]
+    fn remover_atual_ou_indice_invalido_nao_altera_fila() {
+        let mut queue = q(&["a", "b"], "b");
+        let before = queue.clone();
+        assert!(!queue.remove_at(1));
+        assert!(!queue.remove_at(2));
+        assert_eq!(queue, before);
+    }
+
+    // @test RF-49
+    #[test]
+    fn mover_atual_e_cruzar_sua_posicao() {
+        let mut queue = q(&["a", "b", "c", "d"], "b");
+        assert!(queue.move_at(1, 3, true));
+        assert_eq!(queue.ids(), ["a", "c", "d", "b"]);
+        assert_eq!(queue.index(), Some(3));
+        assert!(queue.move_at(0, 3, true));
+        assert_eq!(queue.index(), Some(2));
+        assert!(queue.move_at(3, 0, true));
+        assert_eq!(queue.index(), Some(3));
+        assert_eq!(queue.original_ids, queue.ids);
+        assert!(!queue.move_at(8, 0, true));
+    }
+
+    // @test RF-49 RF-24
+    #[test]
+    fn enfileirar_embaralhar_remover_e_restaurar_com_repetidos() {
+        let mut queue = q(&["a", "b", "c"], "a");
+        queue.enqueue(vec!["b".into(), "d".into()], true);
+        queue.set_ids(
+            vec!["a", "c", "d", "b", "b"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            0,
+        );
+        assert!(queue.remove_at(4));
+        assert!(queue.move_at(2, 1, false));
+        let restored = queue.original_order_of(&queue.ids()[..1], &queue.ids()[1..]);
+        assert_eq!(restored, ["b", "d", "c"]);
+    }
+
+    // @test RF-49 RF-24
+    #[test]
+    fn mover_em_off_depois_do_aleatorio_segue_a_ordem_visivel() {
+        let mut queue = PlayQueue::default();
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        queue.replace(ids(&["a", "b", "c", "d", "e"]), "a");
+        // Depois de um ciclo de aleatório e da volta para off, com d tocando.
+        queue.set_ids(ids(&["a", "d", "b", "c", "e"]), 1);
+        assert!(queue.move_at(4, 2, true));
+        assert_eq!(queue.ids, ids(&["a", "d", "e", "b", "c"]));
+        assert_eq!(queue.original_ids, queue.ids);
+        assert_eq!(queue.index(), Some(1));
     }
 }

@@ -23,6 +23,34 @@ pub async fn player_get_queue(state: State<'_, AppState>) -> R<Vec<Track>> {
     blocking(move || p.queue_tracks()).await
 }
 
+// @req RF-49
+#[tauri::command]
+pub async fn player_enqueue(
+    state: State<'_, AppState>,
+    track_ids: Vec<String>,
+    next: Option<bool>,
+) -> R<PlayerState> {
+    let p = state.player.clone();
+    blocking(move || p.enqueue(track_ids, next.unwrap_or(false))).await
+}
+
+// @req RF-49
+#[tauri::command]
+pub async fn player_queue_remove(state: State<'_, AppState>, index: i64) -> R<PlayerState> {
+    let index = usize::try_from(index).map_err(|_| AppError::invalid("posição inválida"))?;
+    let p = state.player.clone();
+    blocking(move || p.queue_remove(index)).await
+}
+
+// @req RF-49
+#[tauri::command]
+pub async fn player_queue_move(state: State<'_, AppState>, from: i64, to: i64) -> R<PlayerState> {
+    let from = usize::try_from(from).map_err(|_| AppError::invalid("posição inválida"))?;
+    let to = usize::try_from(to).map_err(|_| AppError::invalid("posição inválida"))?;
+    let p = state.player.clone();
+    blocking(move || p.queue_move(from, to)).await
+}
+
 // @req RF-01 RF-03 RF-42
 #[tauri::command]
 pub async fn player_play(

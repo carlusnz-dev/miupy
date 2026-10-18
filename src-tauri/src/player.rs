@@ -166,6 +166,41 @@ impl Player {
         Ok(self.db.with(|db| db.get_tracks_by_ids(&ids))?)
     }
 
+    // @req RF-49
+    pub fn enqueue(&self, ids: Vec<String>, next: bool) -> AppResult<PlayerState> {
+        let mut inner = self.lock();
+        for id in &ids {
+            self.db.with(|db| db.get_track(id))?;
+        }
+        inner.queue.enqueue(ids, next);
+        self.emit(&inner);
+        Ok(self.snapshot(&inner))
+    }
+
+    // @req RF-49
+    pub fn queue_remove(&self, index: usize) -> AppResult<PlayerState> {
+        let mut inner = self.lock();
+        if !inner.queue.remove_at(index) {
+            return Err(AppError::invalid("posição inválida ou faixa atual"));
+        }
+        if inner.queue.ids().is_empty() {
+            inner.context = None;
+        }
+        self.emit(&inner);
+        Ok(self.snapshot(&inner))
+    }
+
+    // @req RF-49
+    pub fn queue_move(&self, from: usize, to: usize) -> AppResult<PlayerState> {
+        let mut inner = self.lock();
+        let off = inner.shuffle == ShuffleMode::Off;
+        if !inner.queue.move_at(from, to, off) {
+            return Err(AppError::invalid("posição inválida"));
+        }
+        self.emit(&inner);
+        Ok(self.snapshot(&inner))
+    }
+
     fn snapshot(&self, inner: &Inner) -> PlayerState {
         let st = self.backend.state();
         // Relê a faixa: favorito e capa podem ter mudado desde que ela começou a tocar.
@@ -551,7 +586,7 @@ impl Player {
         Ok(self.snapshot(&inner))
     }
 
-    // @req RF-01 RF-18
+    // @req RF-01 RF-18 RF-49
     /// Retoma. Se a faixa já terminou ou foi parada, recomeça a faixa atual da fila.
     pub fn resume(&self) -> AppResult<PlayerState> {
         let mut inner = self.lock();
@@ -584,6 +619,7 @@ impl Player {
         if self.backend.state().status == PlaybackStatus::Stopped {
             let idx = match (inner.queue.index(), inner.track.is_some()) {
                 (Some(i), true) => i,
+                (None, false) if !inner.queue.ids().is_empty() => 0,
                 _ => return Err(AppError::unavailable("Não há nada para tocar.")),
             };
             self.start_index(&mut inner, idx, PlayEnd::Stopped)?;
@@ -617,10 +653,15 @@ impl Player {
         Ok(self.snapshot(&inner))
     }
 
-    // @req RF-03
+    // @req RF-03 RF-49
     /// Próxima da fila. No fim da fila não faz nada.
     pub fn next(&self) -> AppResult<PlayerState> {
         let mut inner = self.lock();
+        if inner.queue.index().is_none() && !inner.queue.ids().is_empty() {
+            self.start_index(&mut inner, 0, PlayEnd::Stopped)?;
+            self.emit(&inner);
+            return Ok(self.snapshot(&inner));
+        }
         if let Some(cur) = inner.queue.index()
             && self.walk(&mut inner, cur, true, PlayEnd::Skipped)?
         {
@@ -964,6 +1005,68 @@ mod tests {
                 left -= step;
             }
         }
+    }
+
+    // @test RF-49
+    #[test]
+    fn enqueue_valida_tudo_e_preserva_faixa_e_contexto() {
+        let f = fx(3);
+        let context = QueueContext {
+            kind: QueueContextKind::Playlist,
+            id: Some("lista".into()),
+            label: "Lista".into(),
+        };
+        f.player
+            .play_with_context(&f.ids[0], Some(f.ids[..2].to_vec()), Some(context.clone()))
+            .unwrap();
+        let before = f.player.state();
+        assert_eq!(
+            f.player
+                .enqueue(vec![f.ids[2].clone(), "ausente".into()], true)
+                .unwrap_err()
+                .code(),
+            "not_found"
+        );
+        assert_eq!(f.player.state().queue, before.queue);
+        let state = f.player.enqueue(vec![f.ids[2].clone()], true).unwrap();
+        assert_eq!(
+            state.queue,
+            vec![f.ids[0].clone(), f.ids[2].clone(), f.ids[1].clone()]
+        );
+        assert_eq!(state.track.as_ref().unwrap().id, f.ids[0]);
+        assert_eq!(state.context, Some(context));
+    }
+
+    // @test RF-49
+    #[test]
+    fn remover_e_mover_preservam_faixa_atual() {
+        let f = fx(3);
+        f.player.play(&f.ids[1], Some(f.ids.clone())).unwrap();
+        assert_eq!(
+            f.player.queue_remove(1).unwrap_err().code(),
+            "invalid_input"
+        );
+        assert_eq!(f.player.queue_remove(0).unwrap().queue_index, 0);
+        let state = f.player.queue_move(0, 1).unwrap();
+        assert_eq!(state.queue_index, 1);
+        assert_eq!(state.track.as_ref().unwrap().id, f.ids[1]);
+        assert_eq!(
+            f.player.queue_move(2, 0).unwrap_err().code(),
+            "invalid_input"
+        );
+    }
+
+    // @test RF-49
+    #[test]
+    fn fila_vazia_enfileirada_inicia_com_next_ou_resume() {
+        let f = fx(2);
+        let state = f.player.enqueue(f.ids.clone(), false).unwrap();
+        assert_eq!(state.queue_index, -1);
+        assert!(state.track.is_none());
+        assert_eq!(f.player.next().unwrap().track.unwrap().id, f.ids[0]);
+        let g = fx(1);
+        g.player.enqueue(g.ids.clone(), false).unwrap();
+        assert_eq!(g.player.resume().unwrap().track.unwrap().id, g.ids[0]);
     }
 
     // @test RF-18
