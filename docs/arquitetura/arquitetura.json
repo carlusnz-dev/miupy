@@ -108,7 +108,7 @@
       "id": "miupy-media",
       "caminho": "crates/miupy-media",
       "tipo": "crate-rust",
-      "papel": "Trait MediaResolver (yt-dlp: busca, download, playlist, URL de streaming, faixas parecidas, metadados do vídeo), MetadataProvider (MusicBrainz com gêneros, ano e ISRC; Cover Art Archive; LRCLIB), tagger (lofty) e limpeza de títulos. YtDlpManager (binário oficial do yt-dlp com SHA-256), sugestões de busca, filtro de coletâneas, foto de artista pelo Wikidata/Commons.",
+      "papel": "Trait MediaResolver (yt-dlp no desktop e RustyPipe no Android: busca, download, playlist, URL de streaming, faixas parecidas, metadados do vídeo), MetadataProvider (MusicBrainz com gêneros, ano e ISRC; Cover Art Archive; LRCLIB), tagger (lofty) e limpeza de títulos. YtDlpManager (binário oficial do yt-dlp com SHA-256), sugestões de busca, filtro de coletâneas, foto de artista pelo Wikidata/Commons.",
       "dependeDe": [],
       "dependenciasExternas": [
         "yt-dlp (binário do sistema; verificado com 2026.08.19)"
@@ -134,12 +134,13 @@
         "RF-12",
         "RF-18",
         "RF-19",
-        "RF-20"
+        "RF-20",
+        "RF-45"
       ],
       "limitacoes": [
         "Restrição de idade e de região só testada com mensagens sintéticas.",
         "Teste falha_do_processo_vira_erro_tipado_e_limpa: 200/200 em 2026-10-14; a falha antiga não foi explicada.",
-        "Sem extrator para o Android: o rustypipe (GPL-3.0) ainda não entrou."
+        "O extrator RustyPipe no Android ainda precisa de prova em aparelho."
       ]
     },
     {

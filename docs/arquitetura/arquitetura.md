@@ -122,6 +122,14 @@ Reprodução em segundo plano, permissões de notificação e armazenamento, e a
 YouTube são as três diferenças em relação ao desktop. O resto (banco, domínio, frontend, IPC) é o
 mesmo código.
 
+### Busca e download Android (RF-45)
+
+`RustyPipeResolver` implementa o mesmo `MediaResolver` do desktop com RustyPipe: busca, URL
+temporária de streaming M4A/AAC, playlist, recomendações e metadados do vídeo. O download copia
+o stream M4A para um arquivo parcial, informa o progresso, valida o codec e só então publica o
+arquivo na discoteca. O cliente HTTPS de metadados e sugestões usa raízes WebPKI no Android para
+evitar a exigência de inicialização JNI do verificador da plataforma.
+
 ### Áudio Android (RF-44)
 
 `src-tauri/src/android_audio.rs` implementa `AudioBackend` sobre um plugin Tauri do próprio app.
