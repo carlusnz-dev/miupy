@@ -134,7 +134,7 @@
 
 {#if variant === 'side'}
 <div class="nav-shell relative hidden h-full shrink-0 md:block" class:collapsed>
-<nav id="nav-principal" class="nav-glass flex h-full flex-col gap-1 overflow-x-hidden overflow-y-auto border-r border-line p-3" aria-label="Principal">
+<nav id="nav-principal" class="glass glass-flat flex h-full flex-col gap-1 overflow-x-hidden overflow-y-auto border-y-0 border-l-0 p-3" aria-label="Principal">
   <a href={href(paths.home)} onclick={(event) => menuClick(event, paths.home)} class="mb-3 flex items-center gap-2 px-3 py-2" aria-label="miupy, início" title={collapsed ? 'miupy' : undefined}>
     <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lava-ink" style="background:var(--grad-lava)"><Icon name="flame" size={18} fill /></span>
     {#if !collapsed}<span class="enter text-lg font-bold tracking-tight">miupy</span>{/if}
@@ -167,7 +167,7 @@
 {:else}
 <nav class="relative border-t border-line bg-s1 md:hidden" style="padding-bottom:var(--safe-b)" aria-label="Abas principais">
   {#if moreOpen}
-    <div class="absolute bottom-full right-2 mb-2 w-60 rounded-xl border border-line-strong bg-s2 p-1.5">
+    <div class="glass-strong absolute bottom-full right-2 mb-2 w-60 rounded-xl p-1.5">
       {#each moreItems as i}{@render link(i)}{/each}
     </div>
   {/if}

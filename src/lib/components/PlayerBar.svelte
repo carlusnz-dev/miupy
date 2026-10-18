@@ -11,10 +11,13 @@
   import Seek from './Seek.svelte';
   import Volume from './Volume.svelte';
   import ShuffleButton from './ShuffleButton.svelte';
+  import CoverGlow from './CoverGlow.svelte';
   const t = $derived(player.track);
 </script>
 
-<footer class="player-float pointer-events-auto grid h-[var(--player-h)] grid-cols-[1fr_minmax(20rem,2fr)_1fr] items-center gap-4 rounded-2xl px-4" aria-label="Player">
+<div class="pointer-events-auto relative h-[var(--player-h)]">
+<div class="absolute inset-0 overflow-hidden rounded-2xl" aria-hidden="true"><CoverGlow /></div>
+<footer class="glass relative grid h-full grid-cols-[1fr_minmax(20rem,2fr)_1fr] items-center gap-4 rounded-2xl px-4" aria-label="Player">
   <div class="flex min-w-0 items-center gap-3">
     {#if t}
       <a href={href(paths.nowPlaying)} aria-label="Abrir tocando agora"><span class="relative block"><Cover path={t.coverPath} thumb={t.thumbnailUrl} seed={t.id} size={56} rounded="0.375rem" />{#if player.isLoading}<span class="absolute inset-0 grid place-items-center rounded-md bg-black/60 text-xs text-white" role="status">…</span>{/if}</span></a>
@@ -43,3 +46,4 @@
     <Volume />
   </div>
 </footer>
+</div>

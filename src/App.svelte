@@ -12,9 +12,11 @@
   import { downloads } from './lib/stores/downloads.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { profile } from './lib/stores/profile.svelte';
+  import { cover } from './lib/stores/cover.svelte';
   import { isTyping } from './lib/util/typing';
   import { beginDrag } from './lib/util/drag';
   import Nav from './lib/components/Nav.svelte';
+  import CoverGlow from './lib/components/CoverGlow.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
   import RightPanel from './lib/components/RightPanel.svelte';
   import MiniPlayer from './lib/components/MiniPlayer.svelte';
@@ -46,6 +48,7 @@
     void settings.init();
     void profile.load();
     void player.start();
+    cover.start();
     void library.start();
     void downloads.start();
     let alive = true;
@@ -167,7 +170,9 @@
 
 <svelte:window onkeydown={onKey} onmouseup={onMouseUp} />
 
-<div class="flex h-dvh flex-col" style="padding-top:var(--safe-t)" inert={mobile && name === 'now-playing'}>
+<div class="relative isolate flex h-dvh flex-col" style="padding-top:var(--safe-t)" inert={mobile && name === 'now-playing'}>
+  <!-- @req RNF-04 RF-40: brilho ambiente atrás da página (desktop); o Tocando tem o próprio mesh -->
+  {#if !mobile && name !== 'now-playing'}<div class="ambient absolute inset-0 -z-10 overflow-hidden" aria-hidden="true"><CoverGlow /></div>{/if}
   <!-- @req RF-38 RF-39: grade menu | conteúdo | painel da direita -->
   <div class="relative grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto]">
     <Nav variant="side" />

@@ -71,7 +71,7 @@
   {#if open}
     <ul
       id="{uid}-list" role="listbox" aria-label={label} in:springTransition={{ y: -4, duration: 180 }}
-      class="absolute left-0 z-30 mt-1 max-h-64 min-w-full overflow-auto rounded-lg border border-line-strong bg-s2 p-1"
+      class="glass-strong absolute left-0 z-30 mt-1 max-h-64 min-w-full overflow-auto rounded-lg p-1"
     >
       {#each options as option, i (option.value)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->

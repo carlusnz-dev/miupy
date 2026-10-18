@@ -23,7 +23,7 @@
   });
 </script>
 
-<dialog bind:this={d} class="modal" class:closing aria-label={title} oncancel={(e) => { e.preventDefault(); closeAnimated(); }} onclose={() => { if (!internalClose) onclose(); internalClose = false; }} onclick={(e) => { if (e.target === d) closeAnimated(); }}>
+<dialog bind:this={d} class="modal glass-strong" class:closing aria-label={title} oncancel={(e) => { e.preventDefault(); closeAnimated(); }} onclose={() => { if (!internalClose) onclose(); internalClose = false; }} onclick={(e) => { if (e.target === d) closeAnimated(); }}>
   {#if open || d?.open}
     <div class="flex max-h-[inherit] flex-col">
       <div class="flex items-center justify-between border-b border-line px-4 py-3">

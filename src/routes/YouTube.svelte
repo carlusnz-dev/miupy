@@ -75,7 +75,7 @@
   <div class="relative flex-1">
     <Icon name="search" size={16} class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
     <input class="field !pl-9" type="search" placeholder="Nome da música ou artista" aria-label="Buscar no YouTube" bind:value={query} onkeydown={onSearchKey} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.open} aria-controls="yt-suggestions" aria-activedescendant={suggestions.open && suggestions.active >= 0 ? `yt-suggestion-${suggestions.active}` : undefined} />
-    {#if suggestions.open}<ul id="yt-suggestions" role="listbox" aria-label="Sugestões de busca" class="absolute z-20 mt-1 w-full rounded-lg border border-line bg-s2 p-1">
+    {#if suggestions.open}<ul id="yt-suggestions" role="listbox" aria-label="Sugestões de busca" class="glass-strong absolute z-20 mt-1 w-full rounded-lg p-1">
       {#each suggestions.items as item, i}<li id="yt-suggestion-{i}" role="option" aria-selected={suggestions.active === i}><button type="button" class="w-full rounded px-3 py-2 text-left text-sm hover:bg-s3 {suggestions.active === i ? 'bg-s3' : ''}" onpointerdown={(e) => e.preventDefault()} onclick={() => pick(item)}>{item}</button></li>{/each}
     </ul>{/if}
   </div>

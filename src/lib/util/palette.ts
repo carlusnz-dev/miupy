@@ -1,5 +1,5 @@
 // @req RF-40
-// Cores dominantes da capa para o fundo da tela Tocando. `dominantColors` é pura (testável);
+// Cores dominantes da capa para o mesh do Tocando e para `--cover-tint` (vidro e brilho ambiente). `dominantColors` é pura (testável);
 // `coverPalette` desenha a imagem num canvas pequeno e devolve `null` se o canvas ficar "tainted".
 
 const SIZE = 32;
@@ -49,4 +49,10 @@ export async function coverPalette(src: string, crossOrigin?: 'anonymous'): Prom
   } catch {
     return null;
   }
+}
+
+/** As três cores do mesh a partir da paleta: repete a anterior quando a capa só tem uma ou duas; `undefined` sem cores. */
+export function meshTriple(colors: string[] | null): [string, string, string] | undefined {
+  if (!colors?.length) return undefined;
+  return [colors[0], colors[1] ?? colors[0], colors[2] ?? colors[1] ?? colors[0]];
 }

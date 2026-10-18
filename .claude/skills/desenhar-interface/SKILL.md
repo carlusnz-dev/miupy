@@ -9,9 +9,16 @@ Aqui não se inventa estilo, se **estende o magma** (`src/app.css`, cabeçalho "
 
 ## Identidade (não negociável)
 
-- Basalto quase preto e quente (`--bg`, `--surface-1..3`), lava como único destaque
-  (`--lava*`, `--grad-lava*`), flat: sem sombra, separação por borda de 1px (`--line`,
+- Basalto quase preto e quente (`--bg`, `--surface-1..3`), lava como único destaque dos controles
+  (`--lava*`, `--grad-lava*`), sem sombra pesada: separação por borda de 1px (`--line`,
   `--line-strong`) e por superfície. Raio `--radius`. Cores sempre por token, nunca hex solto.
+- **Vidro só no que flutua** (RNF-04): player, menu lateral, modais, menus/popovers, toasts, folhas e
+  barras `sticky` levam `.glass` (12 px) ou `.glass-strong` (24 px, menus, modais e folhas), de
+  `src/app.css`. Lista, cartão e conteúdo ficam no basalto: nada de `backdrop-filter` em linha de
+  lista. Não escreva `backdrop-filter` à mão; a classe já traz o recuo sólido (sem suporte, como com
+  `MIUPY_GPU=off`) e a borda clara de 1 px. Para tirar a borda de um lado use `!border-x-0` etc.
+- A cor da capa em reprodução é `--cover-tint` (lava sem capa); o vidro já a usa. Para a capa
+  desfocada por baixo de um vidro, `CoverGlow` (pai `relative overflow-hidden`).
 - Texto `--fg`, `--fg-muted`, `--fg-faint`; erro `--danger`, sucesso `--ok`.
 - Um ponto ousado por tela (capa, cabeçalho do artista, gradiente da lava); o resto contido.
 

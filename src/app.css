@@ -3,7 +3,8 @@
 /*
  * Design tokens "magma".
  * Rocha vulcânica (basalto) em tons quentes quase pretos; a lava é a cor de destaque e muda por
- * data-lava no <html>. Flat: sem sombras, separação por borda de 1px fraca e por superfície.
+ * data-lava no <html>. Sem sombra pesada: separação por borda de 1px fraca e por superfície; só o que
+ * flutua usa vidro (`.glass`).
  * @req RNF-04 RNF-05 RF-17
  */
 :root {
@@ -54,10 +55,22 @@
 
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
-  /* menu recolhido, largura do painel da direita e fundo do player flutuante */
+  /* menu recolhido e largura do painel da direita */
   --rail-w: 4.5rem;
   --right-w: 20rem;
-  --player-bg: color-mix(in oklab, #050404, var(--lava-deep) 3%);
+
+  /* vidro (RNF-04): fundo translúcido tingido, desfoque em 2 níveis, borda clara fina e brilho no topo.
+     --cover-tint é a cor dominante da capa em reprodução (cover.svelte.ts); sem capa vale a lava. */
+  --cover-tint: var(--lava);
+  --glass-alpha: 72%;
+  --glass-alpha-strong: 86%;
+  --glass-tint-mix: 5%;
+  --glass-blur: 12px;
+  --glass-blur-strong: 24px;
+  --glass-line: rgb(255 238 228 / 0.16);
+  --glass-sheen: inset 0 1px 0 rgb(255 238 228 / 0.14);
+  --cover-blur: 36px;
+  --cover-glow-a: 0.3;
 }
 
 :root[data-lava='purple'], [data-lava-preview='purple'] {
@@ -128,6 +141,50 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* @req RNF-04: vidro das superfícies que flutuam. `.glass` (12 px) para player, toasts e
+   barras fixas, e o menu lateral (`.glass-flat`, sem desfoque); `.glass-strong` (24 px, mais opaco) para modais, folhas e menus. O fundo já nasce quase
+   sólido: é o recuo de onde o backdrop-filter não existe, e o @supports só o torna translúcido. --tint
+   é registrada (sem herdar) para a cor da capa transicionar só nestes elementos, não na árvore toda.
+   Em `@layer components` os utilitários (`border-*`, `bg-*`) ainda vencem. `.glass-flat` tira o desfoque
+   de quem só tem fundo liso por trás (menu lateral): o blur ali não se vê e custou quadros na rolagem. */
+@property --tint { syntax: '<color>'; inherits: false; initial-value: #ff6a2b; }
+@layer components {
+.glass, .glass-strong {
+  --tint: var(--cover-tint);
+  --glass-a: var(--glass-alpha);
+  --glass-b: var(--glass-blur);
+  background-color: color-mix(in oklab, color-mix(in oklab, var(--surface-2), var(--tint) var(--glass-tint-mix)) 94%, transparent);
+  background-image: linear-gradient(180deg, color-mix(in oklab, var(--tint) 9%, transparent), transparent 55%);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--glass-sheen);
+  transition: --tint var(--dur-slow);
+}
+.glass-strong { --glass-a: var(--glass-alpha-strong); --glass-b: var(--glass-blur-strong); }
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass, .glass-strong {
+    background-color: color-mix(in oklab, color-mix(in oklab, var(--surface-2), var(--tint) var(--glass-tint-mix)) var(--glass-a), transparent);
+    -webkit-backdrop-filter: blur(var(--glass-b)) saturate(1.3);
+    backdrop-filter: blur(var(--glass-b)) saturate(1.3);
+  }
+}
+.glass-flat { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* @req RF-40 RNF-04: capa desfocada (CoverGlow). Estática: pinta uma vez por faixa, nada anima por quadro. */
+.cover-glow {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+  transform: scale(1.5); opacity: var(--cover-glow-a);
+  filter: blur(var(--cover-blur)) saturate(1.4) brightness(0.7);
+  animation: glow-in var(--dur-slow) both;
+}
+@keyframes glow-in { from { opacity: 0; } }
+/* Brilho ambiente do desktop: a cor da capa (ou a lava) no canto, mais a capa bem suave por cima. */
+.ambient {
+  --tint: var(--cover-tint); --cover-blur: 64px; --cover-glow-a: 0.18;
+  background: radial-gradient(70% 55% at 12% 0%, color-mix(in oklab, var(--tint) 14%, transparent), transparent 70%);
+  transition: --tint var(--dur-slow);
+}
+
 /* botões */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
@@ -147,15 +204,6 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 /* @req RF-38: trilho de ícones; a largura anima com a mola padrão. */
 .nav-shell { width: var(--sidebar-w); transition: width var(--dur-base) var(--ease-spring); }
 .nav-shell.collapsed { width: var(--rail-w); }
-/* @req RF-38 RNF-04: o fundo do app passa por trás da coluna do menu. */
-.nav-glass { background: var(--surface-1); }
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .nav-glass {
-    background: color-mix(in oklab, var(--surface-1) 78%, transparent);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-  }
-}
 .nav-toggle {
   position: absolute; z-index: 3; top: 1.75rem; right: -0.75rem; display: grid; place-items: center;
   width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 999px; border: 1px solid var(--line-strong);
@@ -177,24 +225,6 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 .right-toggle::after { content: ''; position: absolute; inset: -0.375rem; }
 .right-toggle:hover { background: var(--surface-3); color: var(--fg); }
 .right-toggle:focus-visible { outline: 2px solid var(--lava-text); outline-offset: 2px; }
-/* @req RF-18 RNF-04: player flutuante; fundo sólido mais escuro que a página, com blur leve onde houver suporte. */
-.player-float { background: var(--player-bg); border: 1px solid var(--line); }
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .player-float {
-    background: color-mix(in oklab, var(--player-bg) 78%, transparent);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-  }
-}
-/* @req RNF-04: o fundo sólido é o recuo para WebKitGTK sem backdrop-filter. */
-.toast-glass { background: var(--surface-3); border: 1px solid var(--line); }
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .toast-glass {
-    background: rgb(28 23 22 / 0.88);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-  }
-}
 .icon-btn {
   display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
   border: 0; background: transparent; color: var(--fg-muted); flex: none;
@@ -265,13 +295,14 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 @media (prefers-reduced-motion: reduce) {
   .mesh { transition-duration: 0s; }
   .mesh-animated .mesh-layer { animation: none; will-change: auto; }
+  .cover-glow { animation: none; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 dialog.modal {
-  border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); border-radius: 0.875rem;
+  color: var(--fg); border-radius: 0.875rem;
   padding: 0; margin: auto; width: min(28rem, calc(100vw - 2rem)); max-height: min(36rem, calc(100dvh - 2rem));
 }
 dialog.modal::backdrop { background: rgb(0 0 0 / 0.6); }
