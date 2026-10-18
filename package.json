@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
-    "android:dev": "tauri android dev",
-    "android:apk": "tauri android build --apk --target aarch64 --debug",
+    "android:dev": "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot tauri android dev",
+    "android:apk": "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot tauri android build --apk --target aarch64 --debug",
     "docs:matriz": "node scripts/rastreabilidade.mjs",
     "test": "vitest run"
   },
