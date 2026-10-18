@@ -59,7 +59,7 @@
   }
 </script>
 
-<section bind:this={sheet} class="fixed inset-x-0 bottom-0 z-10 flex h-[85dvh] flex-col glass-strong rounded-t-2xl !border-x-0 !border-b-0 pb-[var(--safe-b)]"
+<section bind:this={sheet} class="fixed inset-x-0 bottom-0 z-10 flex h-[85dvh] flex-col glass-strong rounded-t-2xl border-x-0 border-b-0 pb-[var(--safe-b)]"
   style:transform={open ? `translate3d(0,${offset}px,0)` : `translate3d(0,calc(100% - 3.5rem - var(--safe-b) + ${offset}px),0)`}
   style:transition={moving || reduced() ? 'none' : `transform var(--dur-base) ${easing}`}
   aria-label="Folha: {title}">

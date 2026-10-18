@@ -62,15 +62,15 @@
   /* vidro (RNF-04): fundo translúcido tingido, desfoque em 2 níveis, borda clara fina e brilho no topo.
      --cover-tint é a cor dominante da capa em reprodução (cover.svelte.ts); sem capa vale a lava. */
   --cover-tint: var(--lava);
-  --glass-alpha: 62%;
-  --glass-alpha-strong: 84%;
+  --glass-alpha: 72%;
+  --glass-alpha-strong: 86%;
   --glass-tint-mix: 5%;
   --glass-blur: 12px;
   --glass-blur-strong: 24px;
   --glass-line: rgb(255 238 228 / 0.16);
   --glass-sheen: inset 0 1px 0 rgb(255 238 228 / 0.14);
   --cover-blur: 36px;
-  --cover-glow-a: 0.5;
+  --cover-glow-a: 0.3;
 }
 
 :root[data-lava='purple'], [data-lava-preview='purple'] {
@@ -141,11 +141,14 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
 
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* @req RNF-04: vidro das superfícies que flutuam. `.glass` (12 px) para player, menu lateral, toasts e
-   barras fixas; `.glass-strong` (24 px, mais opaco) para modais, folhas e menus. O fundo já nasce quase
+/* @req RNF-04: vidro das superfícies que flutuam. `.glass` (12 px) para player, toasts e
+   barras fixas, e o menu lateral (`.glass-flat`, sem desfoque); `.glass-strong` (24 px, mais opaco) para modais, folhas e menus. O fundo já nasce quase
    sólido: é o recuo de onde o backdrop-filter não existe, e o @supports só o torna translúcido. --tint
-   é registrada (sem herdar) para a cor da capa transicionar só nestes elementos, não na árvore toda. */
+   é registrada (sem herdar) para a cor da capa transicionar só nestes elementos, não na árvore toda.
+   Em `@layer components` os utilitários (`border-*`, `bg-*`) ainda vencem. `.glass-flat` tira o desfoque
+   de quem só tem fundo liso por trás (menu lateral): o blur ali não se vê e custou quadros na rolagem. */
 @property --tint { syntax: '<color>'; inherits: false; initial-value: #ff6a2b; }
+@layer components {
 .glass, .glass-strong {
   --tint: var(--cover-tint);
   --glass-a: var(--glass-alpha);
@@ -164,12 +167,14 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
     backdrop-filter: blur(var(--glass-b)) saturate(1.3);
   }
 }
+.glass-flat { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 
 /* @req RF-40 RNF-04: capa desfocada (CoverGlow). Estática: pinta uma vez por faixa, nada anima por quadro. */
 .cover-glow {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none;
   transform: scale(1.5); opacity: var(--cover-glow-a);
-  filter: blur(var(--cover-blur)) saturate(1.4);
+  filter: blur(var(--cover-blur)) saturate(1.4) brightness(0.7);
   animation: glow-in var(--dur-slow) both;
 }
 @keyframes glow-in { from { opacity: 0; } }
@@ -179,7 +184,6 @@ input, textarea, [contenteditable]:not([contenteditable='false']) { user-select:
   background: radial-gradient(70% 55% at 12% 0%, color-mix(in oklab, var(--tint) 14%, transparent), transparent 70%);
   transition: --tint var(--dur-slow);
 }
-.ambient .cover-glow { filter: blur(var(--cover-blur)) saturate(1.4) brightness(0.8); }
 
 /* botões */
 .btn {
@@ -291,6 +295,7 @@ input[type='range'].slider::-moz-range-thumb { width: 12px; height: 12px; border
 @media (prefers-reduced-motion: reduce) {
   .mesh { transition-duration: 0s; }
   .mesh-animated .mesh-layer { animation: none; will-change: auto; }
+  .cover-glow { animation: none; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 

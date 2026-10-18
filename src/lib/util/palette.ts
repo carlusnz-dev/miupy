@@ -1,5 +1,5 @@
 // @req RF-40
-// Cores dominantes da capa para o fundo da tela Tocando. `dominantColors` é pura (testável);
+// Cores dominantes da capa para o mesh do Tocando e para `--cover-tint` (vidro e brilho ambiente). `dominantColors` é pura (testável);
 // `coverPalette` desenha a imagem num canvas pequeno e devolve `null` se o canvas ficar "tainted".
 
 const SIZE = 32;
