@@ -11,7 +11,7 @@
 2. **Tokens e classe de vidro** em `src/app.css`: `--glass-alpha`, `--glass-alpha-strong`, `--glass-tint-mix`, `--glass-blur` (12 px), `--glass-blur-strong` (24 px), `--glass-line`, `--glass-sheen`. `.glass` e `.glass-strong` trocam os três blocos `@supports` (`nav-glass`, `player-float`, `toast-glass`). O fundo já nasce quase sólido e o `@supports` só o torna translúcido (o recuo).
 3. **Cor da capa global:** `src/lib/stores/cover.svelte.ts` calcula a paleta da faixa atual com `coverPalette` e publica `--cover-tint` no `:root`; sem capa a variável sai e vale a lava. O Tocando passou a ler `cover.colors` (a conta saiu de `NowPlaying.svelte`). `meshTriple` (em `palette.ts`, com teste) completa as três cores do mesh.
 4. **Player e menu lateral:** `.glass`; o player ganhou a capa desfocada por baixo do vidro (`CoverGlow.svelte`).
-5. **Modais, menus, folha e barras fixas:** `Modal`, `BottomSheet`, `Dropdown`, menu "Mais" do `Nav`, sugestões do YouTube, menu do equalizador e `PinnedToast` em `.glass-strong`/`.glass`; as duas barras de seleção `sticky` em `.glass`. Toasts já no commit 2.
+5. **Modais, menus, folha e barras fixas:** `Modal`, `BottomSheet`, `Dropdown`, `Menu` (ações da playlist, vindo da `develop` no merge), menu "Mais" do `Nav`, sugestões do YouTube, menu do equalizador e `PinnedToast` em `.glass-strong`/`.glass`; as duas barras de seleção `sticky` em `.glass`. Toasts já no commit 2.
 6. **Brilho ambiente:** `.ambient` atrás da página (só desktop e fora do Tocando): gradiente radial da cor da capa/lava mais a capa a 18% com desfoque de 64 px.
 7. **Skills:** `desenhar-interface` ("Identidade") e `revisar-design` (item 1) falam do vidro e proíbem `backdrop-filter` solto e vidro em linha de lista.
 
@@ -26,10 +26,10 @@
 
 ## Verificação
 
-- `npm run check`: 422 arquivos, 0 erros, 0 avisos.
-- `npm test`: 24 arquivos, 109 testes passaram (inclui `meshTriple`).
+- `npm run check`: 423 arquivos, 0 erros, 0 avisos.
+- `npm test`: 24 arquivos, 113 testes passaram (inclui `meshTriple`), depois do merge da `develop`.
 - `npm run build`: ok.
-- `node scripts/rastreabilidade.mjs --check`: ok, 59 requisitos, nenhum ID desconhecido.
+- `node scripts/rastreabilidade.mjs --check`: ok, 60 requisitos, nenhum ID desconhecido.
 - Cargo não rodado (frente só de frontend, sem `target/` no worktree).
 - Visual: screenshot do Firefox headless (mock, 1400 px) do menu e da lista com o novo vidro; **não vi** o player com capa nem o Tocando (o mock não tem capa com imagem, então `CoverGlow` e o ambiente com a imagem não foram vistos), nem modais e menus abertos.
 
