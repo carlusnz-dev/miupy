@@ -140,15 +140,18 @@ impl AppState {
         }
         crate::image_migration::spawn(self.dirs.clone(), self.db.clone(), self.events.clone());
         // @req RF-26: a checagem/instalação nunca bloqueia a abertura.
-        let manager = self.ytdlp.clone();
-        let events = self.events.clone();
-        tauri::async_runtime::spawn(async move {
-            let callback: miupy_media::YtDlpStatusFn = Arc::new(move |s| {
-                let payload = crate::dto::from_ytdlp_status(s);
-                events.ytdlp_status(&payload);
+        #[cfg(not(target_os = "android"))]
+        {
+            let manager = self.ytdlp.clone();
+            let events = self.events.clone();
+            tauri::async_runtime::spawn(async move {
+                let callback: miupy_media::YtDlpStatusFn = Arc::new(move |s| {
+                    let payload = crate::dto::from_ytdlp_status(s);
+                    events.ytdlp_status(&payload);
+                });
+                let _ = manager.ensure_current_with_status(Some(callback)).await;
             });
-            let _ = manager.ensure_current_with_status(Some(callback)).await;
-        });
+        }
     }
 }
 

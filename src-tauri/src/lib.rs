@@ -28,7 +28,9 @@ mod youtube;
 
 use std::sync::Arc;
 
-use miupy_media::{MetadataConfig, MetadataProvider, OnlineMetadata, YtDlpResolver};
+#[cfg(not(target_os = "android"))]
+use miupy_media::YtDlpResolver;
+use miupy_media::{MetadataConfig, MetadataProvider, OnlineMetadata};
 use tauri::{Manager, RunEvent};
 
 use commands::{
@@ -79,6 +81,10 @@ fn build_state(app: &tauri::AppHandle) -> Result<AppState, Box<dyn std::error::E
     scope.allow_directory(dirs.root.join("avatars"), true)?;
     scope.allow_directory(dirs.root.join("playlists"), true)?;
 
+    // @req RF-45
+    #[cfg(target_os = "android")]
+    let resolver = Arc::new(miupy_media::RustyPipeResolver::new()?);
+    #[cfg(not(target_os = "android"))]
     let resolver = Arc::new(YtDlpResolver::with_binary(
         miupy_media::YtDlpManager::new(dirs.root.join("bin"))?.binary_path(),
     ));
