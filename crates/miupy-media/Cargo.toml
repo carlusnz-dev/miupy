@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-rustypipe = ["dep:rustypipe", "dep:rustypipe-downloader"]
+rustypipe = ["dep:rustypipe"]
 
 [dependencies]
 async-trait = "0.1.92"
@@ -34,8 +34,3 @@ optional = true
 default-features = false
 features = ["rustls-tls-webpki-roots"]
 
-[dependencies.rustypipe-downloader]
-version = "0.3.1"
-optional = true
-default-features = false
-features = ["rustls-tls-webpki-roots"]
