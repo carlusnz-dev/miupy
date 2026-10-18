@@ -144,6 +144,7 @@ impl From<miupy_media::YtDlpStatus> for YtDlpStatus {
         }
     }
 }
+#[cfg(not(target_os = "android"))]
 pub fn from_ytdlp_status(s: miupy_media::YtDlpStatus) -> YtDlpStatus {
     s.into()
 }

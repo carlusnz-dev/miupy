@@ -18,7 +18,7 @@ pub async fn suggest_from(endpoint: &str, query: &str) -> Result<Vec<String>> {
     if query.is_empty() {
         return Ok(Vec::new());
     }
-    let client = reqwest::Client::builder()
+    let client = crate::http::client_builder()
         .timeout(Duration::from_secs(3))
         .connect_timeout(Duration::from_secs(2))
         .user_agent(format!("miupy/{} (busca)", env!("CARGO_PKG_VERSION")))

@@ -7,6 +7,47 @@ use miupy_media::{
     YtDlpResolver, suggest,
 };
 
+#[cfg(feature = "rustypipe")]
+async fn rustypipe_short_track() -> (miupy_media::RustyPipeResolver, String) {
+    let resolver = miupy_media::RustyPipeResolver::new().unwrap();
+    let found = resolver
+        .search("The xx Intro official audio", 10)
+        .await
+        .unwrap();
+    assert!(!found.is_empty(), "busca vazia");
+    let video = found
+        .into_iter()
+        .find(|item| item.duration_ms.is_some_and(|d| d < 180_000))
+        .expect("nenhuma faixa curta");
+    println!("busca: {} ({})", video.title, video.video_id);
+    (resolver, video.video_id)
+}
+
+// @test RF-45
+#[cfg(feature = "rustypipe")]
+#[tokio::test]
+#[ignore = "rede real: busca e stream M4A pelo RustyPipe"]
+async fn rustypipe_busca_e_stream_reais() {
+    let (resolver, video_id) = rustypipe_short_track().await;
+    let stream = resolver.resolve_stream(&video_id).await.unwrap();
+    assert!(stream.url.starts_with("https://"));
+    assert_eq!(stream.container, "m4a");
+    println!("stream: {} kbps", stream.bitrate_kbps.unwrap_or_default());
+}
+
+// @test RF-45
+#[cfg(feature = "rustypipe")]
+#[tokio::test]
+#[ignore = "rede real: download M4A; sem PO token o googlevideo corta em ~500 KB (403)"]
+async fn rustypipe_download_real() {
+    let (resolver, video_id) = rustypipe_short_track().await;
+    let dir = tempfile::tempdir().unwrap();
+    let request = DownloadRequest::new(&video_id, dir.path(), "rede");
+    let audio = resolver.download_audio(request).await.unwrap();
+    assert_eq!(audio.codec, "aac");
+    assert!(std::fs::metadata(&audio.path).unwrap().len() > 10_000);
+}
+
 fn provider() -> OnlineMetadata {
     OnlineMetadata::new(MetadataConfig::new("miupy-tests@example.com")).unwrap()
 }

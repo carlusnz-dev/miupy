@@ -39,3 +39,6 @@ tempfile = "3.27.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+miupy-media = { path = "../crates/miupy-media", features = ["rustypipe"] }

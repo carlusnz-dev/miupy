@@ -343,7 +343,7 @@ impl OnlineMetadata {
             ));
         }
         let user_agent = format!("miupy/{} ({})", env!("CARGO_PKG_VERSION"), contact);
-        let http = reqwest::Client::builder()
+        let http = crate::http::client_builder()
             .user_agent(&user_agent)
             .timeout(cfg.timeout)
             .connect_timeout(Duration::from_secs(10))

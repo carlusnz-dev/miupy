@@ -9,9 +9,12 @@
 //! Esta crate não depende de Tauri nem das outras crates do workspace.
 
 pub mod error;
+mod http;
 pub mod metadata;
 pub mod ratelimit;
 pub mod resolver;
+#[cfg(feature = "rustypipe")]
+pub mod rustypipe;
 pub mod suggest;
 pub mod tagger;
 pub mod title;
@@ -27,6 +30,8 @@ pub use resolver::{
     DownloadRequest, DownloadedAudio, MediaResolver, PlaylistInfo, ProgressFn, SearchResult,
     StreamAudio, VideoMetadata,
 };
+#[cfg(feature = "rustypipe")]
+pub use rustypipe::RustyPipeResolver;
 pub use suggest::suggest;
 pub use tagger::{AudioInfo, Cover, TagUpdate};
 pub use title::{ParsedTitle, clean_title, clean_title_with_artists};

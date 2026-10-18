@@ -123,6 +123,9 @@ Ambiente desta máquina (sessão 11), tudo sem sudo:
 - `~/.zshenv`: `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`, `ANDROID_HOME`, `NDK_HOME` e o
   `platform-tools` no `PATH` (para o `adb`).
 - Alvos Rust do rustup: `aarch64`, `armv7`, `i686` e `x86_64-linux-android`.
+- O `rquickjs-sys` gera bindings para o Android com libclang. Os scripts `android:apk` e
+  `android:dev` definem `BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android` com o sysroot do NDK;
+  em chamadas diretas ao Cargo, exporte a mesma variável antes de compilar.
 
 O projeto Android gerado pelo `tauri android init` fica versionado em `src-tauri/gen/android/`
 (o `build/`, os `jniLibs` e o `local.properties` ficam de fora pelo `.gitignore` dele). Não rode o

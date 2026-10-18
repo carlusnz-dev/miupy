@@ -15,7 +15,10 @@
 
 <LavaSection />
 <AudioSection />
-<YtDlpSection />
+{#if !/Android/i.test(navigator.userAgent)}
+  <!-- @req RF-45 -->
+  <YtDlpSection />
+{/if}
 <GpuSection />
 <MetadataSection />
 <KeysSection />

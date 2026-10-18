@@ -77,7 +77,7 @@ impl YtDlpManager {
         dir: impl Into<PathBuf>,
         release_url: impl Into<String>,
     ) -> Result<Self> {
-        let http = reqwest::Client::builder()
+        let http = crate::http::client_builder()
             .user_agent(format!(
                 "miupy/{} (yt-dlp manager)",
                 env!("CARGO_PKG_VERSION")
