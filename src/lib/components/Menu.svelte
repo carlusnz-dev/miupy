@@ -72,7 +72,7 @@
     <div
       bind:this={menu} id="{uid}-menu" role="menu" aria-label={label} tabindex="-1" aria-activedescendant={itemId(active)}
       onkeydown={onMenuKey} in:springTransition={{ y: -4, duration: 180 }}
-      class="absolute right-0 z-30 mt-1 min-w-52 rounded-lg border border-line-strong bg-s2 p-1 outline-none"
+      class="glass-strong absolute right-0 z-30 mt-1 min-w-52 rounded-lg p-1 outline-none"
     >
       {#each items as item, i (item.label)}
         {#if item.separated}<div class="my-1 border-t border-line" role="separator"></div>{/if}
